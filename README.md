@@ -9,7 +9,7 @@ Uproszczona symulacja [Clash Royale](https://supercell.com/en/games/clashroyale/
 - **6 kart w talii**, **4 na ręce** — kolejka bez duplikatów (jak w grze)
 - **Wieże** z zasięgiem ~7.5 kafelka; strzelają do wrogów zaraz po wejściu w range
 - **Wizualizacja pygame** z HUD, ręką kart i historią meczu (pauza + strzałki)
-- **`RLAgent`** — placeholder pod sieć neuronową
+- **`RLAgent`** — PPO (MaskablePPO) uczony przeciwko `LogicAgent`
 - **`LogicAgent`** — bot oparty na regułach (obrona, Hog, Cannon itd.)
 
 ## Wymagania
@@ -24,8 +24,20 @@ pip install -r requirements.txt
 ## Szybki start
 
 ```bash
+# Trening PPO vs LogicAgent (~1M kroków, kilka–kilkanaście min na CPU)
+pip install -r requirements.txt
+python train.py
+
+# Ewaluacja wytrenowanego modelu
+python evaluate.py --model models/ppo_cr_best.zip --episodes 100
+
+# Raport statystyk (logi TB, win rate, wykresy)
+python statistics.py
+python statistics.py --plot --episodes 100
+
 # Wizualizacja: P0 = agent RL, P1 = bot regułowy
 python visualize.py
+python visualize.py --model models/ppo_cr_best.zip
 
 # Mniejsze okno
 python visualize.py --scale 0.5
@@ -51,11 +63,15 @@ python visualize.py --tempo 1.0
 clash_royale_rl_agent/
 ├── board.py        # Środowisko gry (step, reward, obs, ręka, mosty)
 ├── cards.py        # Statystyki kart i klasa Troop / Tower
+├── gym_env.py      # Wrapper Gymnasium (RL vs LogicAgent)
 ├── logic_agent.py  # Bot regułowy (set_pending_play)
-├── rl_agent.py     # Agent RL (losowe akcje → później NN)
+├── rl_agent.py     # Agent RL (wczytuje PPO z models/)
+├── train.py        # Trening MaskablePPO
+├── evaluate.py     # Win rate vs LogicAgent
+├── statistics.py   # Raport uczenia + wykresy
 ├── visualize.py    # Podgląd pygame
 ├── requirements.txt
-└── temat.txt       # Notatka projektowa
+└── models/         # Zapisywane modele (gitignore)
 ```
 
 ## API środowiska (`Board`)
@@ -76,23 +92,30 @@ done = result.terminated or result.truncated
 
 ### Karty w talii (domyślnie)
 
-Knight, Giant, Cannon, Musketeer, Hog_Rider, Archers
+Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball
 
-### Agent RL (szkielet)
+### Agent RL (PPO)
 
 ```python
-from board import Board
+from gym_env import ClashRoyaleEnv
 from rl_agent import RLAgent
 
-env = Board()
-env.reset()
-agent = RLAgent(seed=0)
+# Trening
+# python train.py --timesteps 1000000 --n-envs 8
 
-action = agent.choose_action(env, player=0)
-env.step(action, action_p1=None)  # P1 bez akcji → losowy bot w board
+# Gra z modelem
+agent = RLAgent(model_path="models/ppo_cr_best.zip")
+env = ClashRoyaleEnv()
+obs, _ = env.reset()
+action = agent.choose_action(env.board, player=0)
+obs, reward, done, trunc, info = env.step(action)
 ```
 
-`LogicAgent` używa `board.set_pending_play()` zamiast indeksów akcji — w `visualize.py` oba tryby są podłączone poprawnie.
+**Obserwacja** (`OBS_DIM`): eliksir własny i wroga, czas, HP 6 wież, one-hot ręki (4×6), do 24 jednostek (posortowane).
+
+**Nagroda**: wyłącznie zmiana łącznego HP wież `(utrata wroga − utrata własna) / max_HP_wież`.
+
+`LogicAgent` używa `board.set_pending_play()` — w `gym_env` i `visualize.py` oba tryby są podłączone poprawnie.
 
 ## Konfiguracja
 
@@ -102,7 +125,7 @@ env.step(action, action_p1=None)  # P1 bez akcji → losowy bot w board
 | `visualize.py` → `REAL_SECONDS_PER_SIM_SECOND` | Tempo symulacji |
 | `board.py` → `TOWER_LAYOUT`, `BRIDGE_LANE_X` | Pozycje wież / mostów |
 | `cards.py` → `cards_dic` | Statystyki kart |
-| `rl_agent.py` → `play_chance` | Jak często losowy agent gra kartę |
+| `train.py` → `--timesteps`, `--n-envs` | Długość i równoległość treningu |
 
 ## Licencja
 

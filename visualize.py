@@ -36,6 +36,7 @@ from board import (
     RIVER_Y,
     TICK_DT,
     Board,
+    SpellEffect,
 )
 
 # Legenda: niebieskie/czerwone kółka = strefy rzutu; żółte = most (Hog)
@@ -44,7 +45,7 @@ from board import (
 # Ile sekund RZECZYWISTEGO czasu ma trwać 1 sekunda w symulacji.
 # 1.0   = wierne tempo (1 s licznika gry ≈ 1 s u Ciebie)
 # 0.08  = szybki podgląd (~jak dawniej ticks_per_frame=2 przy 60 FPS)
-REAL_SECONDS_PER_SIM_SECOND = 1.0
+REAL_SECONDS_PER_SIM_SECOND = 0.08
 from cards import Troop, cards_dic
 from logic_agent import LogicAgent
 from rl_agent import RLAgent
@@ -67,7 +68,7 @@ CARD_LABEL = {
     "Cannon": "Cannon",
     "Musketeer": "Musk.",
     "Hog_Rider": "Hog",
-    "Archers": "Arch.",
+    "Fireball": "Fire",
 }
 
 COL_GRASS = (45, 106, 48)
@@ -87,7 +88,7 @@ CARD_SHORT = {
     "Cannon": "C",
     "Musketeer": "M",
     "Hog_Rider": "H",
-    "Archers": "A",
+    "Fireball": "F",
 }
 
 MAX_HISTORY = 4000
@@ -155,6 +156,21 @@ def capture_state(env: Board) -> dict:
             0: list(env.hand_queue[0]),
             1: list(env.hand_queue[1]),
         },
+        "spell_effects": [
+            (
+                e.card,
+                e.x,
+                e.y,
+                e.start_x,
+                e.start_y,
+                e.radius,
+                e.owner,
+                e.age,
+                e.travel_time,
+                e.fade_time,
+            )
+            for e in env.spell_effects
+        ],
     }
 
 
@@ -183,6 +199,24 @@ def restore_state(env: Board, state: dict) -> None:
                 0: deque(state["hand_queue"][0]),
                 1: deque(state["hand_queue"][1]),
             }
+    if "spell_effects" in state:
+        env.spell_effects = [
+            SpellEffect(
+                card=row[0],
+                x=row[1],
+                y=row[2],
+                start_x=row[3],
+                start_y=row[4],
+                radius=row[5],
+                owner=row[6],
+                age=row[7],
+                travel_time=row[8],
+                fade_time=row[9],
+            )
+            for row in state["spell_effects"]
+        ]
+    else:
+        env.spell_effects = []
 
 
 def world_to_screen(x: float, y: float, scroll: tuple[int, int]) -> tuple[int, int]:
@@ -275,6 +309,89 @@ def draw_tower(surface: pygame.Surface, tower, scroll: tuple[int, int]) -> None:
     draw_hp_bar(surface, sx, sy, hp_ratio(tower), color)
 
 
+def _draw_alpha_circle(
+    surface: pygame.Surface,
+    center: tuple[int, int],
+    radius: int,
+    color: tuple[int, int, int, int],
+) -> None:
+    if radius <= 0:
+        return
+    diameter = radius * 2
+    overlay = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
+    pygame.draw.circle(overlay, color, (radius, radius), radius)
+    surface.blit(overlay, (center[0] - radius, center[1] - radius))
+
+
+def draw_spell_effects(
+    surface: pygame.Surface,
+    effects: list[SpellEffect],
+    scroll: tuple[int, int],
+) -> None:
+    for effect in effects:
+        if effect.card != "Fireball":
+            continue
+
+        sx0, sy0 = world_to_screen(effect.start_x, effect.start_y, scroll)
+        sx1, sy1 = world_to_screen(effect.x, effect.y, scroll)
+        owner_color = COL_P0 if effect.owner == 0 else COL_P1
+
+        travel_t = max(0.001, effect.travel_time)
+        if effect.age < travel_t:
+            progress = effect.age / travel_t
+            cx = int(sx0 + (sx1 - sx0) * progress)
+            cy = int(sy0 + (sy1 - sy0) * progress)
+            trail_r = max(4, int(10 * UI_SCALE))
+            for i, alpha in enumerate((50, 90, 140)):
+                offset = int((2 - i) * 5 * progress)
+                tx = cx - int((sx1 - sx0) * 0.04 * (i + 1))
+                ty = cy - int((sy1 - sy0) * 0.04 * (i + 1))
+                _draw_alpha_circle(
+                    surface,
+                    (tx - offset, ty - offset),
+                    trail_r - i * 2,
+                    (255, 120 + i * 25, 40, alpha),
+                )
+            ball_r = max(5, int(12 * UI_SCALE))
+            pygame.draw.circle(surface, (255, 90, 20), (cx, cy), ball_r)
+            pygame.draw.circle(surface, (255, 210, 80), (cx, cy), max(3, ball_r - 4))
+            pygame.draw.circle(surface, (255, 255, 220), (cx, cy), max(2, ball_r - 7))
+
+        impact_age = effect.age - effect.travel_time
+        if impact_age >= -0.04:
+            fade_t = max(0.001, effect.fade_time)
+            explode = max(0.0, min(1.0, impact_age / fade_t))
+            radius_px = int(effect.radius * TILE_PX * (0.25 + 0.85 * explode))
+            alpha = int(200 * (1.0 - explode))
+            _draw_alpha_circle(
+                surface,
+                (sx1, sy1),
+                radius_px,
+                (255, 110, 35, max(0, alpha)),
+            )
+            ring_alpha = int(220 * (1.0 - explode * 0.85))
+            if ring_alpha > 0:
+                ring = pygame.Surface(
+                    (radius_px * 2 + 6, radius_px * 2 + 6), pygame.SRCALPHA
+                )
+                pygame.draw.circle(
+                    ring,
+                    (*owner_color, ring_alpha),
+                    (radius_px + 3, radius_px + 3),
+                    radius_px,
+                    max(2, int(3 * UI_SCALE)),
+                )
+                surface.blit(ring, (sx1 - radius_px - 3, sy1 - radius_px - 3))
+            if explode < 0.35:
+                flash_r = max(6, int(18 * UI_SCALE * (1.0 - explode / 0.35)))
+                _draw_alpha_circle(
+                    surface,
+                    (sx1, sy1),
+                    flash_r,
+                    (255, 240, 180, int(180 * (1.0 - explode / 0.35))),
+                )
+
+
 def draw_troop(surface: pygame.Surface, troop, scroll: tuple[int, int]) -> None:
     if not troop.alive:
         return
@@ -363,6 +480,7 @@ def run_pygame(
     seed: int = 0,
     real_seconds_per_sim_second: float = REAL_SECONDS_PER_SIM_SECOND,
     fps: int = 60,
+    model_path: str | None = None,
 ) -> None:
     pygame.init()
     aw, ah = arena_pixel_size()
@@ -377,8 +495,12 @@ def run_pygame(
 
     env = Board(seed=seed)
     env.reset(seed=seed)
-    agent0 = RLAgent(seed=seed)
+    agent0 = RLAgent(seed=seed, model_path=model_path)
     agent1 = LogicAgent()
+    if agent0.is_trained:
+        print(f"P0: wczytano model PPO ({model_path or 'models/ppo_cr_best.zip'})")
+    else:
+        print("P0: brak modelu PPO — losowy agent (wytrenuj: python train.py)")
 
     paused = False
     speed = 1.0
@@ -471,6 +593,7 @@ def run_pygame(
             draw_tower(screen, tower, arena_scroll)
         for troop in env.troops:
             draw_troop(screen, troop, arena_scroll)
+        draw_spell_effects(screen, env.spell_effects, arena_scroll)
 
         draw_player_hand(
             screen, env, 0, screen.get_height() - HAND_BAR_H - 8, font
@@ -513,6 +636,12 @@ if __name__ == "__main__":
         help="ile sekund rzeczywistych = 1 sekunda symulacji (np. 2.0 = wolniej)",
     )
     parser.add_argument("--fps", type=int, default=60)
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="sciezka do .zip PPO (domyslnie models/ppo_cr_best.zip)",
+    )
     args = parser.parse_args()
     if args.scale is not None:
         apply_ui_scale(args.scale)
@@ -520,4 +649,5 @@ if __name__ == "__main__":
         seed=args.seed,
         real_seconds_per_sim_second=args.tempo,
         fps=args.fps,
+        model_path=args.model,
     )

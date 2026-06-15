@@ -15,12 +15,14 @@ from board import (
 from cards import PLAYABLE_CARDS, Troop, cards_dic
 
 ARENA_CENTER_X = 9.0
-CANNON_RIVER_OFFSET = 3.0
+# Cannon: 5 kafelków od rzeki (P0: y=11 zamiast y=6 w strefach rzutu).
+CANNON_RIVER_DISTANCE = 5.0
 
 BUILDING_ATTACKERS = frozenset({"Giant", "Hog_Rider"})
-RANGED_UNITS = frozenset({"Musketeer", "Archers", "Wizard", "Witch"})
+RANGED_UNITS = frozenset({"Musketeer", "Wizard", "Witch"})
 TANK_UNITS = frozenset({"Giant"})
-SWARM_HP_THRESHOLD = 800
+FIREBALL_RADIUS = 2.5
+FIREBALL_CANNON_ELIXIR = 8.0
 
 ELIXIR_FULL = 10.0
 ELIXIR_PUSH = 9.0
@@ -40,6 +42,9 @@ class LogicAgent:
         play = self._decide_play(board, player)
         board.set_pending_play(player, play)
         return 0
+
+    def reset(self) -> None:
+        self._combo_followup = None
 
     # --- decyzja ---
 
@@ -71,6 +76,11 @@ class LogicAgent:
                 if play and self._can_play(board, player, "Cannon", defensive=True):
                     return play
 
+        # Fireball: Musketeer, skupisko 2+, spokojna gra + wrogi Cannon.
+        fireball = _try_fireball_play(board, player, elixir, enemies)
+        if fireball and self._can_play(board, player, "Fireball", defensive=True):
+            return self._clamp_play(player, fireball)
+
         # 9. Oszczędzaj eliksir przy braku zagrożenia.
         if elixir < 3.0 and not _enemies_in_threat_zone(board, player):
             return None
@@ -99,12 +109,7 @@ class LogicAgent:
                 if play and self._can_play(board, player, "Knight", defensive=True):
                     return play
 
-        # Archers: 2+ wrogów na naszej połowie (tani counter na swarm).
         on_my_side = [e for e in enemies if _on_my_side(e, player)]
-        if len(on_my_side) >= 2 and self._can_play(board, player, "Archers", defensive=True):
-            play = _archers_behind_king(player)
-            if play:
-                return play
 
         # Hog: przeciwnik ma Cannon — rush drugim mostem.
         for enemy in enemies:
@@ -125,11 +130,6 @@ class LogicAgent:
                 play = _musketeer_behind_unit(player, ally, dist=3.5)
                 if play and self._can_play(board, player, "Musketeer", offensive=True):
                     return play
-            if ally.name == "Hog_Rider" and _near_bridge(ally, player):
-                play = _archers_behind_unit(player, ally, dist=4.0)
-                if play and self._can_play(board, player, "Archers", offensive=True):
-                    return play
-
         # 8. Knight po obronie przechodzi most + >= 4 — Musketeer za Knightem.
         for ally in mine:
             if (
@@ -158,17 +158,10 @@ class LogicAgent:
             if play and self._can_play(board, player, "Giant", offensive=True):
                 return play
 
-        # 2. Pełny eliksir, brak wrogów — Musketeer lub Archers za King Tower.
+        # 2. Pełny eliksir, brak wrogów — Musketeer za King Tower.
         if elixir >= ELIXIR_FULL - 0.05 and len(enemies) == 0:
             if self._can_play(board, player, "Musketeer", offensive=True):
                 return _musketeer_behind_king(player)
-            if self._can_play(board, player, "Archers", offensive=True):
-                return _archers_behind_king(player)
-
-        # Słaby swarm na naszej połowie — Archers.
-        weak_swarm = [e for e in on_my_side if e.max_hp <= SWARM_HP_THRESHOLD]
-        if len(weak_swarm) >= 2 and self._can_play(board, player, "Archers", defensive=True):
-            return _archers_behind_king(player)
 
         return None
 
@@ -201,6 +194,9 @@ class LogicAgent:
     ) -> tuple[str, float, float]:
         card, x, y = play
         x = max(1.0, min(ARENA_WIDTH - 1.0, x))
+        if card == "Fireball":
+            y = max(2.0, min(ARENA_LENGTH - 2.0, y))
+            return card, x, y
         if player == 0:
             y = max(2.0, min(RIVER_Y - 0.5, y))
         else:
@@ -377,28 +373,95 @@ def _musketeer_safe_support(
     return "Musketeer", x, y
 
 
+def _cannon_river_y(player: int) -> float:
+    if player == 0:
+        return RIVER_Y - CANNON_RIVER_DISTANCE
+    return RIVER_Y + CANNON_RIVER_DISTANCE
+
+
 def _cannon_vs_building_attacker(
     board: Board, player: int, enemy: Troop
 ) -> Optional[tuple[str, float, float]]:
-    """Cannon ~3–4 pola od rzeki, w osi akcji wroga."""
-    offset = 3.5
+    """Cannon 5 pól od rzeki, w osi akcji wroga."""
     x = max(3.0, min(ARENA_WIDTH - 3.0, enemy.x))
-    if player == 0:
-        y = RIVER_Y - offset
-    else:
-        y = RIVER_Y + offset
-    return "Cannon", x, y
+    return "Cannon", x, _cannon_river_y(player)
 
 
-def _archers_behind_king(player: int) -> tuple[str, float, float]:
-    kx, ky = TOWER_LAYOUT[player]["King_Tower"]
-    return "Archers", kx, ky - 2.5 * _forward(player)
+def _fireball_on_unit(unit: Troop) -> tuple[str, float, float]:
+    return "Fireball", unit.x, unit.y
 
 
-def _archers_behind_unit(
-    player: int, unit: Troop, dist: float = 4.0
-) -> tuple[str, float, float]:
-    return "Archers", unit.x, unit.y - dist * _forward(player)
+def _fireball_best_cluster(
+    enemies: list[Troop],
+    *,
+    min_count: int = 2,
+    radius: float = FIREBALL_RADIUS,
+) -> Optional[tuple[str, float, float]]:
+    if len(enemies) < min_count:
+        return None
+
+    best_play: Optional[tuple[str, float, float]] = None
+    best_hits = 0
+    for anchor in enemies:
+        cluster = [e for e in enemies if e.distance_to(anchor) <= radius]
+        if len(cluster) < min_count:
+            continue
+        cx = sum(e.x for e in cluster) / len(cluster)
+        cy = sum(e.y for e in cluster) / len(cluster)
+        hits = sum(1 for e in enemies if e.distance_to_xy(cx, cy) <= radius)
+        if hits >= min_count and hits > best_hits:
+            best_hits = hits
+            best_play = ("Fireball", cx, cy)
+    return best_play
+
+
+def _is_quiet_board(board: Board, player: int) -> bool:
+    """Brak walki: żadne wojsko nie naciera ani nie broni aktywnie (Cannon wroga nie liczy się)."""
+    active_enemies = [
+        e
+        for e in _enemy_troops(board, player)
+        if not (e.is_building and e.name == "Cannon")
+    ]
+    for enemy in active_enemies:
+        if _on_my_side(enemy, player):
+            return False
+        for tower in _my_towers(board, player):
+            if enemy.distance_to(tower) <= 7.0:
+                return False
+    for ally in _my_troops(board, player):
+        if not _on_my_side(ally, player):
+            return False
+        if _near_bridge(ally, player) or _crossing_bridge_toward_enemy(ally, player):
+            return False
+    return True
+
+
+def _try_fireball_play(
+    board: Board,
+    player: int,
+    elixir: float,
+    enemies: list[Troop],
+) -> Optional[tuple[str, float, float]]:
+    if not enemies:
+        return None
+
+    # Zawsze Fireball na Musketeer.
+    for enemy in enemies:
+        if enemy.name == "Musketeer":
+            return _fireball_on_unit(enemy)
+
+    # 2+ wrogów w promieniu jednego Fireballa.
+    cluster = _fireball_best_cluster(enemies)
+    if cluster is not None:
+        return cluster
+
+    # Spokój na planszy, >= 8 eliksiru, wrogi Cannon — wybij go.
+    if elixir >= FIREBALL_CANNON_ELIXIR and _is_quiet_board(board, player):
+        for enemy in enemies:
+            if enemy.name == "Cannon":
+                return _fireball_on_unit(enemy)
+
+    return None
 
 
 def _hog_on_bridge(player: int, lane: str) -> tuple[str, float, float]:
@@ -454,7 +517,7 @@ def _cannon_vs_hog(
 ) -> tuple[str, float, float]:
     """
     Cannon: x = środek areny ± 1 kafelek w stronę wieży, którą Hog atakuje;
-    y = 3 kafelki od rzeki (po Twojej stronie).
+    y = 5 kafelków od rzeki (bliżej mostu niż domyślne strefy rzutu).
     """
     tower = _tower_under_hog_attack(board, player, hog)
     if tower is not None:
@@ -469,11 +532,7 @@ def _cannon_vs_hog(
     else:
         x = ARENA_CENTER_X + 1.0
 
-    if player == 0:
-        y = RIVER_Y - CANNON_RIVER_OFFSET
-    else:
-        y = RIVER_Y + CANNON_RIVER_OFFSET
-    return "Cannon", x, y
+    return "Cannon", x, _cannon_river_y(player)
 
 
 def _knight_on_unit(

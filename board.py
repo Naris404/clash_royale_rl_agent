@@ -26,34 +26,43 @@ ELIXIR_PER_SECOND = 1.0 / 2.8
 MATCH_TIME_LIMIT = 180.0
 RIVER_Y = ARENA_LENGTH / 2
 RIVER_HALF_WIDTH = 1.2
-# Dwa mosty (lewy / prawy), jak na arenie CR.
-BRIDGE_LANE_X = (4.0, 14.0)
+# Dwa mosty (lewy / prawy) — oś alejki = środek pasa (lewy pas: kolumny 2–4, wieża L przy x≈3.5).
+BRIDGE_LANE_X = (3.0, 14.0)
 BRIDGES = [(BRIDGE_LANE_X[0], RIVER_Y), (BRIDGE_LANE_X[1], RIVER_Y)]
+DEFAULT_SIGHT_RANGE = 9.5
 
 # Wieże (jak w CR): princess ~6 kafelków od rzeki, król z tyłu.
 # P0 = dół (y rośnie w górę), P1 = góra.
 TOWER_LAYOUT = {
     0: {
-        "Tower_L": (3.5, 10.0),
-        "Tower_R": (14.5, 10.0),
+        "Tower_L": (3.5, 8.0),
+        "Tower_R": (14.5, 8.0),
         "King_Tower": (9.0, 2.0),
     },
     1: {
-        "Tower_L": (3.5, 22.0),
-        "Tower_R": (14.5, 22.0),
+        "Tower_L": (3.5, 24.0),
+        "Tower_R": (14.5, 24.0),
         "King_Tower": (9.0, 30.0),
     },
 }
 
 DEPLOY_ZONES = {
-    0: [(4.0, 6.0), (9.0, 6.0), (14.0, 6.0)],
-    1: [(4.0, 26.0), (9.0, 26.0), (14.0, 26.0)],
+    0: [(3.0, 6.0), (9.0, 6.0), (14.0, 6.0)],
+    1: [(3.0, 26.0), (9.0, 26.0), (14.0, 26.0)],
 }
 
 HAND_SIZE = 4
+NUM_PLAYABLE_CARDS = len(PLAYABLE_CARDS)
 NUM_ACTIONS = 1 + HAND_SIZE * len(DEPLOY_ZONES[0])  # noop + slot ręki (0..3) × strefa
 MAX_UNITS_OBS = 24
-OBS_DIM = 2 + 6 + MAX_UNITS_OBS * 5  # elixir, czas + wieże + jednostki
+OBS_HAND_FEATURES = HAND_SIZE * NUM_PLAYABLE_CARDS
+OBS_UNIT_FEATURES = MAX_UNITS_OBS * 5
+OBS_DIM = 3 + 6 + OBS_HAND_FEATURES + OBS_UNIT_FEATURES  # eliksir×2, czas, wieże, ręka, jednostki
+
+# Skala nagrody za utratę HP wież (suma max HP jednego gracza: 2× princess + king).
+MAX_TOWER_HP_PER_PLAYER = (
+    2 * float(cards_dic["Tower"]["hp"]) + float(cards_dic["King_Tower"]["hp"])
+)
 
 
 @dataclass
@@ -63,6 +72,22 @@ class StepResult:
     terminated: bool
     truncated: bool
     info: dict = field(default_factory=dict)
+
+
+@dataclass
+class SpellEffect:
+    """Aktywny efekt czaru na planszy (do animacji / podglądu)."""
+
+    card: str
+    x: float
+    y: float
+    start_x: float
+    start_y: float
+    radius: float
+    owner: int
+    age: float = 0.0
+    travel_time: float = 0.28
+    fade_time: float = 0.55
 
 
 class Board:
@@ -97,6 +122,7 @@ class Board:
         self._pending_play: dict[int, Optional[tuple[str, float, float]]] = {0: None, 1: None}
         self.hand: dict[int, list[str]] = {0: [], 1: []}
         self.hand_queue: dict[int, deque[str]] = {0: deque(), 1: deque()}
+        self.spell_effects: list[SpellEffect] = []
 
         self._init_towers()
         self._init_hands()
@@ -125,6 +151,7 @@ class Board:
         self.time = 0.0
         self.done = False
         self.winner = None
+        self.spell_effects = []
         self._pending_play = {0: None, 1: None}
         self._init_towers()
         self._init_hands()
@@ -170,14 +197,75 @@ class Board:
             return 2.0 <= y <= RIVER_Y - 0.5
         return RIVER_Y + 0.5 <= y <= ARENA_LENGTH - 2.0
 
-    def play_card_at(self, player: int, card_name: str, x: float, y: float) -> bool:
-        if self.done or not self._in_deploy_zone(player, x, y):
+    def _in_spell_zone(self, player: int, x: float, y: float) -> bool:
+        if not (1.0 <= x <= ARENA_WIDTH - 1.0):
             return False
-        if not self.card_in_hand(player, card_name):
+        return 2.0 <= y <= ARENA_LENGTH - 2.0
+
+    @staticmethod
+    def _is_spell(card_name: str) -> bool:
+        return cards_dic.get(card_name, {}).get("type") == "spell"
+
+    def _cast_spell(self, player: int, card_name: str, x: float, y: float) -> bool:
+        stats = cards_dic.get(card_name)
+        if not stats or stats.get("type") != "spell":
+            return False
+
+        cost = stats["elisir"]
+        if self.elixir[player] < cost:
+            return False
+
+        radius = float(stats.get("radius", 2.5))
+        damage = float(stats.get("damage", 0))
+        for unit in self._all_combatants():
+            if unit.owner == player or not unit.alive:
+                continue
+            if unit.distance_to_xy(x, y) <= radius:
+                unit.hp -= damage
+                if unit.hp <= 0:
+                    unit.hp = 0
+                    unit.alive = False
+
+        kx, ky = TOWER_LAYOUT[player]["King_Tower"]
+        self.spell_effects.append(
+            SpellEffect(
+                card=card_name,
+                x=x,
+                y=y,
+                start_x=kx,
+                start_y=ky,
+                radius=radius,
+                owner=player,
+            )
+        )
+
+        self.elixir[player] -= cost
+        self._cycle_hand_after_play(player, card_name)
+        return True
+
+    def _tick_spell_effects(self, dt: float) -> None:
+        for effect in self.spell_effects:
+            effect.age += dt
+        self.spell_effects = [
+            effect
+            for effect in self.spell_effects
+            if effect.age < effect.travel_time + effect.fade_time
+        ]
+
+    def play_card_at(self, player: int, card_name: str, x: float, y: float) -> bool:
+        if self.done or not self.card_in_hand(player, card_name):
             return False
 
         stats = cards_dic.get(card_name)
         if not stats:
+            return False
+
+        if self._is_spell(card_name):
+            if not self._in_spell_zone(player, x, y):
+                return False
+            return self._cast_spell(player, card_name, x, y)
+
+        if not self._in_deploy_zone(player, x, y):
             return False
 
         cost = stats["elisir"]
@@ -218,6 +306,13 @@ class Board:
             return False
 
         x, y = DEPLOY_ZONES[player][zone_idx]
+        if self._is_spell(card_name):
+            # Czar na lustrzanej pozycji po stronie wroga (ta sama kolumna X).
+            y = ARENA_LENGTH - y
+            return self._cast_spell(player, card_name, x, y)
+        if stats.get("type") == "building":
+            # Budynki (Cannon) — 5 kafelków od rzeki, nie przy wieży (y=6).
+            y = (RIVER_Y - 5.0) if player == 0 else (RIVER_Y + 5.0)
         troop = Troop(card_name, player)
         troop.place((x, y))
         self.elixir[player] -= cost
@@ -235,7 +330,6 @@ class Board:
                 self.get_observation(0), 0.0, True, False, {"winner": self.winner}
             )
 
-        reward = 0.0
         towers_before = self._tower_hp_snapshot()
 
         if action_p1 is None:
@@ -245,23 +339,17 @@ class Board:
         self._apply_action(1, action_p1)
 
         self._regen_elixir()
-        dmg_dealt, dmg_taken = self._simulate_combat(TICK_DT)
-        reward += 0.001 * dmg_dealt - 0.001 * dmg_taken
+        self._simulate_combat(TICK_DT)
 
         tower_delta = self._tower_hp_delta(towers_before)
-        reward += 0.01 * tower_delta[0] - 0.01 * tower_delta[1]
+        # Nagroda wyłącznie z HP wież: utrata wroga (+) minus utrata własna (-).
+        reward = (tower_delta[0] - tower_delta[1]) / MAX_TOWER_HP_PER_PLAYER
 
         self._remove_dead()
+        self._tick_spell_effects(TICK_DT)
         self.time += TICK_DT
 
         terminated, truncated = self._check_end()
-        if terminated:
-            if self.winner == 0:
-                reward += 1.0
-            elif self.winner == 1:
-                reward -= 1.0
-
-        reward -= 0.001  # mała kara za czas — zachęta do kończenia meczu
 
         return StepResult(
             observation=self.get_observation(0),
@@ -269,7 +357,7 @@ class Board:
             terminated=terminated,
             truncated=truncated,
             info={
-                "winner": self.winner,
+                "winner": self.winner if (terminated or truncated) else None,
                 "time": self.time,
                 "elixir": self.elixir[0],
                 "troops_alive": sum(1 for t in self.troops if t.alive),
@@ -280,10 +368,10 @@ class Board:
         pending = self._pending_play[player]
         if pending is not None:
             card, x, y = pending
-            if not self.play_card_at(player, card, x, y):
+            if not self.play_card_at(player, card, x, y) and not self._is_spell(card):
                 # Zapas: środek własnej połowy (np. Cannon przy rzece)
                 mid_x = ARENA_WIDTH / 2
-                mid_y = (RIVER_Y - 3.0) if player == 0 else (RIVER_Y + 3.0)
+                mid_y = (RIVER_Y - 5.0) if player == 0 else (RIVER_Y + 5.0)
                 self.play_card_at(player, card, mid_x, mid_y)
             self._pending_play[player] = None
             return
@@ -338,29 +426,33 @@ class Board:
             return False
         return True
 
+    def _bridge_far_side_y(self, player: int) -> float:
+        """Y tuż za rzeką po przejściu mostem (po stronie wroga)."""
+        if player == 0:
+            return RIVER_Y + RIVER_HALF_WIDTH + 0.3
+        return RIVER_Y - RIVER_HALF_WIDTH - 0.3
+
+    def _bridge_waypoint(
+        self, troop: Troop, bx: float, dest_x: float, dest_y: float
+    ) -> tuple[float, float]:
+        """Najpierw oś mostu, potem od razu przez rzekę — bez pośredniego stopu przy brzegu."""
+        if abs(troop.x - bx) > 1.2:
+            return bx, troop.y
+        far_y = self._bridge_far_side_y(troop.owner)
+        if troop.owner == 0:
+            if troop.y < far_y:
+                return bx, far_y
+        elif troop.y > far_y:
+            return bx, far_y
+        return dest_x, dest_y
+
     def get_move_waypoint(self, troop: Troop, target: Troop) -> tuple[float, float]:
         """Ruch tylko przez najbliższy most — najpierw do osi mostu, potem przez rzekę."""
         if not self._needs_bridge(troop, target):
             return target.x, target.y
 
         bx = self._nearest_bridge_x(troop.x)
-
-        if troop.owner == 0:
-            if abs(troop.x - bx) > 1.2:
-                return bx, troop.y
-            if troop.y < RIVER_Y - 1.5:
-                return bx, RIVER_Y - 1.5
-            if troop.y < RIVER_Y + RIVER_HALF_WIDTH:
-                return bx, RIVER_Y + RIVER_HALF_WIDTH + 0.3
-            return target.x, target.y
-
-        if abs(troop.x - bx) > 1.2:
-            return bx, troop.y
-        if troop.y > RIVER_Y + 1.5:
-            return bx, RIVER_Y + 1.5
-        if troop.y > RIVER_Y - RIVER_HALF_WIDTH:
-            return bx, RIVER_Y - RIVER_HALF_WIDTH - 0.3
-        return target.x, target.y
+        return self._bridge_waypoint(troop, bx, target.x, target.y)
 
     def _enforce_no_river_cut(self, troop: Troop) -> None:
         """Cofa jednostkę, jeśli weszła w rzekę poza mostem."""
@@ -379,17 +471,31 @@ class Board:
             troop.y = RIVER_Y + RIVER_HALF_WIDTH + 0.2
 
     def find_nearest_target(self, troop: Troop) -> Optional[Troop]:
+        """Cel tylko w zasięgu wzroku (~9.5 kafelka w CR) — bez cross-lane aggro z drugiej strony."""
         best: Optional[Troop] = None
         best_dist = float("inf")
+        sight = getattr(troop, "sight_range", DEFAULT_SIGHT_RANGE)
 
         for other in self._all_combatants():
             if not troop.can_target(other):
                 continue
             dist = troop.distance_to(other)
+            if dist > sight:
+                continue
             if dist < best_dist:
                 best_dist = dist
                 best = other
         return best
+
+    def get_push_waypoint(self, troop: Troop) -> tuple[float, float]:
+        """Marsz alejką w stronę wrogiego King Tower, gdy nic nie jest w zasięgu wzroku."""
+        enemy = 1 - troop.owner
+        for tower in self.towers:
+            if tower.alive and tower.owner == enemy and tower.name == "King_Tower":
+                return self.get_move_waypoint(troop, tower)
+        kx, ky = TOWER_LAYOUT[enemy]["King_Tower"]
+        bx = self._nearest_bridge_x(troop.x)
+        return self._bridge_waypoint(troop, bx, kx, ky)
 
     def find_tower_target(self, tower: Troop) -> Optional[Troop]:
         """Wieża strzela do najbliższego wroga w zasięgu (nie do celu poza range)."""
@@ -421,6 +527,11 @@ class Board:
 
             target = self.find_nearest_target(troop)
             if target is None:
+                if troop.speed > 0 and not troop.is_building:
+                    wx, wy = self.get_push_waypoint(troop)
+                    troop.move_towards_point(wx, wy, dt)
+                    self._enforce_no_river_cut(troop)
+                troop.update_cooldown(dt)
                 continue
 
             if troop.is_in_range(target):
@@ -509,28 +620,50 @@ class Board:
     def get_observation(self, player: int) -> np.ndarray:
         """Wektor stanu z perspektywy `player` (0 = agent RL)."""
         obs = np.zeros(OBS_DIM, dtype=np.float32)
+        enemy = 1 - player
         obs[0] = self.elixir[player] / MAX_ELIXIR
-        obs[1] = min(1.0, self.time / MATCH_TIME_LIMIT)
+        obs[1] = self.elixir[enemy] / MAX_ELIXIR
+        obs[2] = min(1.0, self.time / MATCH_TIME_LIMIT)
 
-        idx = 2
-        for t in self.towers:
-            obs[idx] = t.hp / t.max_hp if t.max_hp else 0.0
+        idx = 3
+        for tower in self.towers:
+            obs[idx] = tower.hp / tower.max_hp if tower.max_hp else 0.0
             idx += 1
 
-        unit_base = 8
-        slot = 0
-        for troop in self.troops:
-            if not troop.alive or slot >= MAX_UNITS_OBS:
-                continue
+        hand_base = 9
+        for slot, card_name in enumerate(self.get_hand(player)):
+            card_id = CARD_TO_ID.get(card_name)
+            if card_id is not None:
+                obs[hand_base + slot * NUM_PLAYABLE_CARDS + card_id] = 1.0
+
+        enemy_kx, enemy_ky = TOWER_LAYOUT[enemy]["King_Tower"]
+        alive_troops = [t for t in self.troops if t.alive]
+        alive_troops.sort(key=lambda t: t.distance_to_xy(enemy_kx, enemy_ky))
+
+        unit_base = 9 + OBS_HAND_FEATURES
+        for slot, troop in enumerate(alive_troops[:MAX_UNITS_OBS]):
             base = unit_base + slot * 5
             obs[base] = 1.0 if troop.owner == player else -1.0
-            obs[base + 1] = CARD_TO_ID.get(troop.name, -1) / max(1, len(PLAYABLE_CARDS) - 1)
+            obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, NUM_PLAYABLE_CARDS - 1)
             obs[base + 2] = troop.x / ARENA_WIDTH
             obs[base + 3] = troop.y / ARENA_LENGTH
             obs[base + 4] = troop.hp / troop.max_hp if troop.max_hp else 0.0
-            slot += 1
 
         return obs
+
+    def valid_action_mask(self, player: int = 0) -> np.ndarray:
+        """Maska legalnych akcji (noop + karty na którą stać eliksiru)."""
+        mask = np.zeros(NUM_ACTIONS, dtype=np.bool_)
+        mask[0] = True
+        hand = self.get_hand(player)
+        zones = len(DEPLOY_ZONES[player])
+        elixir = self.elixir[player]
+        for slot, card_name in enumerate(hand):
+            cost = cards_dic[card_name]["elisir"]
+            if elixir >= cost:
+                for zone_idx in range(zones):
+                    mask[1 + slot * zones + zone_idx] = True
+        return mask
 
     def render(self) -> None:
         grid = [["." for _ in range(int(ARENA_WIDTH))] for _ in range(int(ARENA_LENGTH))]

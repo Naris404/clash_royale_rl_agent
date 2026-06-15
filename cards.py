@@ -16,6 +16,9 @@ clash_royale_ranges = {
     "Ranged_Long": 6.5,
 }
 
+# Zasięg wykrywania celu (jak w CR — bez tego jednostki „widzą” całą mapę).
+DEFAULT_SIGHT_RANGE = 9.5
+
 # Kafelki na sekundę (arena 18×32); poprzednie wartości ~×30 za szybkie.
 clash_royale_speeds = {
     "slow": 1.2,
@@ -50,12 +53,14 @@ cards_dic = {
         "type": "ground",
     },
     "Cannon": {
-        "damage": 267,
-        "hp": 1091,
+        "damage": 167,
+        "hp": 682,
         "targets": ["ground"],
         "range": 5.5,
-        "damage/sec": 267,
+        "damage/sec": 167,
         "hit_speed": 1.0,
+        "first_hit_speed": 1.0,
+        "deploy_time": 1.0,
         "speed": 0,
         "elisir": 3,
         "life_span": 30,
@@ -78,25 +83,21 @@ cards_dic = {
         "hp": 1408,
         "targets": ["buildings"],
         "range": "Melee_Medium",
-        "damage/sec": 176,
-        "hit_speed": 1.5,
+        "damage/sec": 165,
+        "hit_speed": 1.6,
+        "first_hit_speed": 0.6,
+        "deploy_time": 1.0,
         "speed": "very_fast",
         "elisir": 4,
         "life_span": 0,
         "type": "ground",
         "jumps_river": True,
     },
-    "Archers": {
-        "damage": 86,
-        "hp": 304,
-        "targets": ["ground", "air"],
-        "range": 5.5,
-        "damage/sec": 172,
-        "hit_speed": 1.0,
-        "speed": "medium",
-        "elisir": 3,
-        "life_span": 0,
-        "type": "ground",
+    "Fireball": {
+        "damage": 575,
+        "radius": 2.5,
+        "elisir": 4,
+        "type": "spell",
     },
     "Tower": {
         "damage": 158,
@@ -130,7 +131,7 @@ PLAYABLE_CARDS = (
     "Cannon",
     "Musketeer",
     "Hog_Rider",
-    "Archers",
+    "Fireball",
 )
 CARD_TO_ID = {name: i for i, name in enumerate(PLAYABLE_CARDS)}
 
@@ -149,6 +150,9 @@ class Troop:
         self.targets = list(self.stats.get("targets", []))
         self.damage_sec = self.stats.get("damage/sec", 0)
         self.hit_speed = self.stats.get("hit_speed", 0)
+        self.first_hit_speed = self.stats.get("first_hit_speed", self.hit_speed)
+        self.deploy_time = self.stats.get("deploy_time", 0.0)
+        self.sight_range = self.stats.get("sight_range", DEFAULT_SIGHT_RANGE)
         self.elisir = self.stats.get("elisir", 0)
         self.life_span = self.stats.get("life_span", 0)
         self.unit_type = self.stats.get("type", "ground")
@@ -167,6 +171,7 @@ class Troop:
         self.age = 0.0
         self.alive = True
         self.jumps_river = bool(self.stats.get("jumps_river", False))
+        self._attack_winding = False
 
     @property
     def is_building(self) -> bool:
@@ -210,6 +215,10 @@ class Troop:
             return
 
         step = min(self.speed * dt, distance)
+        if step >= distance - 1e-6:
+            self.x = x
+            self.y = y
+            return
         self.x += dx / distance * step
         self.y += dy / distance * step
 
@@ -218,10 +227,23 @@ class Troop:
             return
         self.move_towards_point(target.x, target.y, dt)
 
+    def can_attack(self) -> bool:
+        return self.age >= self.deploy_time
+
     def hit(self, target: Troop, dt: float) -> float:
         """Atakuje cel; zwraca zadane obrażenia (0 jeśli brak ataku)."""
         self.update_cooldown(dt)
-        if not self.is_in_range(target) or self.cooldown > 0:
+        if not self.can_attack() or not self.is_in_range(target):
+            self._attack_winding = False
+            return 0.0
+
+        if not self._attack_winding:
+            self._attack_winding = True
+            if self.cooldown <= 0:
+                self.cooldown = self.first_hit_speed
+            return 0.0
+
+        if self.cooldown > 0:
             return 0.0
 
         target.hp -= self.damage
@@ -233,9 +255,9 @@ class Troop:
 
     def tick_age(self, dt: float) -> bool:
         """Zwraca False, gdy budynek tymczasowy (np. Cannon) wygasł."""
+        self.age += dt
         if self.life_span <= 0:
             return True
-        self.age += dt
         if self.age >= self.life_span:
             self.alive = False
             return False
