@@ -15,6 +15,26 @@ from board import Board, NUM_ACTIONS
 DEFAULT_MODEL_PATH = Path("models/ppo_cr_best.zip")
 
 
+class RandomAgent:
+    """Bot z losowymi legalnymi zagraniami (maska eliksiru + strefy)."""
+
+    def __init__(self, *, seed: int | None = None, play_chance: float = 0.45):
+        self._rng = random.Random(seed)
+        self.play_chance = play_chance
+
+    def choose_action(self, board: Board, player: int = 0) -> int:
+        board.set_pending_play(player, None)
+        mask = board.valid_action_mask(player)
+        affordable = [i for i in range(NUM_ACTIONS) if mask[i]]
+        if affordable and self._rng.random() < self.play_chance:
+            return self._rng.choice(affordable)
+        return 0
+
+    def reset(self, *, seed: int | None = None) -> None:
+        if seed is not None:
+            self._rng.seed(seed)
+
+
 class RLAgent:
     """
     Gracz RL: akcja 0..NUM_ACTIONS-1 (noop lub karta ze slotu ręki + strefa).

@@ -1,6 +1,8 @@
 """
 Wizualizacja pygame — uruchom: python visualize.py
 
+Domyślnie: P0 = bot regułowy (LogicAgent), P1 = losowy bot (RandomAgent).
+
 Tempo gry — ustaw REAL_SECONDS_PER_SIM_SECOND (na górze pliku lub --tempo):
   1.0  → 1 sekunda symulacji trwa ~1 sekundę u Ciebie (domyślnie)
   2.0  → wolniej (1 s gry ≈ 2 s rzeczywiste)
@@ -45,10 +47,10 @@ from board import (
 # Ile sekund RZECZYWISTEGO czasu ma trwać 1 sekunda w symulacji.
 # 1.0   = wierne tempo (1 s licznika gry ≈ 1 s u Ciebie)
 # 0.08  = szybki podgląd (~jak dawniej ticks_per_frame=2 przy 60 FPS)
-REAL_SECONDS_PER_SIM_SECOND = 0.08
+REAL_SECONDS_PER_SIM_SECOND = 0.2
 from cards import Troop, cards_dic
 from logic_agent import LogicAgent
-from rl_agent import RLAgent
+from rl_agent import RLAgent, RandomAgent, RandomAgent
 
 # Skala ekranu — zmniejsz TILE_PX / UI_SCALE jeśli nie mieści się na monitorze
 UI_SCALE = 0.65
@@ -458,22 +460,60 @@ def draw_player_hand(
         surface.blit(cost_t, (x + CARD_W - 18, y + CARD_H - 18))
 
 
-def draw_hud(surface: pygame.Surface, env: Board, font: pygame.font.Font, info: str) -> None:
+def draw_hud(
+    surface: pygame.Surface,
+    env: Board,
+    font: pygame.font.Font,
+    info: str,
+    *,
+    p0_label: str = "P0",
+    p1_label: str = "P1",
+    logic_hint: str = "",
+) -> None:
     bar_y = 8
     pygame.draw.rect(surface, (30, 30, 35), (0, 0, surface.get_width(), HUD_H))
     el0 = env.elixir[0]
     el1 = env.elixir[1]
     lines = [
-        f"P0 (niebieski) eliksir: {el0:.1f}/10",
-        f"P1 (czerwony) eliksir: {el1:.1f}/10",
+        f"{p0_label} (niebieski) eliksir: {el0:.1f}/10",
+        f"{p1_label} (czerwony) eliksir: {el1:.1f}/10",
         f"Czas: {env.time:.1f}s",
-        info,
     ]
+    if logic_hint:
+        lines.append(logic_hint[:120])
+    lines.append(info)
     x = 12
     for i, line in enumerate(lines):
-        color = COL_P0 if i == 0 else COL_P1 if i == 1 else COL_TEXT
+        if i == 0:
+            color = COL_P0
+        elif i == 1:
+            color = COL_P1
+        else:
+            color = COL_TEXT
         text = font.render(line, True, color)
         surface.blit(text, (x, bar_y + i * 13))
+
+
+MATCHUP_CHOICES = ("logic-vs-random", "rl-vs-logic")
+
+
+def create_match_agents(
+    mode: str,
+    *,
+    seed: int,
+    model_path: str | None,
+) -> tuple[tuple[str, object], tuple[str, object]]:
+    """Zwraca ((etykieta_p0, agent), (etykieta_p1, agent))."""
+    if mode == "logic-vs-random":
+        return (
+            ("LogicBot", LogicAgent()),
+            ("RandomBot", RandomAgent(seed=seed + 1, play_chance=0.42)),
+        )
+    if mode == "rl-vs-logic":
+        rl = RLAgent(seed=seed, model_path=model_path)
+        label = "PPO" if rl.is_trained else "RL (losowy)"
+        return ((label, rl), ("LogicBot", LogicAgent()))
+    raise ValueError(f"Nieznany tryb: {mode}")
 
 
 def run_pygame(
@@ -481,26 +521,31 @@ def run_pygame(
     real_seconds_per_sim_second: float = REAL_SECONDS_PER_SIM_SECOND,
     fps: int = 60,
     model_path: str | None = None,
+    mode: str = "logic-vs-random",
 ) -> None:
     pygame.init()
     aw, ah = arena_pixel_size()
     win_w = aw + MARGIN_X * 2
     win_h = ah + MARGIN_Y * 2 + HUD_H + HAND_BAR_H * 2 + 16
     screen = pygame.display.set_mode((win_w, win_h))
+    (p0_label, agent0), (p1_label, agent1) = create_match_agents(
+        mode, seed=seed, model_path=model_path
+    )
     pygame.display.set_caption(
-        f"CR RL — plansza {int(ARENA_WIDTH)}x{int(ARENA_LENGTH)} kafelkow | P0=RL P1=bot"
+        f"CR — {p0_label} vs {p1_label} | plansza {int(ARENA_WIDTH)}x{int(ARENA_LENGTH)}"
     )
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", max(10, int(13 * UI_SCALE)))
 
     env = Board(seed=seed)
     env.reset(seed=seed)
-    agent0 = RLAgent(seed=seed, model_path=model_path)
-    agent1 = LogicAgent()
-    if agent0.is_trained:
-        print(f"P0: wczytano model PPO ({model_path or 'models/ppo_cr_best.zip'})")
+    if mode == "rl-vs-logic" and isinstance(agent0, RLAgent):
+        if agent0.is_trained:
+            print(f"P0: wczytano model PPO ({model_path or 'models/ppo_cr_best.zip'})")
+        else:
+            print("P0: brak modelu PPO — losowy agent (wytrenuj: python train.py)")
     else:
-        print("P0: brak modelu PPO — losowy agent (wytrenuj: python train.py)")
+        print(f"Mecz: {p0_label} (P0, niebieski) vs {p1_label} (P1, czerwony)")
 
     paused = False
     speed = 1.0
@@ -613,7 +658,20 @@ def run_pygame(
             )
         else:
             info = f"{status} | {tempo_label} | Spacja | Q"
-        draw_hud(screen, env, font, info)
+        logic_hint = ""
+        for logic_agent in (agent0, agent1):
+            if isinstance(logic_agent, LogicAgent) and logic_agent.last_decision:
+                logic_hint = f"Logic: {logic_agent.last_decision}"
+                break
+        draw_hud(
+            screen,
+            env,
+            font,
+            info,
+            p0_label=p0_label,
+            p1_label=p1_label,
+            logic_hint=logic_hint,
+        )
 
         pygame.display.flip()
 
@@ -637,10 +695,16 @@ if __name__ == "__main__":
     )
     parser.add_argument("--fps", type=int, default=60)
     parser.add_argument(
+        "--mode",
+        choices=("logic-vs-random", "rl-vs-logic"),
+        default="logic-vs-random",
+        help="logic-vs-random: bot regułowy vs losowy (domyślnie); rl-vs-logic: PPO vs bot",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default=None,
-        help="sciezka do .zip PPO (domyslnie models/ppo_cr_best.zip)",
+        help="sciezka do .zip PPO (tylko tryb rl-vs-logic; domyslnie models/ppo_cr_best.zip)",
     )
     args = parser.parse_args()
     if args.scale is not None:
@@ -650,4 +714,5 @@ if __name__ == "__main__":
         real_seconds_per_sim_second=args.tempo,
         fps=args.fps,
         model_path=args.model,
+        mode=args.mode,
     )
