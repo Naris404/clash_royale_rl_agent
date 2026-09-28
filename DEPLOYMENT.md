@@ -21,47 +21,15 @@ If a model is not bundled, set `MODEL_URL` to a direct HTTPS download URL. The
 container downloads it once at startup to `MODEL_PATH`. Without either source,
 the application remains usable with the deterministic heuristic coach.
 
-## Railway
-
-1. Create a Railway project from this repository. `railway.json` selects the
-   root `Dockerfile` and configures `/api/health`.
-2. If the repository does not contain the model artifact, add a `MODEL_URL`
-   variable pointing to a private object-storage download URL.
-3. Generate a public domain in **Settings → Networking**. Railway supplies
-   `PORT` automatically.
-
-CLI alternative:
-
-```bash
-railway login
-railway link
-railway up
-```
-
-## Fly.io
-
-Change the globally unique `app` value in `fly.toml`, then deploy from a local
-checkout. A local `models/ppo_cr_best.zip` is included in the Docker context.
-
-```bash
-fly auth login
-fly launch --no-deploy
-fly deploy
-fly status
-```
-
-For a remote model instead, set a secret before deployment:
-
-```bash
-fly secrets set MODEL_URL=https://example.invalid/private/ppo_cr_best.zip
-```
-
-The default Fly configuration may stop an idle machine. The browser client
-sends WebSocket keepalive messages while a match is active; the first request
-after an idle period can still incur a cold start.
-
 ## Runtime variables
 
 - `PORT` — HTTP port, default `8000`.
 - `MODEL_PATH` — policy path, default `models/ppo_cr_best.zip`.
 - `MODEL_URL` — optional direct URL used only when `MODEL_PATH` is absent.
+
+## Hosting
+
+Any platform that builds the root `Dockerfile` and routes HTTP + WebSocket
+traffic to a single port works (a VPS with Docker, or a PaaS with Dockerfile
+support). Make sure WebSocket upgrades are allowed, and provide the model via
+`MODEL_URL` when it is not baked into the image.

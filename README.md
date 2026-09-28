@@ -28,24 +28,24 @@ pip install -e ".[test]"
 
 ```bash
 # Trening PPO vs LogicAgent (~1M kroków, kilka–kilkanaście min na CPU)
-python train.py
+cr-rl-train
 
 # Ewaluacja wytrenowanego modelu
-python evaluate.py --model models/ppo_cr_best.zip --episodes 100
+cr-rl-evaluate --model models/ppo_cr_best.zip --episodes 100
 
 # Raport statystyk (logi TB, win rate, wykresy)
-python statistics.py
-python statistics.py --plot --episodes 100
+cr-rl-stats
+cr-rl-stats --plot --episodes 100
 
 # Wizualizacja: P0 = agent RL, P1 = bot regułowy
-python visualize.py
-python visualize.py --model models/ppo_cr_best.zip
+cr-rl-viz
+cr-rl-viz --model models/ppo_cr_best.zip
 
 # Mniejsze okno
-python visualize.py --scale 0.5
+cr-rl-viz --scale 0.5
 
 # Wolniejsza / szybsza symulacja (1 s gry = X s u Ciebie)
-python visualize.py --tempo 1.0
+cr-rl-viz --tempo 1.0
 ```
 
 ### Sterowanie (okno pygame)
@@ -76,12 +76,13 @@ clash_royale_rl_agent/
 ├── web/               # React + PixiJS
 ├── tests/             # testy pytest
 ├── scripts/           # narzędzia deweloperskie
+├── docs/              # dokumentacja projektu i materiały do pracy (docs/thesis)
 ├── models/            # modele i wyniki (gitignore)
 └── pyproject.toml      # pakiet i komendy cr-rl-*
 ```
 
-Pliki takie jak `board.py` i `train.py` w katalogu głównym są cienkimi
-warstwami zgodności. Nowy kod powinien importować wyłącznie z `cr_rl`.
+Cały kod źródłowy żyje w `src/cr_rl/`; punkty wejścia to komendy `cr-rl-*`
+zdefiniowane w `pyproject.toml` (dostępne po `pip install -e .`).
 
 ## API środowiska (`Board`)
 
@@ -110,7 +111,7 @@ from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.agents.rl import RLAgent
 
 # Trening
-# python train.py --timesteps 1000000 --n-envs 8
+# cr-rl-train --timesteps 1000000 --n-envs 8
 
 # Gra z modelem
 agent = RLAgent(model_path="models/ppo_cr_best.zip")
@@ -130,11 +131,11 @@ obs, reward, done, trunc, info = env.step(action)
 
 | Plik | Co zmienić |
 |------|------------|
-| `visualize.py` → `UI_SCALE` | Rozmiar okna |
-| `visualize.py` → `REAL_SECONDS_PER_SIM_SECOND` | Tempo symulacji |
-| `board.py` → `TOWER_LAYOUT`, `BRIDGE_LANE_X` | Pozycje wież / mostów |
-| `cards.py` → `cards_dic` | Statystyki kart |
-| `train.py` → `--timesteps`, `--n-envs` | Długość i równoległość treningu |
+| `src/cr_rl/viz/pygame_viewer.py` → `UI_SCALE` | Rozmiar okna |
+| `src/cr_rl/viz/pygame_viewer.py` → `REAL_SECONDS_PER_SIM_SECOND` | Tempo symulacji |
+| `src/cr_rl/game/board.py` → `TOWER_LAYOUT`, `BRIDGE_LANE_X` | Pozycje wież / mostów |
+| `src/cr_rl/game/cards.py` → `cards_dic` | Statystyki kart |
+| `cr-rl-train --timesteps --n-envs` | Długość i równoległość treningu |
 
 ## Platforma webowa
 
@@ -174,18 +175,18 @@ pod adresem http://localhost:8000.
 ## Eksperymenty do pracy
 
 Każdy eksperyment zapisuje metadane i wyniki w JSON pod
-`experiments/runs/`, dzięki czemu uruchomienia są powtarzalne i mogą być
-porównane przez `statistics.py`.
+`experiment_runs/`, dzięki czemu uruchomienia są powtarzalne i mogą być
+porównane przez `cr-rl-stats`.
 
 ```bash
 # sweep: learning rate, entropy, gamma i architektura sieci
-python -m experiments.sweep --timesteps 1000000 --eval-episodes 200
+cr-rl-sweep --timesteps 1000000 --eval-episodes 200
 
 # curriculum: najpierw RandomAgent, potem LogicAgent
-python -m experiments.curriculum --phase1 300000 --phase2 700000
+cr-rl-curriculum --phase1 300000 --phase2 700000
 
 # raport zbiorczy i wykresy do rozdziału eksperymentalnego
-python statistics.py --experiments --plot
+cr-rl-stats --experiments --plot
 ```
 
 Krótkie uruchomienia z mniejszą liczbą kroków służą wyłącznie jako smoke test;
@@ -202,8 +203,8 @@ docker run --rm -p 8000:8000 clash-royale-rl-coach
 Obraz wieloetapowy buduje frontend i uruchamia API jako użytkownik bez
 uprawnień root. Model `models/ppo_cr_best.zip` jest dołączany, jeśli znajduje
 się w kontekście budowania. Alternatywnie można ustawić `MODEL_URL`; bez modelu
-aplikacja uruchamia trenera heurystycznego. Konfiguracje Railway i Fly.io oraz
-instrukcje publikacji znajdują się w [DEPLOYMENT.md](DEPLOYMENT.md).
+aplikacja uruchamia trenera heurystycznego. Instrukcje publikacji:
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Licencja
 

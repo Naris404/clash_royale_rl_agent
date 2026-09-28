@@ -34,7 +34,7 @@ The Python backend owns simulation state and is the single source of truth. The 
 - `src/cr_rl/experiments/`, `stats/`, `reports/`: reproducible thesis experiments and outputs.
 - `web/src/`: React UI, PixiJS arena, networking, state store, and PL/EN copy.
 - `tests/`: deterministic unit and integration tests; `scripts/`: development utilities.
-- Root modules such as `board.py` and `train.py` are compatibility entry points. New Python code and imports belong under `cr_rl`.
+- All Python source lives under `src/cr_rl/`; entry points are the `cr-rl-*` console scripts defined in `pyproject.toml`. New Python code and imports belong under `cr_rl`.
 
 ## Coding style
 
