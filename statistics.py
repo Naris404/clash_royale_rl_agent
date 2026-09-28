@@ -1,12 +1,6 @@
-"""
-Shim CLI — unika konfliktu nazwy z wbudowanym modułem `statistics` w notebookach.
-
-Uruchomienie:
-  python statistics.py
-  python statistics.py --plot --episodes 100
-"""
-
-from rl_statistics import main
+"""Compatibility CLI shim for :mod:`cr_rl.stats.reporting`."""
+import _cr_rl_compat  # noqa: F401
+from cr_rl.stats.reporting import *  # noqa: F401,F403
 
 if __name__ == "__main__":
     main()

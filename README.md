@@ -15,17 +15,19 @@ Uproszczona symulacja [Clash Royale](https://supercell.com/en/games/clashroyale/
 ## Wymagania
 
 - Python 3.10+
-- Zależności z `requirements.txt`:
+- Node.js 20+ (tylko interfejs webowy)
 
-```bash
-pip install -r requirements.txt
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e ".[test]"
 ```
 
 ## Szybki start
 
 ```bash
 # Trening PPO vs LogicAgent (~1M kroków, kilka–kilkanaście min na CPU)
-pip install -r requirements.txt
 python train.py
 
 # Ewaluacja wytrenowanego modelu
@@ -61,23 +63,30 @@ python visualize.py --tempo 1.0
 
 ```
 clash_royale_rl_agent/
-├── board.py        # Środowisko gry (step, reward, obs, ręka, mosty)
-├── cards.py        # Statystyki kart i klasa Troop / Tower
-├── gym_env.py      # Wrapper Gymnasium (RL vs LogicAgent)
-├── logic_agent.py  # Bot regułowy (set_pending_play)
-├── rl_agent.py     # Agent RL (wczytuje PPO z models/)
-├── train.py        # Trening MaskablePPO
-├── evaluate.py     # Win rate vs LogicAgent
-├── statistics.py   # Raport uczenia + wykresy
-├── visualize.py    # Podgląd pygame
-├── requirements.txt
-└── models/         # Zapisywane modele (gitignore)
+├── src/cr_rl/
+│   ├── game/          # plansza i karty
+│   ├── agents/        # bot regułowy, losowy i PPO
+│   ├── env/           # środowisko Gymnasium
+│   ├── training/      # trening i ewaluacja
+│   ├── coach/         # sugestie i ocena ruchów
+│   ├── server/        # FastAPI i sesje WebSocket
+│   ├── experiments/   # sweep, curriculum i self-play
+│   ├── stats/         # raporty oraz wykresy
+│   └── viz/           # wizualizacja pygame
+├── web/               # React + PixiJS
+├── tests/             # testy pytest
+├── scripts/           # narzędzia deweloperskie
+├── models/            # modele i wyniki (gitignore)
+└── pyproject.toml      # pakiet i komendy cr-rl-*
 ```
+
+Pliki takie jak `board.py` i `train.py` w katalogu głównym są cienkimi
+warstwami zgodności. Nowy kod powinien importować wyłącznie z `cr_rl`.
 
 ## API środowiska (`Board`)
 
 ```python
-from board import Board, NUM_ACTIONS, OBS_DIM
+from cr_rl.game.board import Board, NUM_ACTIONS, OBS_DIM
 
 env = Board(seed=42)
 obs = env.reset(seed=42)
@@ -97,8 +106,8 @@ Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball
 ### Agent RL (PPO)
 
 ```python
-from gym_env import ClashRoyaleEnv
-from rl_agent import RLAgent
+from cr_rl.env.gym_env import ClashRoyaleEnv
+from cr_rl.agents.rl import RLAgent
 
 # Trening
 # python train.py --timesteps 1000000 --n-envs 8
@@ -126,6 +135,75 @@ obs, reward, done, trunc, info = env.step(action)
 | `board.py` → `TOWER_LAYOUT`, `BRIDGE_LANE_X` | Pozycje wież / mostów |
 | `cards.py` → `cards_dic` | Statystyki kart |
 | `train.py` → `--timesteps`, `--n-envs` | Długość i równoległość treningu |
+
+## Platforma webowa
+
+Backend FastAPI jest źródłem prawdy dla symulacji, a interfejs React/PixiJS
+renderuje arenę i komunikuje się przez WebSocket. Strona startowa jest
+dwujęzycznym (PL/EN) portfolio projektu ze streszczeniem pracy.
+
+### Uruchomienie bez Dockera
+
+Po jednorazowym wykonaniu instalacji z sekcji „Wymagania”:
+
+```powershell
+cd web
+npm ci
+cd ..
+.\scripts\dev.ps1
+```
+
+Otwórz **http://localhost:5173**. Vite przekazuje `/api` i `/ws` do backendu
+FastAPI na porcie **8000**.
+
+Możesz też uruchomić procesy ręcznie w dwóch terminalach:
+
+```powershell
+# terminal 1 — API
+.\.venv\Scripts\Activate.ps1
+uvicorn cr_rl.server.app:app --reload --port 8000
+
+# terminal 2 — frontend
+cd web
+npm run dev
+```
+
+Po `npm run build` produkcyjny frontend jest serwowany przez API z `web/dist`
+pod adresem http://localhost:8000.
+
+## Eksperymenty do pracy
+
+Każdy eksperyment zapisuje metadane i wyniki w JSON pod
+`experiments/runs/`, dzięki czemu uruchomienia są powtarzalne i mogą być
+porównane przez `statistics.py`.
+
+```bash
+# sweep: learning rate, entropy, gamma i architektura sieci
+python -m experiments.sweep --timesteps 1000000 --eval-episodes 200
+
+# curriculum: najpierw RandomAgent, potem LogicAgent
+python -m experiments.curriculum --phase1 300000 --phase2 700000
+
+# raport zbiorczy i wykresy do rozdziału eksperymentalnego
+python statistics.py --experiments --plot
+```
+
+Krótkie uruchomienia z mniejszą liczbą kroków służą wyłącznie jako smoke test;
+wyniki do pracy powinny używać tych samych seedów, budżetu kroków i co najmniej
+200 meczów ewaluacyjnych na wariant.
+
+## Docker i hosting
+
+```bash
+docker build -t clash-royale-rl-coach .
+docker run --rm -p 8000:8000 clash-royale-rl-coach
+```
+
+Obraz wieloetapowy buduje frontend i uruchamia API jako użytkownik bez
+uprawnień root. Model `models/ppo_cr_best.zip` jest dołączany, jeśli znajduje
+się w kontekście budowania. Alternatywnie można ustawić `MODEL_URL`; bez modelu
+aplikacja uruchamia trenera heurystycznego. Konfiguracje Railway i Fly.io oraz
+instrukcje publikacji znajdują się w [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Licencja
 

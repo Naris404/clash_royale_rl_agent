@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clash-royale-rl-agent"
+version = "0.1.0"
+description = "Clash Royale reinforcement-learning simulator, agents, coach, and API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "pygame>=2.5",
+  "gymnasium>=0.29",
+  "stable-baselines3>=2.3",
+  "sb3-contrib>=2.3",
+  "torch>=2.0",
+  "tensorboard>=2.14",
+  "tqdm>=4.66",
+  "rich>=13.0",
+  "matplotlib>=3.8",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "websockets>=12.0",
+  "python-docx>=1.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "httpx>=0.27"]
+
+[project.scripts]
+cr-rl-train = "cr_rl.training.train:main"
+cr-rl-evaluate = "cr_rl.training.evaluate:main"
+cr-rl-stats = "cr_rl.stats.reporting:main"
+cr-rl-viz = "cr_rl.viz.pygame_viewer:main"
+cr-rl-coach-validate = "cr_rl.coach.validate:main"
+cr-rl-server = "cr_rl.server.app:main"
+cr-rl-sweep = "cr_rl.experiments.sweep:main"
+cr-rl-curriculum = "cr_rl.experiments.curriculum:main"
+cr-rl-self-play = "cr_rl.experiments.self_play:main"
+cr-rl-report = "cr_rl.reports.docx:build"
+cr-rl-prepare-model = "cr_rl.deploy.prepare_model:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cr_rl*"]
+
+[tool.basedpyright]
+extraPaths = ["src"]
