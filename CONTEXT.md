@@ -24,6 +24,16 @@ _Avoid_: deck, rotation
 One of the two river crossings that ground units must path through (Hog Rider jumps).
 _Avoid_: crossing, path
 
+**Pull zone**:
+A deploy zone positioned so an enemy building-targeter is drawn to a building
+planted there instead of a tower (one per lane, near the center).
+_Avoid_: bait zone
+
+**Spell zone**:
+A deploy-only zone on the enemy side that spells may target; masked off for
+troops and buildings.
+_Avoid_: target zone
+
 ## Platform
 
 **Session**:
