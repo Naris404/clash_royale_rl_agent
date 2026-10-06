@@ -16,6 +16,7 @@ from typing import Optional
 from cr_rl.game.board import (
     ARENA_LENGTH,
     ARENA_WIDTH,
+    BRIDGE_HALF_WIDTH,
     BRIDGE_LANE_X,
     DEPLOY_ZONES,
     MATCH_TIME_LIMIT,
@@ -38,6 +39,7 @@ from cr_rl.server.protocol import (
     HintMsg,
     KeyMomentMsg,
     ServerMessage,
+    HitState,
     SnapshotMsg,
     SpellState,
     TowerState,
@@ -64,6 +66,7 @@ def arena_config() -> dict:
         "river_y": RIVER_Y,
         "river_half_width": RIVER_HALF_WIDTH,
         "bridge_lane_x": list(BRIDGE_LANE_X),
+        "bridge_half_width": BRIDGE_HALF_WIDTH,
         "deploy_zones": {str(p): [list(z) for z in zones] for p, zones in DEPLOY_ZONES.items()},
         "tower_layout": {
             str(p): {k: list(v) for k, v in layout.items()} for p, layout in TOWER_LAYOUT.items()
@@ -339,6 +342,19 @@ class GameSession:
             for tower in board.towers
         ]
 
+        hits = [
+            HitState(
+                owner=hit.owner,
+                from_x=round(hit.from_x, 3),
+                from_y=round(hit.from_y, 3),
+                x=round(hit.x, 3),
+                y=round(hit.y, 3),
+                damage=hit.damage,
+                ranged=hit.ranged,
+            )
+            for hit in board.hit_events
+        ]
+
         queue = board.hand_queue[0]
         return SnapshotMsg(
             tick=self.tick_count,
@@ -348,6 +364,7 @@ class GameSession:
             towers=towers,
             troops=troops,
             spells=spells,
+            hits=hits,
             hand=board.get_hand(0),
             next_card=queue[0] if queue else None,
             done=board.done,

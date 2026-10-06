@@ -1,7 +1,8 @@
-import { Application, Container, FederatedPointerEvent, Graphics, Text } from "pixi.js";
+import { Application, Assets, Container, FederatedPointerEvent, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { GameStore } from "../game/store";
-import type { Snapshot, SpellState, TowerState, TroopState } from "../net/types";
-import { cardEmoji, OWNER_COLORS, TOWER_EMOJI } from "./emoji";
+import type { HitState, Snapshot, SpellState, TowerState, TroopState } from "../net/types";
+import { cardArtUrl } from "./cardArt";
+import { cardEmoji, CARD_EMOJI, OWNER_COLORS, TOWER_EMOJI } from "./emoji";
 
 interface Layout {
   tile: number;
@@ -9,10 +10,15 @@ interface Layout {
   oy: number;
 }
 
+// Troop tokens are drawn in local units and scaled by tile / TOKEN_UNITS_PER_TILE.
+const TOKEN_UNITS_PER_TILE = 22;
+const TOKEN_RADIUS = 13;
+const FLASH_MS = 180;
+
 interface TroopView {
   root: Container;
-  ring: Graphics;
-  label: Text;
+  icon: Container;
+  hasArt: boolean;
   hpBg: Graphics;
   hpFg: Graphics;
   flash: Graphics;
@@ -28,11 +34,10 @@ interface TowerView {
   hpFg: Graphics;
   hpText: Text;
   rubble: Text;
-}
-
-interface GhostView {
-  label: Text;
-  bornAt: number;
+  flash: Graphics;
+  flashUntil: number;
+  lastHp: number;
+  wasAlive: boolean;
 }
 
 interface SpellView {
@@ -42,7 +47,13 @@ interface SpellView {
   ageAtReceipt: number;
 }
 
-/** Scena Pixi: arena + wieże + jednostki + czary + podpowiedzi trenera. */
+/** Short-lived visual effect; `update` returns false once finished. */
+interface Effect {
+  node: Container;
+  update: (now: number) => boolean;
+}
+
+/** Scena Pixi: arena + wieże + jednostki + czary + efekty walki + podpowiedzi trenera. */
 export class ArenaScene {
   private app: Application;
   private store: GameStore;
@@ -57,7 +68,9 @@ export class ArenaScene {
   private troops = new Map<number, TroopView>();
   private towers = new Map<string, TowerView>();
   private spells = new Map<number, SpellView>();
-  private ghosts: GhostView[] = [];
+  private effects: Effect[] = [];
+  private art = new Map<string, Texture>();
+  private lastSnap: Snapshot | null = null;
 
   private hintRing = new Graphics();
   private deployOverlay = new Graphics();
@@ -87,6 +100,22 @@ export class ArenaScene {
     this.ghostLabel.visible = false;
     this.ghostLabel.anchor.set(0.5);
     this.fxLayer.addChild(this.hintRing, this.deployOverlay, this.ghostLabel);
+
+    void this.loadArt();
+  }
+
+  private async loadArt(): Promise<void> {
+    await Promise.all(
+      Object.keys(CARD_EMOJI).map(async (card) => {
+        const url = cardArtUrl(card);
+        if (!url) return;
+        try {
+          this.art.set(card, await Assets.load<Texture>(url));
+        } catch {
+          // brak grafiki → zostaje emoji
+        }
+      }),
+    );
   }
 
   // --- układ współrzędnych ---
@@ -138,9 +167,10 @@ export class ArenaScene {
     bg.rect(l.ox, riverTop, aw * l.tile, riverH).fill(0x3787d2);
 
     // mosty
+    const half = config.bridge_half_width;
     for (const bx of config.bridge_lane_x) {
       const [cx] = this.toScreen(bx, 0, l);
-      bg.roundRect(cx - 1.8 * l.tile, riverTop - 0.15 * l.tile, 3.6 * l.tile, riverH + 0.3 * l.tile, 4).fill(0x8b5a2b);
+      bg.roundRect(cx - half * l.tile, riverTop - 0.15 * l.tile, 2 * half * l.tile, riverH + 0.3 * l.tile, 4).fill(0x8b5a2b);
     }
 
     // strefy rzutu (dyskretne akcje RL) — delikatne punkty
@@ -173,16 +203,23 @@ export class ArenaScene {
     }
     if (!snap) return;
 
+    if (snap !== this.lastSnap) {
+      this.lastSnap = snap;
+      snap.hits?.forEach((hit, i) => this.spawnHit(hit, i, l, now));
+    }
+
     const alpha = this.store.interpolationAlpha(now);
-    this.renderTowers(snap, l);
+    this.renderTowers(snap, l, now);
     this.renderTroops(snap, l, alpha, now);
     this.renderSpells(snap, l, now);
-    this.renderGhosts(now);
+    this.renderEffects(now);
     this.renderHint(l, now);
     this.renderTargeting(l);
   }
 
-  private renderTowers(snap: Snapshot, l: Layout): void {
+  // --- wieże ---
+
+  private renderTowers(snap: Snapshot, l: Layout, now: number): void {
     for (const tower of snap.towers) {
       let view = this.towers.get(tower.id);
       if (!view) {
@@ -190,22 +227,24 @@ export class ArenaScene {
         this.towers.set(tower.id, view);
         this.towerLayer.addChild(view.root);
       }
-      this.updateTower(view, tower, l);
+      this.updateTower(view, tower, l, now);
     }
+  }
+
+  private towerSize(tower: TowerState, l: Layout): number {
+    return (tower.name === "King_Tower" ? 2.6 : 2.1) * l.tile;
   }
 
   private createTower(tower: TowerState, l: Layout): TowerView {
     const root = new Container();
-    const isKing = tower.name === "King_Tower";
+    const size = this.towerSize(tower, l);
     const base = new Graphics();
-    const size = (isKing ? 2.6 : 2.1) * l.tile;
     base.roundRect(-size / 2, -size / 2, size, size, 6).fill(0x555c68);
     base.roundRect(-size / 2, -size / 2, size, size, 6).stroke({ color: OWNER_COLORS[tower.owner] ?? 0xffffff, width: 3 });
     const label = new Text({ text: TOWER_EMOJI[tower.name] ?? "🏰", style: { fontSize: size * 0.55 } });
     label.anchor.set(0.5);
     const hpBg = new Graphics();
-    const barW = size;
-    hpBg.rect(-barW / 2, -size / 2 - 10, barW, 6).fill(0x222222);
+    hpBg.rect(-size / 2, -size / 2 - 10, size, 6).fill(0x222222);
     const hpFg = new Graphics();
     const hpText = new Text({ text: "", style: { fill: 0xffffff, fontSize: Math.max(10, l.tile * 0.42), fontWeight: "bold" } });
     hpText.anchor.set(0.5, 1);
@@ -213,39 +252,52 @@ export class ArenaScene {
     const rubble = new Text({ text: "💥", style: { fontSize: size * 0.6 } });
     rubble.anchor.set(0.5);
     rubble.visible = false;
-    root.addChild(base, label, hpBg, hpFg, hpText, rubble);
-    return { root, label, hpFg, hpText, rubble };
+    const flash = new Graphics();
+    flash.roundRect(-size / 2, -size / 2, size, size, 6).fill({ color: 0xffffff, alpha: 0.6 });
+    flash.visible = false;
+    root.addChild(base, label, flash, hpBg, hpFg, hpText, rubble);
+    return { root, label, hpFg, hpText, rubble, flash, flashUntil: 0, lastHp: tower.hp, wasAlive: tower.alive };
   }
 
-  private updateTower(view: TowerView, tower: TowerState, l: Layout): void {
+  private updateTower(view: TowerView, tower: TowerState, l: Layout, now: number): void {
     const [sx, sy] = this.toScreen(tower.x, tower.y, l);
     view.root.position.set(sx, sy);
     const frac = tower.max_hp > 0 ? Math.max(0, tower.hp / tower.max_hp) : 0;
-    const isKing = tower.name === "King_Tower";
-    const size = (isKing ? 2.6 : 2.1) * l.tile;
+    const size = this.towerSize(tower, l);
     view.hpFg.clear();
     if (tower.alive) {
       view.hpFg.rect(-size / 2, -size / 2 - 10, size * frac, 6).fill(frac > 0.35 ? 0x4ade80 : 0xef4444);
       view.hpText.text = String(Math.round(tower.hp));
     }
+    if (tower.hp < view.lastHp - 1e-6) view.flashUntil = now + FLASH_MS;
+    view.lastHp = tower.hp;
+    this.updateFlash(view.flash, view.flashUntil, now);
+
+    if (view.wasAlive && !tower.alive) this.spawnPoof(sx, sy, size * 0.7, now);
+    view.wasAlive = tower.alive;
     view.rubble.visible = !tower.alive;
     view.label.visible = tower.alive;
     view.hpText.visible = tower.alive;
   }
 
+  // --- jednostki ---
+
   private renderTroops(snap: Snapshot, l: Layout, alpha: number, now: number): void {
     const prevById = new Map<number, TroopState>();
     this.store.prevSnap?.troops.forEach((t) => prevById.set(t.id, t));
     const seen = new Set<number>();
+    const scale = l.tile / TOKEN_UNITS_PER_TILE;
 
     for (const troop of snap.troops) {
       seen.add(troop.id);
       let view = this.troops.get(troop.id);
       if (!view) {
-        view = this.createTroop(troop, l);
+        view = this.createTroop(troop);
         this.troops.set(troop.id, view);
         this.troopLayer.addChild(view.root);
       }
+      if (!view.hasArt && this.art.has(troop.card)) this.replaceIcon(view, troop.card);
+
       const prev = prevById.get(troop.id);
       const x = prev ? prev.x + (troop.x - prev.x) * alpha : troop.x;
       const y = prev ? prev.y + (troop.y - prev.y) * alpha : troop.y;
@@ -253,63 +305,77 @@ export class ArenaScene {
       view.lastY = y;
       const [sx, sy] = this.toScreen(x, y, l);
       view.root.position.set(sx, sy);
-      view.root.scale.set(l.tile / 22);
+      view.root.scale.set(scale);
 
       // pasek HP
       const frac = troop.max_hp > 0 ? Math.max(0, troop.hp / troop.max_hp) : 0;
       view.hpFg.clear();
-      if (frac < 1) {
-        view.hpBg.visible = true;
-        view.hpFg.rect(-11, -17, 22 * frac, 3).fill(0x4ade80);
-      } else {
-        view.hpBg.visible = false;
-      }
+      view.hpBg.visible = frac < 1;
+      if (frac < 1) view.hpFg.rect(-11, -18, 22 * frac, 3).fill(0x4ade80);
 
-      // błysk obrażeń
-      if (troop.hp < view.lastHp - 1e-6) {
-        view.flashUntil = now + 180;
-        view.flash.clear();
-        view.flash.circle(0, 0, 13).fill({ color: 0xff3b30, alpha: 0.55 });
-      }
+      if (troop.hp < view.lastHp - 1e-6) view.flashUntil = now + FLASH_MS;
       view.lastHp = troop.hp;
-      const flashLeft = view.flashUntil - now;
-      view.flash.alpha = flashLeft > 0 ? flashLeft / 180 : 0;
-      view.flash.visible = flashLeft > 0;
+      this.updateFlash(view.flash, view.flashUntil, now);
     }
 
-    // zniknięte jednostki → duch (animacja śmierci)
+    // vanished units → death poof
     for (const [id, view] of this.troops) {
-      if (!seen.has(id)) {
-        this.troops.delete(id);
-        view.root.destroy({ children: true });
-        const ghostText = new Text({ text: view.label.text, style: { fontSize: 20 } });
-        ghostText.anchor.set(0.5);
-        const [sx, sy] = this.toScreen(view.lastX, view.lastY, l);
-        ghostText.position.set(sx, sy);
-        this.fxLayer.addChild(ghostText);
-        this.ghosts.push({ label: ghostText, bornAt: now });
-      }
+      if (seen.has(id)) continue;
+      this.troops.delete(id);
+      view.root.destroy({ children: true });
+      const [sx, sy] = this.toScreen(view.lastX, view.lastY, l);
+      this.spawnPoof(sx, sy, TOKEN_RADIUS * scale, now);
     }
   }
 
-  private createTroop(troop: TroopState, _l: Layout): TroopView {
+  private makeIcon(card: string): { icon: Container; hasArt: boolean } {
+    const icon = new Container();
+    const texture = this.art.get(card);
+    if (!texture) {
+      const label = new Text({ text: cardEmoji(card), style: { fontSize: 18 } });
+      label.anchor.set(0.5);
+      icon.addChild(label);
+      return { icon, hasArt: false };
+    }
+    // the card has a frame and transparent margin — crop the circle onto the character's face
+    const r = TOKEN_RADIUS - 2;
+    const sprite = new Sprite(texture);
+    sprite.anchor.set(0.5, 0.56);
+    sprite.scale.set((2.6 * r) / texture.width);
+    const mask = new Graphics().circle(0, 0, r).fill(0xffffff);
+    sprite.mask = mask;
+    icon.addChild(sprite, mask);
+    return { icon, hasArt: true };
+  }
+
+  private replaceIcon(view: TroopView, card: string): void {
+    const { icon, hasArt } = this.makeIcon(card);
+    const index = view.root.getChildIndex(view.icon);
+    view.root.removeChild(view.icon);
+    view.icon.destroy({ children: true });
+    view.root.addChildAt(icon, index);
+    view.icon = icon;
+    view.hasArt = hasArt;
+  }
+
+  private createTroop(troop: TroopState): TroopView {
     const root = new Container();
     const ring = new Graphics();
-    ring.circle(0, 0, 13).fill(OWNER_COLORS[troop.owner] ?? 0xffffff);
-    ring.circle(0, 0, 13).stroke({ color: 0x0f172a, width: 2 });
-    const label = new Text({ text: cardEmoji(troop.card), style: { fontSize: 18 } });
-    label.anchor.set(0.5);
+    ring.circle(0, 0, TOKEN_RADIUS).fill(0x0f172a);
+    ring.circle(0, 0, TOKEN_RADIUS - 1).stroke({ color: OWNER_COLORS[troop.owner] ?? 0xffffff, width: 3 });
+    const { icon, hasArt } = this.makeIcon(troop.card);
     const hpBg = new Graphics();
-    hpBg.rect(-11, -17, 22, 3).fill(0x1f2937);
+    hpBg.rect(-11, -18, 22, 3).fill(0x1f2937);
     hpBg.visible = false;
     const hpFg = new Graphics();
     const flash = new Graphics();
+    flash.circle(0, 0, TOKEN_RADIUS).fill({ color: 0xffffff, alpha: 0.7 });
     flash.visible = false;
-    root.addChild(ring, label, hpBg, hpFg, flash);
+    root.addChild(ring, icon, flash, hpBg, hpFg);
     return {
       root,
-      ring,
-      label,
+      icon,
+      hasArt,
       hpBg,
       hpFg,
       flash,
@@ -319,6 +385,14 @@ export class ArenaScene {
       lastY: troop.y,
     };
   }
+
+  private updateFlash(flash: Graphics, flashUntil: number, now: number): void {
+    const left = flashUntil - now;
+    flash.visible = left > 0;
+    flash.alpha = left > 0 ? left / FLASH_MS : 0;
+  }
+
+  // --- czary ---
 
   private renderSpells(snap: Snapshot, l: Layout, now: number): void {
     const seen = new Set<number>();
@@ -372,22 +446,93 @@ export class ArenaScene {
     }
   }
 
-  private renderGhosts(now: number): void {
-    const lifeMs = 320;
-    for (const ghost of this.ghosts) {
-      const t = (now - ghost.bornAt) / lifeMs;
-      ghost.label.alpha = Math.max(0, 1 - t);
-      const s = 1 + t * 0.4;
-      ghost.label.scale.set(s);
+  // --- efekty walki ---
+
+  private addEffect(node: Container, update: (now: number) => boolean): void {
+    this.fxLayer.addChild(node);
+    this.effects.push({ node, update });
+  }
+
+  private renderEffects(now: number): void {
+    // update() may spawn follow-up effects, which land in the fresh list
+    const active = this.effects;
+    this.effects = [];
+    for (const effect of active) {
+      if (effect.update(now)) this.effects.push(effect);
+      else effect.node.destroy({ children: true });
     }
-    this.ghosts = this.ghosts.filter((ghost) => {
-      if (now - ghost.bornAt >= lifeMs) {
-        ghost.label.destroy();
+  }
+
+  /** Hit: projectile arc (ranged), then the damage number above the target. */
+  private spawnHit(hit: HitState, index: number, l: Layout, now: number): void {
+    const [tx, ty] = this.toScreen(hit.x, hit.y, l);
+    if (!hit.ranged) {
+      this.spawnDamageNumber(hit.damage, tx, ty, index, l, now);
+      return;
+    }
+    const [fx, fy] = this.toScreen(hit.from_x, hit.from_y, l);
+    const dist = Math.hypot(hit.x - hit.from_x, hit.y - hit.from_y);
+    const flightMs = Math.max(90, 40 * dist) / this.store.speed;
+    const height = (0.2 + 0.08 * dist) * l.tile;
+    const proj = new Graphics().circle(0, 0, Math.max(2, 0.16 * l.tile)).fill(OWNER_COLORS[hit.owner] ?? 0xffffff);
+    proj.circle(0, 0, Math.max(2, 0.16 * l.tile)).stroke({ color: 0xffffff, width: 1 });
+    this.addEffect(proj, (t) => {
+      const p = (t - now) / flightMs;
+      if (p >= 1) {
+        this.spawnDamageNumber(hit.damage, tx, ty, index, l, t);
         return false;
+      }
+      proj.position.set(fx + (tx - fx) * p, fy + (ty - fy) * p - Math.sin(p * Math.PI) * height);
+      return true;
+    });
+  }
+
+  private spawnDamageNumber(damage: number, x: number, y: number, index: number, l: Layout, now: number): void {
+    const lifeMs = 700;
+    const label = new Text({
+      text: String(Math.round(damage)),
+      style: {
+        fill: 0xffffff,
+        fontSize: Math.max(11, 0.5 * l.tile),
+        fontWeight: "bold",
+        stroke: { color: 0x7f1d1d, width: 3 },
+      },
+    });
+    label.anchor.set(0.5);
+    const dx = ((index % 3) - 1) * 0.35 * l.tile;
+    this.addEffect(label, (t) => {
+      const p = (t - now) / lifeMs;
+      if (p >= 1) return false;
+      label.position.set(x + dx, y - 0.6 * l.tile - p * 0.9 * l.tile);
+      label.alpha = p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4;
+      return true;
+    });
+  }
+
+  /** Unit death / tower destruction: an expanding smoke puff. */
+  private spawnPoof(x: number, y: number, radius: number, now: number): void {
+    const lifeMs = 420;
+    const puffs = 6;
+    const poof = new Container();
+    poof.position.set(x, y);
+    const g = new Graphics();
+    poof.addChild(g);
+    this.addEffect(poof, (t) => {
+      const p = (t - now) / lifeMs;
+      if (p >= 1) return false;
+      const alpha = 1 - p;
+      g.clear();
+      g.circle(0, 0, radius * (0.6 + 0.8 * p)).fill({ color: 0xe5e7eb, alpha: 0.35 * alpha });
+      for (let i = 0; i < puffs; i++) {
+        const angle = (i / puffs) * Math.PI * 2;
+        const d = radius * (0.4 + 1.1 * p);
+        g.circle(Math.cos(angle) * d, Math.sin(angle) * d, radius * 0.35 * (1 - 0.5 * p)).fill({ color: 0xf8fafc, alpha: 0.7 * alpha });
       }
       return true;
     });
   }
+
+  // --- podpowiedzi i celowanie ---
 
   private renderHint(l: Layout, now: number): void {
     const hint = this.store.hint;

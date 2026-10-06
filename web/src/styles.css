@@ -788,6 +788,28 @@ button {
   font-size: 1.7rem;
 }
 
+img.card-art {
+  width: 58px;
+  height: 70px;
+  object-fit: cover;
+  object-position: center 70%;
+}
+
+.next-card-art {
+  vertical-align: middle;
+}
+
+img.next-card-art {
+  width: 26px;
+  height: 31px;
+  object-fit: cover;
+  object-position: center 70%;
+}
+
+.next-card-art.card-emoji {
+  font-size: 1rem;
+}
+
 .card-name {
   font-size: 0.68rem;
   color: var(--muted);

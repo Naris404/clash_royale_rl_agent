@@ -9,6 +9,7 @@ import pytest
 
 from cr_rl.game.board import (
     ARENA_WIDTH,
+    BRIDGE_HALF_WIDTH,
     BRIDGE_LANE_X,
     DEPLOY_ZONES,
     ELIXIR_PER_SECOND,
@@ -187,6 +188,55 @@ class TestRiverAndBridges:
                 break
         assert crossed
 
+    @staticmethod
+    def _walk_across(board: Board, troop: Troop, max_steps: int = 600) -> list[tuple[float, float]]:
+        """Kroki symulacji aż jednostka przejdzie przez rzekę; zwraca trasę."""
+        direction = 1.0 if troop.owner == 0 else -1.0
+        far_bank = RIVER_Y + direction * RIVER_HALF_WIDTH
+        path = [(troop.x, troop.y)]
+        for _ in range(max_steps):
+            board.step(0, action_p1=0)
+            path.append((troop.x, troop.y))
+            if direction * (troop.y - far_bank) > 0:
+                return path
+        pytest.fail(f"{troop.name} did not cross the river: {path[-1]}")
+
+    def test_diagonal_path_shorter_than_l_path(self):
+        board = _board()
+        knight = _add_troop(board, "Knight", 0, 8.0, 6.0)
+        path = self._walk_across(board, knight)
+
+        length = sum(np.hypot(x1 - x0, y1 - y0) for (x0, y0), (x1, y1) in zip(path, path[1:]))
+        bx = BRIDGE_LANE_X[0]
+        l_path = abs(8.0 - bx) + (path[-1][1] - 6.0)
+        assert length < l_path - 2.0
+
+        (x0, y0), (x1, y1) = path[0], path[1]
+        assert x1 < x0 and y1 > y0  # od pierwszego kroku w skos, nie najpierw w bok
+
+    @pytest.mark.parametrize("owner", [0, 1])
+    @pytest.mark.parametrize("start", [(8.0, 6.0), (1.5, 10.0), (16.5, 12.0), (9.0, 14.0), (5.0, 13.0)])
+    def test_river_crossed_only_on_bridge_without_teleports(self, owner, start):
+        board = _board()
+        x, y = start if owner == 0 else (ARENA_WIDTH - start[0], 32.0 - start[1])
+        knight = _add_troop(board, "Knight", owner, x, y)
+        path = self._walk_across(board, knight)
+
+        max_step = knight.speed * TICK_DT + 1e-6
+        for (x0, y0), (x1, y1) in zip(path, path[1:]):
+            assert np.hypot(x1 - x0, y1 - y0) <= max_step  # bez „cofania” przez rzekę
+            if (RIVER_Y - RIVER_HALF_WIDTH) < y1 < (RIVER_Y + RIVER_HALF_WIDTH):
+                assert any(abs(x1 - bx) <= BRIDGE_HALF_WIDTH for bx in BRIDGE_LANE_X)
+
+    def test_hog_rider_jumps_river_in_straight_line(self):
+        board = _board()
+        hog = _add_troop(board, "Hog_Rider", 0, 9.0, 12.0)
+        path = self._walk_across(board, hog)
+        assert any(
+            (RIVER_Y - RIVER_HALF_WIDTH) < y < (RIVER_Y + RIVER_HALF_WIDTH) and abs(x - 9.0) < 1.0
+            for x, y in path
+        )
+
 
 class TestTargetingAndCombat:
     def test_sight_range_limits_aggro(self):
@@ -226,6 +276,44 @@ class TestTargetingAndCombat:
         result = board.step(0, action_p1=0)
         assert result.truncated
         assert board.winner == 0
+
+
+class TestHitEvents:
+    @staticmethod
+    def _first_hit_by(board: Board, attacker: Troop, max_steps: int = 40):
+        for _ in range(max_steps):
+            board.step(0, action_p1=0)
+            for event in board.hit_events:
+                if (event.from_x, event.from_y) == (attacker.x, attacker.y):
+                    return event
+        pytest.fail(f"no hit recorded for {attacker.name}")
+
+    def test_ranged_hit_recorded_with_origin_and_damage(self):
+        board = _board()
+        musketeer = _add_troop(board, "Musketeer", 0, 9.0, 8.0)
+        giant = _add_troop(board, "Giant", 1, 9.0, 13.0)
+        event = self._first_hit_by(board, musketeer)
+        assert event.ranged and event.owner == 0
+        assert giant.distance_to_xy(event.x, event.y) <= giant.speed * TICK_DT + 1e-6
+        assert event.damage == cards_dic["Musketeer"]["damage"]
+
+    def test_melee_hit_is_not_ranged(self):
+        board = _board()
+        knight = _add_troop(board, "Knight", 0, 9.0, 8.0)
+        _add_troop(board, "Giant", 1, 9.0, 9.0)
+        assert not self._first_hit_by(board, knight).ranged
+
+    def test_spell_hits_recorded_and_cleared_next_step(self):
+        board = _board()
+        board.elixir[0] = 10.0
+        _force_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Knight"])
+        _add_troop(board, "Giant", 1, 9.0, 20.0)
+        board.set_pending_play(0, ("Fireball", 9.0, 20.0))
+        board.step(0, action_p1=0)
+        spell_hits = [e for e in board.hit_events if e.damage == cards_dic["Fireball"]["damage"]]
+        assert [(e.x, e.y) for e in spell_hits] == [(9.0, 20.0)]
+        board.step(0, action_p1=0)
+        assert all(e.damage != cards_dic["Fireball"]["damage"] for e in board.hit_events)
 
 
 class TestRewardsAndObservations:

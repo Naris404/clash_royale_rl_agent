@@ -1,4 +1,5 @@
 import { cardEmoji } from "../scene/emoji";
+import { cardArtUrl } from "../scene/cardArt";
 import type { Strings } from "../i18n";
 import type { ArenaConfig } from "../net/types";
 
@@ -13,6 +14,12 @@ interface Props {
   suggestedSlot: number | null;
 }
 
+function CardIcon({ card, className }: { card: string; className: string }) {
+  const url = cardArtUrl(card);
+  if (!url) return <span className={`${className} card-emoji`}>{cardEmoji(card)}</span>;
+  return <img className={className} src={url} alt={card.replace("_", " ")} draggable={false} />;
+}
+
 export function HandView({ hand, nextCard, elixir, selected, onSelect, config, strings, suggestedSlot }: Props) {
   return (
     <div className="hand-bar">
@@ -23,7 +30,7 @@ export function HandView({ hand, nextCard, elixir, selected, onSelect, config, s
         </div>
         {nextCard && (
           <div className="next-card" title={strings.next_card}>
-            {strings.next_card}: {cardEmoji(nextCard)}
+            {strings.next_card}: <CardIcon card={nextCard} className="next-card-art" />
           </div>
         )}
       </div>
@@ -45,7 +52,7 @@ export function HandView({ hand, nextCard, elixir, selected, onSelect, config, s
               onClick={() => affordable && onSelect(isSelected ? null : card)}
               disabled={!affordable}
             >
-              <span className="card-emoji">{cardEmoji(card)}</span>
+              <CardIcon card={card} className="card-art" />
               <span className="card-name">{card.replace("_", " ")}</span>
               <span className="card-cost">{cost}</span>
             </button>

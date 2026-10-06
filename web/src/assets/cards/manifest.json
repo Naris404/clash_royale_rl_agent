@@ -1,0 +1,29 @@
+{
+  "source": "https://api.clashroyale.com/v1/cards",
+  "cards": {
+    "Knight": {
+      "id": 26000000,
+      "file": "Knight.png"
+    },
+    "Giant": {
+      "id": 26000003,
+      "file": "Giant.png"
+    },
+    "Cannon": {
+      "id": 27000000,
+      "file": "Cannon.png"
+    },
+    "Musketeer": {
+      "id": 26000014,
+      "file": "Musketeer.png"
+    },
+    "Hog_Rider": {
+      "id": 26000021,
+      "file": "Hog_Rider.png"
+    },
+    "Fireball": {
+      "id": 28000000,
+      "file": "Fireball.png"
+    }
+  }
+}

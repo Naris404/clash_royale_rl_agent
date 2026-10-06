@@ -90,6 +90,16 @@ class SpellState(BaseModel):
     travel_time: float
 
 
+class HitState(BaseModel):
+    owner: int
+    from_x: float
+    from_y: float
+    x: float
+    y: float
+    damage: float
+    ranged: bool
+
+
 class SnapshotMsg(BaseModel):
     type: Literal["snapshot"] = "snapshot"
     tick: int
@@ -99,6 +109,7 @@ class SnapshotMsg(BaseModel):
     towers: list[TowerState]
     troops: list[TroopState]
     spells: list[SpellState]
+    hits: list[HitState] = Field(default_factory=list)
     hand: list[str]
     next_card: Optional[str]
     done: bool

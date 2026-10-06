@@ -6,6 +6,7 @@ export interface ArenaConfig {
   river_y: number;
   river_half_width: number;
   bridge_lane_x: number[];
+  bridge_half_width: number;
   deploy_zones: Record<string, number[][]>;
   tower_layout: Record<string, Record<string, number[]>>;
   cards: Record<string, CardStats>;
@@ -57,6 +58,16 @@ export interface SpellState {
   travel_time: number;
 }
 
+export interface HitState {
+  owner: number;
+  from_x: number;
+  from_y: number;
+  x: number;
+  y: number;
+  damage: number;
+  ranged: boolean;
+}
+
 export interface Snapshot {
   type: "snapshot";
   tick: number;
@@ -66,6 +77,7 @@ export interface Snapshot {
   towers: TowerState[];
   troops: TroopState[];
   spells: SpellState[];
+  hits: HitState[];
   hand: string[];
   next_card?: string | null;
   done: boolean;

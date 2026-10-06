@@ -32,7 +32,11 @@ RIVER_HALF_WIDTH = 1.2
 # Dwa mosty (lewy / prawy) — oś alejki = środek pasa (lewy pas: kolumny 2–4, wieża L przy x≈3.5).
 BRIDGE_LANE_X = (3.0, 14.0)
 BRIDGES = [(BRIDGE_LANE_X[0], RIVER_Y), (BRIDGE_LANE_X[1], RIVER_Y)]
+BRIDGE_HALF_WIDTH = 1.8
+# Waypoint on the river bank before / after a bridge, set back from the water.
+BRIDGE_BANK_Y_OFFSET = RIVER_HALF_WIDTH + 0.3
 DEFAULT_SIGHT_RANGE = 9.5
+RANGED_MIN_RANGE = 2.0  # range above melee → hit is shown as a projectile
 
 # Wieże (jak w CR): princess ~6 kafelków od rzeki, król z tyłu.
 # P0 = dół (y rośnie w górę), P1 = góra.
@@ -99,6 +103,19 @@ class SpellEffect:
     fade_time: float = 0.55
 
 
+@dataclass(frozen=True)
+class HitEvent:
+    """A single hit from the last step (visualisation only)."""
+
+    owner: int
+    from_x: float
+    from_y: float
+    x: float
+    y: float
+    damage: float
+    ranged: bool
+
+
 class Board:
     """
     Uproszczone środowisko Clash Royale pod RL.
@@ -132,6 +149,7 @@ class Board:
         self.hand: dict[int, list[str]] = {0: [], 1: []}
         self.hand_queue: dict[int, deque[str]] = {0: deque(), 1: deque()}
         self.spell_effects: list[SpellEffect] = []
+        self.hit_events: list[HitEvent] = []
 
         self._init_towers()
         self._init_hands()
@@ -161,6 +179,7 @@ class Board:
         self.done = False
         self.winner = None
         self.spell_effects = []
+        self.hit_events = []
         self._pending_play = {0: None, 1: None}
         self._init_towers()
         self._init_hands()
@@ -226,6 +245,7 @@ class Board:
 
         radius = float(stats.get("radius", 2.5))
         damage = float(stats.get("damage", 0))
+        kx, ky = TOWER_LAYOUT[player]["King_Tower"]
         for unit in self._all_combatants():
             if unit.owner == player or not unit.alive:
                 continue
@@ -234,8 +254,10 @@ class Board:
                 if unit.hp <= 0:
                     unit.hp = 0
                     unit.alive = False
+                self.hit_events.append(
+                    HitEvent(player, kx, ky, unit.x, unit.y, damage, ranged=False)
+                )
 
-        kx, ky = TOWER_LAYOUT[player]["King_Tower"]
         self.spell_effects.append(
             SpellEffect(
                 card=card_name,
@@ -339,6 +361,7 @@ class Board:
             )
 
         towers_before = self._tower_hp_snapshot()
+        self.hit_events = []
 
         if action_p1 is None:
             action_p1 = self._random_bot_action(1)
@@ -428,47 +451,32 @@ class Board:
     def _on_bridge_lane(self, troop: Troop) -> bool:
         if not self._in_river_water(troop.y):
             return False
-        return any(abs(troop.x - bx) <= 1.8 for bx in BRIDGE_LANE_X)
+        return any(abs(troop.x - bx) <= BRIDGE_HALF_WIDTH for bx in BRIDGE_LANE_X)
 
-    def _needs_bridge(self, troop: Troop, target: Troop) -> bool:
-        if getattr(troop, "jumps_river", False):
-            return False
-        if troop.is_building and troop.speed <= 0:
-            return False
-        ty, target_y = troop.y, target.y
-        if ty < RIVER_Y and target_y < RIVER_Y:
-            return False
-        if ty > RIVER_Y and target_y > RIVER_Y:
-            return False
-        return True
+    @staticmethod
+    def _river_between(y: float, dest_y: float) -> bool:
+        """Whether going from y to dest_y requires crossing the river (bank to bank)."""
+        low, high = min(y, dest_y), max(y, dest_y)
+        return low < RIVER_Y + BRIDGE_BANK_Y_OFFSET and high > RIVER_Y - BRIDGE_BANK_Y_OFFSET
 
-    def _bridge_far_side_y(self, player: int) -> float:
-        """Y tuż za rzeką po przejściu mostem (po stronie wroga)."""
-        if player == 0:
-            return RIVER_Y + RIVER_HALF_WIDTH + 0.3
-        return RIVER_Y - RIVER_HALF_WIDTH - 0.3
+    def _path_waypoint(self, troop: Troop, dest_x: float, dest_y: float) -> tuple[float, float]:
+        """Diagonal to the bridge bank, straight over the bridge, then diagonal to the target."""
+        if troop.jumps_river or troop.speed <= 0:
+            return dest_x, dest_y
+        if not self._river_between(troop.y, dest_y):
+            return dest_x, dest_y
 
-    def _bridge_waypoint(
-        self, troop: Troop, bx: float, dest_x: float, dest_y: float
-    ) -> tuple[float, float]:
-        """Najpierw oś mostu, potem od razu przez rzekę — bez pośredniego stopu przy brzegu."""
-        if abs(troop.x - bx) > 1.2:
-            return bx, troop.y
-        far_y = self._bridge_far_side_y(troop.owner)
-        if troop.owner == 0:
-            if troop.y < far_y:
-                return bx, far_y
-        elif troop.y > far_y:
-            return bx, far_y
-        return dest_x, dest_y
+        direction = 1.0 if dest_y > troop.y else -1.0
+        near_bank_y = RIVER_Y - direction * BRIDGE_BANK_Y_OFFSET
+        far_bank_y = RIVER_Y + direction * BRIDGE_BANK_Y_OFFSET
+        bx = self._nearest_bridge_x(troop.x)
+        at_bank = direction * (troop.y - near_bank_y) >= -0.1
+        if at_bank and abs(troop.x - bx) <= BRIDGE_HALF_WIDTH:
+            return bx, far_bank_y
+        return bx, near_bank_y
 
     def get_move_waypoint(self, troop: Troop, target: Troop) -> tuple[float, float]:
-        """Ruch tylko przez najbliższy most — najpierw do osi mostu, potem przez rzekę."""
-        if not self._needs_bridge(troop, target):
-            return target.x, target.y
-
-        bx = self._nearest_bridge_x(troop.x)
-        return self._bridge_waypoint(troop, bx, target.x, target.y)
+        return self._path_waypoint(troop, target.x, target.y)
 
     def _enforce_no_river_cut(self, troop: Troop) -> None:
         """Cofa jednostkę, jeśli weszła w rzekę poza mostem."""
@@ -505,13 +513,8 @@ class Board:
 
     def get_push_waypoint(self, troop: Troop) -> tuple[float, float]:
         """Marsz alejką w stronę wrogiego King Tower, gdy nic nie jest w zasięgu wzroku."""
-        enemy = 1 - troop.owner
-        for tower in self.towers:
-            if tower.alive and tower.owner == enemy and tower.name == "King_Tower":
-                return self.get_move_waypoint(troop, tower)
-        kx, ky = TOWER_LAYOUT[enemy]["King_Tower"]
-        bx = self._nearest_bridge_x(troop.x)
-        return self._bridge_waypoint(troop, bx, kx, ky)
+        kx, ky = TOWER_LAYOUT[1 - troop.owner]["King_Tower"]
+        return self._path_waypoint(troop, kx, ky)
 
     def find_tower_target(self, tower: Troop) -> Optional[Troop]:
         """Wieża strzela do najbliższego wroga w zasięgu (nie do celu poza range)."""
@@ -564,6 +567,7 @@ class Board:
 
             if dmg <= 0:
                 continue
+            self._record_hit(troop, target, dmg)
             if troop.owner == 0:
                 dealt_p0 += dmg
             elif target.owner == 0:
@@ -580,12 +584,26 @@ class Board:
                 dmg = tower.hit(target, dt)
             if dmg <= 0:
                 continue
+            self._record_hit(tower, target, dmg)
             if tower.owner == 0:
                 dealt_p0 += dmg
             elif target.owner == 0:
                 taken_p0 += dmg
 
         return dealt_p0, taken_p0
+
+    def _record_hit(self, attacker: Troop, target: Troop, damage: float) -> None:
+        self.hit_events.append(
+            HitEvent(
+                attacker.owner,
+                attacker.x,
+                attacker.y,
+                target.x,
+                target.y,
+                damage,
+                ranged=attacker.range > RANGED_MIN_RANGE,
+            )
+        )
 
     def _remove_dead(self) -> None:
         self.troops = [t for t in self.troops if t.alive]
