@@ -20,17 +20,12 @@ param(
     [string]$Container = "cr-rl-coach"
 )
 
-$ErrorActionPreference = "Stop"
+# Native docker commands write progress to stderr; failures are caught via $LASTEXITCODE.
+$ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker was not found. Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-}
-
-if ($Stop) {
-    docker rm -f $Container 2>$null | Out-Null
-    Write-Host "Stopped container '$Container'."
-    return
 }
 
 $existing = docker ps -aq -f "name=^/$Container$"
@@ -38,8 +33,12 @@ if ($existing) {
     docker rm -f $Container | Out-Null
 }
 
-docker image inspect $Image 2>$null | Out-Null
-$imageExists = $LASTEXITCODE -eq 0
+if ($Stop) {
+    Write-Host "Stopped container '$Container'."
+    return
+}
+
+$imageExists = [bool](docker images -q $Image)
 if ($Rebuild -or -not $imageExists) {
     Write-Host "Building image '$Image'..."
     docker build -t $Image $root
