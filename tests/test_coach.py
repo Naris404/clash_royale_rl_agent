@@ -7,7 +7,7 @@ from collections import deque
 import numpy as np
 import pytest
 
-from cr_rl.game.board import Board, NUM_ACTIONS
+from cr_rl.game.board import DEPLOY_ZONES, NUM_ACTIONS, NUM_ZONES, Board
 from cr_rl.coach.evaluator import (
     GRADE_BEST,
     GRADE_BLUNDER,
@@ -26,6 +26,15 @@ def _board(seed: int = 42) -> Board:
     env = Board(seed=seed)
     env.reset(seed=seed)
     return env
+
+
+def _zone_name(zone_idx: int, player: int = 0) -> str:
+    return DEPLOY_ZONES[player][zone_idx].name
+
+
+def _zone_xy(zone_idx: int, player: int = 0) -> tuple[float, float]:
+    zone = DEPLOY_ZONES[player][zone_idx]
+    return zone.x, zone.y
 
 
 def _force_hand(board: Board, player: int, hand: list[str], queue: list[str]) -> None:
@@ -50,23 +59,44 @@ def untrained_model_path(tmp_path_factory):
 
 
 class TestActionMapping:
-    def test_nearest_zone_by_distance(self):
-        # strefy P0: (3,6), (9,6), (14,6)
-        assert nearest_zone(0, "Knight", 2.0, 5.0) == 0
-        assert nearest_zone(0, "Knight", 9.0, 9.0) == 1
-        assert nearest_zone(0, "Knight", 16.0, 4.0) == 2
+    def test_nearest_zone_for_troops_by_distance(self):
+        assert _zone_name(nearest_zone(0, "Knight", 2.0, 4.0)) == "back-L"
+        assert _zone_name(nearest_zone(0, "Knight", 14.5, 9.0)) == "mid-R"
+        assert _zone_name(nearest_zone(0, "Knight", 3.0, 13.0)) == "bridge-L"
+        assert _zone_name(nearest_zone(0, "Cannon", 5.5, 9.5)) == "pull-L"
+        assert _zone_name(nearest_zone(0, "Cannon", 12.0, 10.0)) == "pull-R"
 
-    def test_nearest_zone_for_spell_uses_lane_only(self):
-        assert nearest_zone(0, "Fireball", 3.2, 25.0) == 0
-        assert nearest_zone(0, "Fireball", 13.8, 25.0) == 2
+    def test_nearest_zone_for_spell_only_considers_spell_zones(self):
+        assert _zone_name(nearest_zone(0, "Fireball", 3.2, 25.0)) == "spell-tower-L"
+        assert _zone_name(nearest_zone(0, "Fireball", 13.8, 25.0)) == "spell-tower-R"
+        assert _zone_name(nearest_zone(0, "Fireball", 9.0, 28.0)) == "spell-king"
+        assert _zone_name(nearest_zone(0, "Fireball", 3.0, 9.0)) == "spell-tower-L"  # nie "mid-L"
+
+    def test_nearest_zone_for_player1_mirrors(self):
+        assert _zone_name(nearest_zone(1, "Knight", 3.0, 23.0)) == "mid-L"
+        assert _zone_name(nearest_zone(1, "Fireball", 3.5, 8.0)) == "spell-tower-L"
 
     def test_encode_decode_roundtrip(self):
         board = _board()
         _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
-        action = encode_action(board, 0, "Giant", 2)
-        assert action == 1 + 1 * 3 + 2
+        action = encode_action(board, 0, "Giant", 7)
+        assert action == 1 + 1 * 11 + 7
         card, slot, zone = decode_action(board, 0, action)
-        assert (card, slot, zone) == ("Giant", 1, 2)
+        assert (card, slot, zone) == ("Giant", 1, 7)
+
+    def test_every_zone_has_hint_name_in_both_languages(self):
+        from cr_rl.coach.explainer import zone_name
+
+        for lang in ("pl", "en"):
+            names = {zone_name(i, lang) for i in range(NUM_ZONES)}
+            assert len(names) == NUM_ZONES
+            assert not any(name.isdigit() for name in names)
+
+    def test_hint_references_pull_zone(self):
+        from cr_rl.coach.explainer import format_hint
+
+        zone = next(i for i, z in enumerate(DEPLOY_ZONES[0]) if z.name == "pull-L")
+        assert "pull" in format_hint("Cannon", zone, 0.5, lang="en")
 
     def test_encode_returns_none_for_card_not_in_hand(self):
         board = _board()
@@ -76,6 +106,29 @@ class TestActionMapping:
     def test_decode_noop(self):
         board = _board()
         assert decode_action(board, 0, 0) == (None, None, None)
+
+
+class TestOutdatedCheckpoint:
+    def test_v1_layout_checkpoint_is_ignored(self, tmp_path):
+        import gymnasium as gym
+        from gymnasium import spaces
+        from sb3_contrib import MaskablePPO
+
+        class V1Env(gym.Env):
+            observation_space = spaces.Box(-1.0, 1.0, shape=(153,), dtype=np.float32)
+            action_space = spaces.Discrete(13)
+
+            def reset(self, *, seed=None, options=None):
+                return np.zeros(153, dtype=np.float32), {}
+
+            def step(self, action):
+                return np.zeros(153, dtype=np.float32), 0.0, True, False, {}
+
+        path = tmp_path / "v1.zip"
+        MaskablePPO("MlpPolicy", V1Env(), n_steps=8, batch_size=8, verbose=0).save(str(path))
+        inspector = PolicyInspector(path)
+        assert not inspector.available
+        assert CoachEngine(inspector).suggest(_board()).source == "heuristic"
 
 
 class TestHeuristicFallback:
@@ -88,7 +141,7 @@ class TestHeuristicFallback:
             suggestion = coach.suggest(board)
             if suggestion.card is not None:
                 assert board.card_in_hand(0, suggestion.card)
-                assert suggestion.zone in (0, 1, 2)
+                assert board.zone_allows(0, suggestion.card, suggestion.zone)
                 assert suggestion.source == "heuristic"
             board.step(0, action_p1=0)
             if board.done:
@@ -100,7 +153,7 @@ class TestHeuristicFallback:
         board.elixir[0] = 10.0
         suggestion = coach.suggest(board)
         assert suggestion.card is not None
-        grade = coach.grade_move(board, suggestion.card, *[(3.0, 6.0), (9.0, 6.0), (14.0, 6.0)][suggestion.zone], player=0)
+        grade = coach.grade_move(board, suggestion.card, *_zone_xy(suggestion.zone), player=0)
         assert grade.grade in (GRADE_BEST, GRADE_GOOD)
 
 
@@ -153,8 +206,7 @@ class TestNeuralPath:
         suggestion = coach.suggest(board)
         if suggestion.card is None:
             pytest.skip("polityka sugeruje noop — wymuś kartę")
-        zones = [(3.0, 6.0), (9.0, 6.0), (14.0, 6.0)]
-        grade = coach.grade_move(board, suggestion.card, *zones[suggestion.zone], player=0)
+        grade = coach.grade_move(board, suggestion.card, *_zone_xy(suggestion.zone), player=0)
         assert grade.grade == GRADE_BEST
 
 

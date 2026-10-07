@@ -201,6 +201,10 @@ class TestWebSocket:
             assert hello["type"] == "hello"
             assert hello["coach_enabled"] is True
             assert hello["config"]["arena_width"] == 18.0
+            zones = hello["config"]["deploy_zones"]["0"]
+            assert len(zones) == 11
+            assert zones[6] == {"name": "pull-L", "x": 5.5, "y": 9.5, "card_types": ["building", "ground"]}
+            assert zones[10]["card_types"] == ["spell"]
 
             snapshot = ws.receive_json()
             assert snapshot["type"] == "snapshot"

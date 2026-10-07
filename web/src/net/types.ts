@@ -7,12 +7,19 @@ export interface ArenaConfig {
   river_half_width: number;
   bridge_lane_x: number[];
   bridge_half_width: number;
-  deploy_zones: Record<string, number[][]>;
+  deploy_zones: Record<string, DeployZone[]>;
   tower_layout: Record<string, Record<string, number[]>>;
   cards: Record<string, CardStats>;
   playable_cards: string[];
   tick_dt: number;
   time_limit: number;
+}
+
+export interface DeployZone {
+  name: string;
+  x: number;
+  y: number;
+  card_types: string[];
 }
 
 export interface CardStats {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import random
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 import numpy as np
@@ -53,14 +53,47 @@ TOWER_LAYOUT = {
     },
 }
 
-DEPLOY_ZONES = {
-    0: [(3.0, 6.0), (9.0, 6.0), (14.0, 6.0)],
-    1: [(3.0, 26.0), (9.0, 26.0), (14.0, 26.0)],
+TROOP_CARD_TYPES = frozenset({"ground", "building"})
+SPELL_CARD_TYPES = frozenset({"spell"})
+
+
+@dataclass(frozen=True)
+class DeployZone:
+    """Discrete placement spot with absolute coordinates and the card types it accepts."""
+
+    name: str
+    x: float
+    y: float
+    card_types: frozenset[str]
+
+    def allows(self, card_type: str) -> bool:
+        return card_type in self.card_types
+
+
+# P0 layout (ADR-0002). Pull zones sit near the center so a building planted there is
+# closer to an enemy building-targeter at the bridge exit than the princess tower is.
+_P0_ZONES = (
+    DeployZone("back-L", 3.0, 4.5, TROOP_CARD_TYPES),
+    DeployZone("back-R", 14.0, 4.5, TROOP_CARD_TYPES),
+    DeployZone("mid-L", 3.0, 9.0, TROOP_CARD_TYPES),
+    DeployZone("mid-R", 14.0, 9.0, TROOP_CARD_TYPES),
+    DeployZone("bridge-L", 3.0, 14.0, TROOP_CARD_TYPES),
+    DeployZone("bridge-R", 14.0, 14.0, TROOP_CARD_TYPES),
+    DeployZone("pull-L", 5.5, 9.5, TROOP_CARD_TYPES),
+    DeployZone("pull-R", 12.5, 9.5, TROOP_CARD_TYPES),
+    DeployZone("spell-tower-L", 3.5, 24.0, SPELL_CARD_TYPES),
+    DeployZone("spell-tower-R", 14.5, 24.0, SPELL_CARD_TYPES),
+    DeployZone("spell-king", 9.0, 30.0, SPELL_CARD_TYPES),
+)
+DEPLOY_ZONES: dict[int, tuple[DeployZone, ...]] = {
+    0: _P0_ZONES,
+    1: tuple(replace(z, y=ARENA_LENGTH - z.y) for z in _P0_ZONES),
 }
+NUM_ZONES = len(_P0_ZONES)
 
 HAND_SIZE = 4
 NUM_PLAYABLE_CARDS = len(PLAYABLE_CARDS)
-NUM_ACTIONS = 1 + HAND_SIZE * len(DEPLOY_ZONES[0])  # noop + slot ręki (0..3) × strefa
+NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + slot ręki (0..3) × strefa (45)
 MAX_UNITS_OBS = 24
 
 # Segmenty wektora obserwacji — jawne offsety zamiast "magicznych" indeksów.
@@ -120,9 +153,9 @@ class Board:
     """
     Uproszczone środowisko Clash Royale pod RL.
 
-    Akcja (int 0..12):
+    Akcja (int 0..44):
       0 — nic nie rób
-      1..12 — zagraj kartę (slot ręki 0..3 × strefa 0..2); tylko 4 karty na ręce (cykl z 6)
+      1..44 — zagraj kartę (slot ręki 0..3 × strefa 0..10); tylko 4 karty na ręce (cykl z 6)
 
     Gracz 0 uczy się; gracz 1 domyślnie losowy bot (można podpiąć drugi model).
     """
@@ -313,42 +346,24 @@ class Board:
         if action <= 0:
             return None, None
         hand = self.hand[player]
-        zones = len(DEPLOY_ZONES[player])
         idx = action - 1
-        slot = idx // zones
-        zone_idx = idx % zones
+        slot, zone_idx = divmod(idx, NUM_ZONES)
         if slot >= len(hand):
             return None, None
         return hand[slot], zone_idx
 
+    def zone_allows(self, player: int, card_name: str, zone_idx: int) -> bool:
+        """Czy karta tego typu może być zagrana w strefie (bez eliksiru i ręki)."""
+        if not 0 <= zone_idx < NUM_ZONES:
+            return False
+        card_type = cards_dic.get(card_name, {}).get("type")
+        return DEPLOY_ZONES[player][zone_idx].allows(card_type)
+
     def play_card(self, player: int, card_name: str, zone_idx: int) -> bool:
-        if self.done or zone_idx < 0 or zone_idx >= len(DEPLOY_ZONES[player]):
+        if not self.zone_allows(player, card_name, zone_idx):
             return False
-        if not self.card_in_hand(player, card_name):
-            return False
-
-        stats = cards_dic.get(card_name)
-        if not stats:
-            return False
-
-        cost = stats["elisir"]
-        if self.elixir[player] < cost:
-            return False
-
-        x, y = DEPLOY_ZONES[player][zone_idx]
-        if self._is_spell(card_name):
-            # Czar na lustrzanej pozycji po stronie wroga (ta sama kolumna X).
-            y = ARENA_LENGTH - y
-            return self._cast_spell(player, card_name, x, y)
-        if stats.get("type") == "building":
-            # Budynki (Cannon) — 5 kafelków od rzeki, nie przy wieży (y=6).
-            y = (RIVER_Y - 5.0) if player == 0 else (RIVER_Y + 5.0)
-        troop = Troop(card_name, player)
-        troop.place((x, y))
-        self.elixir[player] -= cost
-        self.troops.append(troop)
-        self._cycle_hand_after_play(player, card_name)
-        return True
+        zone = DEPLOY_ZONES[player][zone_idx]
+        return self.play_card_at(player, card_name, zone.x, zone.y)
 
     def step(
         self,
@@ -420,14 +435,7 @@ class Board:
             self.play_card(player, card, zone)
 
     def _random_bot_action(self, player: int) -> int:
-        affordable = []
-        hand = self.hand[player]
-        zones = len(DEPLOY_ZONES[player])
-        for i, name in enumerate(hand):
-            cost = cards_dic[name]["elisir"]
-            if self.elixir[player] >= cost:
-                for z in range(zones):
-                    affordable.append(1 + i * zones + z)
+        affordable = np.flatnonzero(self.valid_action_mask(player))[1:].tolist()
         if affordable and self._rng.random() < 0.35:
             return self._rng.choice(affordable)
         return 0
@@ -695,17 +703,16 @@ class Board:
         return obs
 
     def valid_action_mask(self, player: int = 0) -> np.ndarray:
-        """Maska legalnych akcji (noop + karty na którą stać eliksiru)."""
+        """Maska legalnych akcji: noop + (karta, strefa) gdy stać na kartę i strefa przyjmuje jej typ."""
         mask = np.zeros(NUM_ACTIONS, dtype=np.bool_)
         mask[0] = True
-        hand = self.get_hand(player)
-        zones = len(DEPLOY_ZONES[player])
         elixir = self.elixir[player]
-        for slot, card_name in enumerate(hand):
-            cost = cards_dic[card_name]["elisir"]
-            if elixir >= cost:
-                for zone_idx in range(zones):
-                    mask[1 + slot * zones + zone_idx] = True
+        for slot, card_name in enumerate(self.get_hand(player)):
+            if elixir < cards_dic[card_name]["elisir"]:
+                continue
+            for zone_idx in range(NUM_ZONES):
+                if self.zone_allows(player, card_name, zone_idx):
+                    mask[1 + slot * NUM_ZONES + zone_idx] = True
         return mask
 
     def render(self) -> None:

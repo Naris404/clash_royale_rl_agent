@@ -410,10 +410,10 @@ def draw_troop(surface: pygame.Surface, troop, scroll: tuple[int, int]) -> None:
 
 
 def draw_deploy_zones(surface: pygame.Surface, scroll: tuple[int, int]) -> None:
-    """Przerywane kółka = domyślne strefy rzutu (lewo / środek / prawo), nie przy wieżach."""
+    """Kółka = 11 stref akcji RL każdego gracza (wojska, pułapki pull i strefy czarów)."""
     for player, col in ((0, COL_P0), (1, COL_P1)):
-        for x, y in DEPLOY_ZONES[player]:
-            sx, sy = world_to_screen(x, y, scroll)
+        for zone in DEPLOY_ZONES[player]:
+            sx, sy = world_to_screen(zone.x, zone.y, scroll)
             pygame.draw.circle(surface, col, (sx, sy), max(6, int(10 * UI_SCALE)), 2)
 
     # Mosty — miejsce rzutu Hoga (jaśniejsze kółko)

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from cr_rl.game.board import (
+    ARENA_LENGTH,
     ARENA_WIDTH,
     BRIDGE_HALF_WIDTH,
     BRIDGE_LANE_X,
@@ -18,6 +19,7 @@ from cr_rl.game.board import (
     MAX_ELIXIR,
     NUM_ACTIONS,
     NUM_PLAYABLE_CARDS,
+    NUM_ZONES,
     OBS_DIM,
     OBS_GLOBAL_FEATURES,
     OBS_HAND_BASE,
@@ -63,6 +65,7 @@ class TestHands:
     def test_cycle_after_play_puts_card_at_queue_back(self):
         board = _board()
         board.elixir[0] = 10.0
+        _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
         hand = board.get_hand(0)
         played = hand[0]
         expected_next = board.hand_queue[0][0]
@@ -121,9 +124,82 @@ class TestPlayLegality:
         assert board.action_to_card_zone(0, 0) == (None, None)
         assert board.action_to_card_zone(1, 0) == ("Knight", 0)
         assert board.action_to_card_zone(2, 0) == ("Knight", 1)
-        assert board.action_to_card_zone(4, 0) == ("Giant", 0)
-        assert board.action_to_card_zone(12, 0) == ("Musketeer", 2)
-        assert board.action_to_card_zone(13, 0) == (None, None)  # poza zakresem
+        assert board.action_to_card_zone(12, 0) == ("Giant", 0)
+        assert board.action_to_card_zone(44, 0) == ("Musketeer", 10)
+        assert board.action_to_card_zone(45, 0) == (None, None)  # poza zakresem
+
+
+TROOP_ZONES_P0 = {
+    "back-L": (3.0, 4.5),
+    "back-R": (14.0, 4.5),
+    "mid-L": (3.0, 9.0),
+    "mid-R": (14.0, 9.0),
+    "bridge-L": (3.0, 14.0),
+    "bridge-R": (14.0, 14.0),
+    "pull-L": (5.5, 9.5),
+    "pull-R": (12.5, 9.5),
+}
+SPELL_ZONES_P0 = {
+    "spell-tower-L": (3.5, 24.0),
+    "spell-tower-R": (14.5, 24.0),
+    "spell-king": (9.0, 30.0),
+}
+
+
+class TestDeployZones:
+    def test_eleven_zones_per_side_with_pinned_coordinates(self):
+        assert NUM_ZONES == 11
+        zones = {z.name: z for z in DEPLOY_ZONES[0]}
+        assert len(DEPLOY_ZONES[0]) == len(DEPLOY_ZONES[1]) == 11
+        for name, (x, y) in {**TROOP_ZONES_P0, **SPELL_ZONES_P0}.items():
+            assert (zones[name].x, zones[name].y) == (x, y)
+
+    def test_player1_zones_mirror_player0_along_y(self):
+        for z0, z1 in zip(DEPLOY_ZONES[0], DEPLOY_ZONES[1]):
+            assert z1.name == z0.name
+            assert (z1.x, z1.y) == (z0.x, ARENA_LENGTH - z0.y)
+            assert z1.card_types == z0.card_types
+
+    def test_zones_carry_allowed_card_types(self):
+        for z in DEPLOY_ZONES[0]:
+            if z.name in SPELL_ZONES_P0:
+                assert z.card_types == frozenset({"spell"})
+            else:
+                assert z.card_types == frozenset({"ground", "building"})
+
+    def test_num_actions_is_noop_plus_slots_times_zones(self):
+        assert NUM_ACTIONS == 45 == 1 + HAND_SIZE * NUM_ZONES
+
+    @pytest.mark.parametrize("player", [0, 1])
+    def test_troop_zones_are_legal_placements(self, player):
+        board = _board()
+        for z in DEPLOY_ZONES[player]:
+            if z.name in TROOP_ZONES_P0:
+                assert board._in_deploy_zone(player, z.x, z.y), z.name
+
+    def test_play_card_uses_absolute_zone_coordinates(self):
+        board = _board()
+        board.elixir[0] = 10.0
+        _force_hand(board, 0, ["Cannon", "Giant", "Knight", "Musketeer"], ["Hog_Rider", "Fireball"])
+        pull_r = next(i for i, z in enumerate(DEPLOY_ZONES[0]) if z.name == "pull-R")
+        assert board.play_card(0, "Cannon", pull_r)
+        assert (board.troops[0].x, board.troops[0].y) == (12.5, 9.5)
+
+    def test_spell_cast_at_spell_zone_and_rejected_on_troop_zone(self):
+        board = _board()
+        board.elixir[0] = 10.0
+        _force_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Knight"])
+        names = [z.name for z in DEPLOY_ZONES[0]]
+        assert not board.play_card(0, "Fireball", names.index("mid-L"))
+        assert board.play_card(0, "Fireball", names.index("spell-tower-L"))
+        effect = board.spell_effects[0]
+        assert (effect.x, effect.y) == (3.5, 24.0)
+
+    def test_troop_rejected_on_spell_zone(self):
+        board = _board()
+        board.elixir[0] = 10.0
+        _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
+        assert not board.play_card(0, "Knight", [z.name for z in DEPLOY_ZONES[0]].index("spell-king"))
 
 
 class TestSpells:
@@ -227,6 +303,36 @@ class TestRiverAndBridges:
             assert np.hypot(x1 - x0, y1 - y0) <= max_step  # bez „cofania” przez rzekę
             if (RIVER_Y - RIVER_HALF_WIDTH) < y1 < (RIVER_Y + RIVER_HALF_WIDTH):
                 assert any(abs(x1 - bx) <= BRIDGE_HALF_WIDTH for bx in BRIDGE_LANE_X)
+
+    @pytest.mark.parametrize("lane", ["L", "R"])
+    def test_cannon_in_pull_zone_draws_hog_off_tower_lane(self, lane):
+        names = [z.name for z in DEPLOY_ZONES[0]]
+
+        def run(with_cannon: bool) -> tuple[Board, Troop]:
+            board = _board()
+            board.elixir = [10.0, 10.0]
+            _force_hand(board, 0, ["Cannon", "Knight", "Giant", "Musketeer"], ["Fireball", "Hog_Rider"])
+            _force_hand(board, 1, ["Hog_Rider", "Knight", "Giant", "Musketeer"], ["Fireball", "Cannon"])
+            if with_cannon:
+                assert board.play_card(0, "Cannon", names.index(f"pull-{lane}"))
+            assert board.play_card(1, "Hog_Rider", names.index(f"bridge-{lane}"))
+            hog = board.troops[-1]
+            for _ in range(80):
+                board.step(0, action_p1=0)
+            return board, hog
+
+        princess = lambda board: next(  # noqa: E731
+            t for t in board.towers
+            if t.owner == 0 and t.name == "Tower" and (t.x < ARENA_WIDTH / 2) == (lane == "L")
+        )
+
+        without, _ = run(with_cannon=False)
+        assert princess(without).hp < princess(without).max_hp  # bez Cannona Hog bije wieżę
+
+        board, hog = run(with_cannon=True)
+        cannon = next(t for t in board.troops if t.name == "Cannon")
+        assert princess(board).hp == princess(board).max_hp  # wieża nietknięta
+        assert cannon.hp < cannon.max_hp  # Hog zajęty Cannonem
 
     def test_hog_rider_jumps_river_in_straight_line(self):
         board = _board()
@@ -357,10 +463,20 @@ class TestRewardsAndObservations:
         board.elixir[0] = 3.0  # stać tylko na Knighta (3) i Cannona (3)
         mask = board.valid_action_mask(0)
         assert mask.shape == (NUM_ACTIONS,)
+        assert mask.dtype == np.bool_
         assert mask[0]
-        assert mask[1:4].all()  # Knight × 3 strefy
-        assert not mask[4:7].any()  # Giant (5) — za drogi
-        assert mask[7:10].all()  # Cannon (3)
+        assert mask[1:9].all() and not mask[9:12].any()  # Knight: 8 stref wojsk, 3 czarowe off
+        assert not mask[12:23].any()  # Giant (5) — za drogi
+        assert mask[23:31].all() and not mask[31:34].any()  # Cannon (3)
+        assert not mask[34:45].any()  # Musketeer (4) — za drogi
+
+    def test_action_mask_spell_only_on_spell_zones(self):
+        board = _board()
+        _force_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Knight"])
+        board.elixir[0] = 4.0
+        mask = board.valid_action_mask(0)
+        assert not mask[1:9].any() and mask[9:12].all()  # Fireball tylko na 3 strefach czarów
+        assert mask.sum() == 1 + 3 + 0 + 8 + 8  # noop + Fireball + Giant + Cannon + Musketeer
 
 
 class TestMirroredObservation:

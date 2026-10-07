@@ -163,8 +163,8 @@ def evaluate_state(coach: CoachEngine, sampled: dict, rollout_steps: int) -> dic
         card, _slot, zone = decode_action(board, 0, action)
         if card is None or zone is None:
             continue
-        x, y = DEPLOY_ZONES[0][zone]
-        grade = coach.grade_move(board, card, x, y, player=0)
+        target = DEPLOY_ZONES[0][zone]
+        grade = coach.grade_move(board, card, target.x, target.y, player=0)
         action_rows.append(
             {
                 "action": action,

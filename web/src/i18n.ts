@@ -167,9 +167,34 @@ export function gradeLabel(grade: string, lang: Lang): string {
 }
 
 export function zoneLabel(zone: number | null | undefined, lang: Lang): string {
-  const pl = ["lewa aleja", "środek", "prawa aleja"];
-  const en = ["left lane", "center", "right lane"];
-  if (zone == null || zone < 0 || zone > 2) return "";
+  // Order mirrors the server's DEPLOY_ZONES (see cr_rl.game.board).
+  const pl = [
+    "tył, lewa aleja",
+    "tył, prawa aleja",
+    "środek, lewa aleja",
+    "środek, prawa aleja",
+    "lewy most",
+    "prawy most",
+    "lewy punkt przyciągania (pull)",
+    "prawy punkt przyciągania (pull)",
+    "lewa wieża wroga",
+    "prawa wieża wroga",
+    "król wroga",
+  ];
+  const en = [
+    "back, left lane",
+    "back, right lane",
+    "mid, left lane",
+    "mid, right lane",
+    "left bridge",
+    "right bridge",
+    "left pull zone",
+    "right pull zone",
+    "enemy left tower",
+    "enemy right tower",
+    "enemy king",
+  ];
+  if (zone == null || zone < 0 || zone >= en.length) return "";
   return lang === "pl" ? pl[zone] : en[zone];
 }
 

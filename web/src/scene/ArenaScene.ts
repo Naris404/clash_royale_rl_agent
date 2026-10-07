@@ -175,8 +175,8 @@ export class ArenaScene {
 
     // strefy rzutu (dyskretne akcje RL) — delikatne punkty
     for (const zones of Object.values(config.deploy_zones)) {
-      for (const [zx, zy] of zones) {
-        const [sx, sy] = this.toScreen(zx, zy, l);
+      for (const zone of zones) {
+        const [sx, sy] = this.toScreen(zone.x, zone.y, l);
         bg.circle(sx, sy, 0.18 * l.tile).fill({ color: 0xffffff, alpha: 0.25 });
       }
     }
@@ -546,7 +546,7 @@ export class ArenaScene {
       this.hintRing.visible = false;
       return;
     }
-    const [sx, sy] = this.toScreen(zone[0], zone[1], l);
+    const [sx, sy] = this.toScreen(zone.x, zone.y, l);
     const pulse = 1 + 0.15 * Math.sin(now / 220);
     this.hintRing.clear();
     this.hintRing.circle(sx, sy, 1.1 * l.tile * pulse).stroke({ color: 0xfacc15, width: 3, alpha: 0.9 });
@@ -567,21 +567,24 @@ export class ArenaScene {
     const aw = config.arena_width;
     const al = config.arena_length;
 
+    const cardType = config.cards[card]?.type ?? "";
+    const zones = (config.deploy_zones["0"] ?? []).filter((z) => z.card_types.includes(cardType));
+    const zoneColor = isSpell ? 0xf97316 : 0x22c55e;
     if (isSpell) {
       this.deployOverlay
         .rect(l.ox + l.tile, l.oy + 2 * l.tile, (aw - 2) * l.tile, (al - 4) * l.tile)
-        .fill({ color: 0xf97316, alpha: 0.12 });
+        .fill({ color: zoneColor, alpha: 0.12 });
     } else {
       // połowa gracza (P0): y od 2 do river_y - 0.5 → ekran od góry
       const topY = al - (config.river_y - 0.5);
       const bottomY = al - 2;
       this.deployOverlay
         .rect(l.ox + l.tile, l.oy + topY * l.tile, (aw - 2) * l.tile, (bottomY - topY) * l.tile)
-        .fill({ color: 0x22c55e, alpha: 0.14 });
-      for (const [zx, zy] of config.deploy_zones["0"] ?? []) {
-        const [sx, sy] = this.toScreen(zx, zy, l);
-        this.deployOverlay.circle(sx, sy, 0.9 * l.tile).stroke({ color: 0x22c55e, width: 2, alpha: 0.7 });
-      }
+        .fill({ color: zoneColor, alpha: 0.14 });
+    }
+    for (const zone of zones) {
+      const [sx, sy] = this.toScreen(zone.x, zone.y, l);
+      this.deployOverlay.circle(sx, sy, 0.9 * l.tile).stroke({ color: zoneColor, width: 2, alpha: 0.7 });
     }
     this.deployOverlay.visible = true;
 

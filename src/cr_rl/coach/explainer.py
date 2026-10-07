@@ -9,11 +9,36 @@ from __future__ import annotations
 
 from typing import Optional
 
-from cr_rl.game.board import RIVER_Y, Board
+from cr_rl.game.board import DEPLOY_ZONES, RIVER_Y, Board
 
+# Keyed by DeployZone.name so the labels cannot drift from the zone layout.
 ZONE_NAMES = {
-    "pl": ("lewa aleja", "środek", "prawa aleja"),
-    "en": ("left lane", "center", "right lane"),
+    "pl": {
+        "back-L": "tył, lewa aleja",
+        "back-R": "tył, prawa aleja",
+        "mid-L": "środek, lewa aleja",
+        "mid-R": "środek, prawa aleja",
+        "bridge-L": "lewy most",
+        "bridge-R": "prawy most",
+        "pull-L": "lewy punkt przyciągania (pull)",
+        "pull-R": "prawy punkt przyciągania (pull)",
+        "spell-tower-L": "lewa wieża wroga",
+        "spell-tower-R": "prawa wieża wroga",
+        "spell-king": "król wroga",
+    },
+    "en": {
+        "back-L": "back, left lane",
+        "back-R": "back, right lane",
+        "mid-L": "mid, left lane",
+        "mid-R": "mid, right lane",
+        "bridge-L": "left bridge",
+        "bridge-R": "right bridge",
+        "pull-L": "left pull zone",
+        "pull-R": "right pull zone",
+        "spell-tower-L": "enemy left tower",
+        "spell-tower-R": "enemy right tower",
+        "spell-king": "enemy king",
+    },
 }
 
 DEFENSIVE_CARDS = frozenset({"Knight", "Cannon", "Musketeer"})
@@ -52,10 +77,9 @@ _REASONS = {
 
 
 def zone_name(zone_idx: int, lang: str = "pl") -> str:
-    names = ZONE_NAMES.get(lang, ZONE_NAMES["pl"])
-    if 0 <= zone_idx < len(names):
-        return names[zone_idx]
-    return str(zone_idx)
+    if not 0 <= zone_idx < len(DEPLOY_ZONES[0]):
+        return str(zone_idx)
+    return ZONE_NAMES.get(lang, ZONE_NAMES["pl"])[DEPLOY_ZONES[0][zone_idx].name]
 
 
 def build_reason(

@@ -6,15 +6,32 @@ Bez modelu na dysku używa losowych akcji z maską eliksiru (fallback).
 
 from __future__ import annotations
 
+import logging
 import random
 from pathlib import Path
 
 from cr_rl.paths import MODELS_DIR
 from typing import Optional
 
-from cr_rl.game.board import Board, NUM_ACTIONS
+from cr_rl.game.board import Board, NUM_ACTIONS, OBS_DIM
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_PATH = MODELS_DIR / "ppo_cr_best.zip"
+
+
+def load_compatible_model(path: Path):
+    """Load a MaskablePPO checkpoint; None when its action/observation layout is outdated."""
+    from sb3_contrib import MaskablePPO
+
+    model = MaskablePPO.load(str(path))
+    if model.action_space.n != NUM_ACTIONS or model.observation_space.shape != (OBS_DIM,):
+        logger.warning(
+            "Ignoring %s: trained for %s actions / obs %s, current layout is %d / (%d,)",
+            path, model.action_space.n, model.observation_space.shape, NUM_ACTIONS, OBS_DIM,
+        )
+        return None
+    return model
 
 
 class RandomAgent:
@@ -64,10 +81,8 @@ class RLAgent:
                 self._load_model(path)
 
     def _load_model(self, path: Path) -> None:
-        from sb3_contrib import MaskablePPO
-
-        self._model = MaskablePPO.load(str(path))
-        self._model_path = path
+        self._model = load_compatible_model(path)
+        self._model_path = path if self._model is not None else None
 
     @property
     def is_trained(self) -> bool:

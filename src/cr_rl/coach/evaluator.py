@@ -13,7 +13,7 @@ from typing import Optional
 
 import numpy as np
 
-from cr_rl.game.board import DEPLOY_ZONES, HAND_SIZE, Board
+from cr_rl.game.board import DEPLOY_ZONES, NUM_ZONES, Board
 from cr_rl.game.cards import cards_dic
 from cr_rl.coach.explainer import build_reason, format_hint
 from cr_rl.coach.inference import PolicyEstimate, PolicyInspector
@@ -43,20 +43,12 @@ INACCURACY_DELTA_V = -0.005
 KEY_MOMENT_DELTA_V = 0.01
 
 
-def is_spell(card_name: str) -> bool:
-    return cards_dic.get(card_name, {}).get("type") == "spell"
-
-
 def nearest_zone(player: int, card: str, x: float, y: float) -> int:
     """Mapuje dowolną pozycję rzutu na najbliższą dyskretną strefę akcji RL."""
     zones = DEPLOY_ZONES[player]
-    if is_spell(card):
-        # czar: liczy się aleja (X), Y i tak jest mirrorowany przez Board
-        return min(range(len(zones)), key=lambda i: abs(zones[i][0] - x))
-    return min(
-        range(len(zones)),
-        key=lambda i: (zones[i][0] - x) ** 2 + (zones[i][1] - y) ** 2,
-    )
+    card_type = cards_dic.get(card, {}).get("type")
+    allowed = [i for i, zone in enumerate(zones) if zone.allows(card_type)]
+    return min(allowed, key=lambda i: (zones[i].x - x) ** 2 + (zones[i].y - y) ** 2)
 
 
 def encode_action(board: Board, player: int, card: str, zone_idx: int) -> Optional[int]:
@@ -65,19 +57,16 @@ def encode_action(board: Board, player: int, card: str, zone_idx: int) -> Option
     if card not in hand:
         return None
     slot = hand.index(card)
-    zones = len(DEPLOY_ZONES[player])
-    if not 0 <= zone_idx < zones:
+    if not 0 <= zone_idx < NUM_ZONES:
         return None
-    return 1 + slot * zones + zone_idx
+    return 1 + slot * NUM_ZONES + zone_idx
 
 
 def decode_action(board: Board, player: int, action: int) -> tuple[Optional[str], Optional[int], Optional[int]]:
     """Akcja → (karta, slot ręki, strefa); (None, None, None) dla noop."""
     if action <= 0:
         return None, None, None
-    zones = len(DEPLOY_ZONES[player])
-    slot = (action - 1) // zones
-    zone_idx = (action - 1) % zones
+    slot, zone_idx = divmod(action - 1, NUM_ZONES)
     hand = board.get_hand(player)
     if slot >= len(hand):
         return None, None, None

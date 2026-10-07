@@ -13,6 +13,7 @@ from typing import Optional
 
 import numpy as np
 
+from cr_rl.agents.rl import load_compatible_model
 from cr_rl.game.board import NUM_ACTIONS, Board
 from cr_rl.paths import MODELS_DIR
 
@@ -48,10 +49,8 @@ class PolicyInspector:
                 self._load(path)
 
     def _load(self, path: Path) -> None:
-        from sb3_contrib import MaskablePPO
-
-        self._model = MaskablePPO.load(str(path))
-        self._model_path = path
+        self._model = load_compatible_model(path)
+        self._model_path = path if self._model is not None else None
 
     @property
     def available(self) -> bool:

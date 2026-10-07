@@ -67,7 +67,13 @@ def arena_config() -> dict:
         "river_half_width": RIVER_HALF_WIDTH,
         "bridge_lane_x": list(BRIDGE_LANE_X),
         "bridge_half_width": BRIDGE_HALF_WIDTH,
-        "deploy_zones": {str(p): [list(z) for z in zones] for p, zones in DEPLOY_ZONES.items()},
+        "deploy_zones": {
+            str(p): [
+                {"name": z.name, "x": z.x, "y": z.y, "card_types": sorted(z.card_types)}
+                for z in zones
+            ]
+            for p, zones in DEPLOY_ZONES.items()
+        },
         "tower_layout": {
             str(p): {k: list(v) for k, v in layout.items()} for p, layout in TOWER_LAYOUT.items()
         },
