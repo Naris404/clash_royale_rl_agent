@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues are tracked as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues are tracked in GitHub Issues for `Naris404/clash_royale_rl_agent` (via `gh` CLI or the GitHub MCP). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
