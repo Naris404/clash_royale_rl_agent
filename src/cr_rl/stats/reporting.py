@@ -59,7 +59,7 @@ def _read_json(path: Path) -> dict[str, Any] | None:
 
 
 def load_experiment_results(root: Path = EXPERIMENT_RUNS_DIR) -> list[dict[str, Any]]:
-    """Normalizuje artefakty sweep/curriculum/self-play do wspólnej listy."""
+    """Normalizuje artefakty sweep/curriculum do wspólnej listy."""
     rows: list[dict[str, Any]] = []
     if not root.is_dir():
         return rows
@@ -787,7 +787,7 @@ def main() -> None:
     parser.add_argument(
         "--experiments",
         action="store_true",
-        help="Dołącz wyniki sweep/curriculum/self-play i walidację trenera",
+        help="Dołącz wyniki sweep/curriculum i walidację trenera",
     )
     parser.add_argument("--no-json", action="store_true")
     args = parser.parse_args()

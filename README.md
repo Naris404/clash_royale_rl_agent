@@ -8,7 +8,6 @@ Uproszczona symulacja [Clash Royale](https://supercell.com/en/games/clashroyale/
 - **Dwa mosty** — jednostki nie przechodzą przez rzekę poza mostem (Hog skacze)
 - **6 kart w talii**, **4 na ręce** — kolejka bez duplikatów (jak w grze)
 - **Wieże** z zasięgiem ~7.5 kafelka; strzelają do wrogów zaraz po wejściu w range
-- **Wizualizacja pygame** z HUD, ręką kart i historią meczu (pauza + strzałki)
 - **`RLAgent`** — PPO (MaskablePPO) uczony przeciwko `LogicAgent`
 - **`LogicAgent`** — bot oparty na regułach (obrona, Hog, Cannon itd.)
 
@@ -36,28 +35,7 @@ cr-rl-evaluate --model models/ppo_cr_best.zip --episodes 100
 # Raport statystyk (logi TB, win rate, wykresy)
 cr-rl-stats
 cr-rl-stats --plot --episodes 100
-
-# Wizualizacja: P0 = agent RL, P1 = bot regułowy
-cr-rl-viz
-cr-rl-viz --model models/ppo_cr_best.zip
-
-# Mniejsze okno
-cr-rl-viz --scale 0.5
-
-# Wolniejsza / szybsza symulacja (1 s gry = X s u Ciebie)
-cr-rl-viz --tempo 1.0
 ```
-
-### Sterowanie (okno pygame)
-
-| Klawisz | Akcja |
-|---------|--------|
-| Spacja | Pauza / wznowienie |
-| `+` / `-` | Przyspieszenie / zwolnienie |
-| `[` / `]` | Zmiana tempa symulacji |
-| `←` / `→` (pauza) | Cofnij / do przód po historii meczu |
-| `↑` / `↓` (pauza) | Przesuń widok areny |
-| `Q` / Esc | Wyjście |
 
 ## Struktura projektu
 
@@ -70,9 +48,8 @@ clash_royale_rl_agent/
 │   ├── training/      # trening i ewaluacja
 │   ├── coach/         # sugestie i ocena ruchów
 │   ├── server/        # FastAPI i sesje WebSocket
-│   ├── experiments/   # sweep, curriculum i self-play
+│   ├── experiments/   # sweep, curriculum
 │   ├── stats/         # raporty oraz wykresy
-│   └── viz/           # wizualizacja pygame
 ├── web/               # React + PixiJS
 ├── tests/             # testy pytest
 ├── scripts/           # narzędzia deweloperskie
@@ -125,14 +102,12 @@ obs, reward, done, trunc, info = env.step(action)
 
 **Nagroda**: wyłącznie zmiana łącznego HP wież `(utrata wroga − utrata własna) / max_HP_wież`.
 
-`LogicAgent` używa `board.set_pending_play()` — w `gym_env` i `visualize.py` oba tryby są podłączone poprawnie.
+`LogicAgent` używa `board.set_pending_play()` — w `gym_env` oba tryby są podłączone poprawnie.
 
 ## Konfiguracja
 
 | Plik | Co zmienić |
 |------|------------|
-| `src/cr_rl/viz/pygame_viewer.py` → `UI_SCALE` | Rozmiar okna |
-| `src/cr_rl/viz/pygame_viewer.py` → `REAL_SECONDS_PER_SIM_SECOND` | Tempo symulacji |
 | `src/cr_rl/game/board.py` → `TOWER_LAYOUT`, `BRIDGE_LANE_X` | Pozycje wież / mostów |
 | `src/cr_rl/game/cards.py` → `cards_dic` | Statystyki kart |
 | `cr-rl-train --timesteps --n-envs` | Długość i równoległość treningu |

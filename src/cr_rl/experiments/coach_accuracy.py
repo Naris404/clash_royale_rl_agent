@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import platform
 import random
@@ -22,10 +23,27 @@ from cr_rl.agents.logic import LogicAgent
 from cr_rl.coach.evaluator import CoachEngine, decode_action
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.game.board import DEPLOY_ZONES, MAX_TOWER_HP_PER_PLAYER, Board
-from cr_rl.experiments.self_play import checkpoint_metadata
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
 
 RUN_DIR = EXPERIMENT_RUNS_DIR / "coach_accuracy"
+
+
+def checkpoint_metadata(path: str | Path) -> dict:
+    """Return portable provenance for a checkpoint used by an experiment."""
+    checkpoint = Path(path).expanduser().resolve()
+    if not checkpoint.is_file():
+        raise FileNotFoundError(f"Checkpoint does not exist: {checkpoint}")
+    digest = hashlib.sha256()
+    with checkpoint.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    stat = checkpoint.stat()
+    return {
+        "path": str(checkpoint),
+        "sha256": digest.hexdigest(),
+        "size_bytes": stat.st_size,
+        "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+    }
 
 
 def pairwise_ranking_accuracy(rows: Iterable[dict]) -> dict:

@@ -47,4 +47,5 @@ The Python backend owns simulation state and is the single source of truth. The 
 - KEEP CLEAN AND SIMPLE SOURCE CODE.
 
 ## IMPORTANT INFORMATION
-- Use Clash Royale API to get information about cards. API key is located in `.env` file
+- Card identity, elixir cost and icons come from the official Clash Royale API (key in `.env`). The API does not provide combat stats, so those come from a committed data file.
+- Everything in the repo (code, docs, comments, commit messages) is English unless the user says otherwise. The UI stays bilingual (PL/EN) with English as the default.

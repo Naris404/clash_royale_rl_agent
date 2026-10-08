@@ -8,6 +8,7 @@ from cr_rl.coach.evaluator import CoachEngine
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.coach.validate import pairwise_outcome_accuracy, play_graded_match
 from cr_rl.experiments.coach_accuracy import (
+    checkpoint_metadata,
     pairwise_ranking_accuracy,
     pearson_correlation,
     run_coach_accuracy,
@@ -15,11 +16,6 @@ from cr_rl.experiments.coach_accuracy import (
     top_action_accuracy,
 )
 from cr_rl.experiments import sweep
-from cr_rl.experiments.self_play import (
-    aggregate_match_results,
-    checkpoint_metadata,
-    run_self_play_trial,
-)
 from cr_rl.stats.reporting import load_experiment_results
 
 
@@ -88,33 +84,14 @@ def test_sweep_writes_reproducibility_manifest(tmp_path, monkeypatch) -> None:
     assert results[0]["seed"] == 17
 
 
-def test_self_play_checkpoint_metadata_and_aggregate(tmp_path) -> None:
+def test_checkpoint_metadata(tmp_path) -> None:
     checkpoint = tmp_path / "older.zip"
     checkpoint.write_bytes(b"fixed checkpoint bytes")
     metadata = checkpoint_metadata(checkpoint)
     assert metadata["path"] == str(checkpoint.resolve())
     assert len(metadata["sha256"]) == 64
-
-    metrics = aggregate_match_results(
-        [
-            {"winner": 0, "tower_hp_margin": 100.0, "steps": 10},
-            {"winner": 1, "tower_hp_margin": -40.0, "steps": 20},
-            {"winner": None, "tower_hp_margin": 0.0, "steps": 30},
-        ]
-    )
-    assert metrics["win_rate"] == pytest.approx(1 / 3)
-    assert metrics["mean_tower_hp_margin"] == pytest.approx(20.0)
-    assert metrics["mean_steps"] == pytest.approx(20.0)
-
-
-def test_self_play_trial_fails_fast_for_missing_checkpoint(tmp_path) -> None:
     with pytest.raises(FileNotFoundError, match="Checkpoint does not exist"):
-        run_self_play_trial(
-            tmp_path / "missing-candidate.zip",
-            tmp_path / "missing-older.zip",
-            episodes=1,
-            seed=1,
-        )
+        checkpoint_metadata(tmp_path / "missing.zip")
 
 
 def test_counterfactual_ranking_metrics() -> None:

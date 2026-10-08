@@ -33,7 +33,6 @@ ENV/
 *.swp
 *.swo
 *~
-.cursor/
 
 # OS
 Thumbs.db
@@ -69,3 +68,6 @@ web/dist/
 .env
 .env.*
 *.pem
+
+# Claude Code local settings
+.claude/settings.local.json

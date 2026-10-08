@@ -1,6 +1,6 @@
 # Mechanics freeze with a diagonal-movement exception
 
-Status: accepted (2026-09-28)
+Status: superseded by ADR-0003
 
 During the `/game` refactor and the RL rewrite, simulation mechanics (board, cards,
 elixir, combat, win conditions) stay semantically frozen so the v1 checkpoint and
