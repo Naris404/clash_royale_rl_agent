@@ -19,13 +19,15 @@ export function ArenaView({ store, onPlace }: Props) {
 
     const app = new Application();
     let scene: ArenaScene | null = null;
+    let initialised = false;
     let destroyed = false;
 
     app
       .init({ antialias: true, resizeTo: host, backgroundAlpha: 0 })
       .then(() => {
+        initialised = true;
         if (destroyed) {
-          app.destroy(true);
+          app.destroy(true, { children: true });
           return;
         }
         host.appendChild(app.canvas);
@@ -37,7 +39,8 @@ export function ArenaView({ store, onPlace }: Props) {
     return () => {
       destroyed = true;
       scene = null;
-      app.destroy(true, { children: true });
+      // Pixi cannot destroy a half-initialised app (StrictMode remount); init's then() does it.
+      if (initialised) app.destroy(true, { children: true });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
