@@ -1,11 +1,11 @@
 """
-Bot regułowy — decyzje przez scoring kandydatów (najwyższy wynik wygrywa).
+Rule-based bot — decisions by scoring candidates (highest score wins).
 
-Struktura:
-  BattleContext  — snapshot stanu planszy
-  PlayCandidate  — karta + pozycja + wynik + uzasadnienie
-  _rules_*       — generatory kandydatów (obrona, czary, kontra, atak, cycle)
-  LogicAgent     — kolejka combo + wybór najlepszego zagrania
+Structure:
+  BattleContext  — board state snapshot
+  PlayCandidate  — card + position + score + reason
+  _rules_*       — candidate generators (defense, spells, counter, attack, cycle)
+  LogicAgent     — combo queue + best-play selection
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from cr_rl.game.board import (
 
 from cr_rl.game.cards import PLAYABLE_CARDS, Troop, cards_dic
 
-# --- stałe mety (progi eliksiru + skala punktów reguł) ---
+# --- meta constants (elixir thresholds + rule score scale) ---
 
 ARENA_CENTER_X = 9.0
 CANNON_RIVER_DISTANCE = 5.0
@@ -48,23 +48,23 @@ SCORE_MID = 60.0
 SCORE_LOW = 40.0
 
 
-# --- modele decyzji ---
+# --- decision models ---
 
 
 @dataclass
 class PlayCandidate:
-    """Jeden możliwy ruch: karta, cel, wynik reguły, ewentualne kolejne tury."""
+    """One possible play: card, target, rule score, optional follow-up turns."""
     card: str
     x: float
     y: float
     score: float
     reason: str
-    followups: list[tuple[str, float, float]] = field(default_factory=list)  # combo na przyszłe tury
+    followups: list[tuple[str, float, float]] = field(default_factory=list)  # combo for future turns
 
 
 @dataclass
 class BattleContext:
-    """Snapshot planszy — reguły czytają tylko to, nie cały Board."""
+    """Board snapshot — rules read only this, not the whole Board."""
     board: Board
     player: int
     elixir: float
@@ -72,13 +72,13 @@ class BattleContext:
     time: float
     mine: list[Troop]
     enemies: list[Troop]
-    on_my_side: list[Troop]  # wrogowie już na naszej połowie
-    tower_threat: Optional[Troop]  # wróg celujący w naszą wieżę
-    under_threat: bool  # wróg blisko naszych wież
-    quiet: bool  # brak aktywnej walki — można pushować / cycle
+    on_my_side: list[Troop]  # enemies already on our half
+    tower_threat: Optional[Troop]  # enemy targeting our tower
+    under_threat: bool  # enemy close to our towers
+    quiet: bool  # no active fight — free to push / cycle
     late_game: bool
     own_cannon_alive: bool
-    open_lane: str  # Tower_L | Tower_R — słabsza / otwarta alejka wroga
+    open_lane: str  # Tower_L | Tower_R — weaker / open enemy lane
 
 
 RuleFn = Callable[["LogicAgent", BattleContext], list[PlayCandidate]]
@@ -87,8 +87,8 @@ RuleFn = Callable[["LogicAgent", BattleContext], list[PlayCandidate]]
 @dataclass
 class LogicAgent:
     """
-    Bot regułowy z scoringiem i kolejką combo (2-3 tury z wyprzedzeniem).
-  Używa board.set_pending_play() — dowolna pozycja na własnej połowie.
+    Rule-based bot with scoring and a combo queue (plans 2-3 turns ahead).
+  Uses board.set_pending_play() — any position on own half.
     """
 
     deck: list[str] = field(default_factory=lambda: list(PLAYABLE_CARDS))
@@ -96,9 +96,9 @@ class LogicAgent:
     last_decision: str = ""
 
     def choose_action(self, board: Board, player: int = 0) -> int:
-        play = self._decide_play(board, player)  # wybór karty+pozycji, nie indeksu akcji
-        board.set_pending_play(player, play)  # gra odczyta to w step()
-        return 0  # zawsze noop — rzeczywisty ruch idzie przez pending_play
+        play = self._decide_play(board, player)  # picks card+position, not an action index
+        board.set_pending_play(player, play)  # the game reads this in step()
+        return 0  # always noop — the real move goes through pending_play
 
     def reset(self) -> None:
         self._combo_queue.clear()
@@ -107,7 +107,7 @@ class LogicAgent:
     def _decide_play(
         self, board: Board, player: int
     ) -> Optional[tuple[str, float, float]]:
-        if self._combo_queue:  # najpierw dokończ zaplanowany combo (np. Giant→Musk→Hog)
+        if self._combo_queue:  # first finish the planned combo (e.g. Giant→Musk→Hog)
             card, x, y = self._combo_queue.popleft()
             if self._can_play(board, player, card, offensive=True, defensive=True):
                 self.last_decision = f"combo: {card}"
@@ -116,16 +116,16 @@ class LogicAgent:
         ctx = _build_context(board, player)
         candidates: list[PlayCandidate] = []
 
-        # każda reguła dorzuca kandydatów; kolejność = priorytet przy remisie score
+        # each rule adds candidates; order = priority on score ties
         for rule in (
-            _rules_critical_defense,  # Hog/Cannon/Giant — najwyższe score
+            _rules_critical_defense,  # Hog/Cannon/Giant — highest score
             _rules_spells,
             _rules_hog_counters,
             _rules_push_combos,
             _rules_tower_defense,
             _rules_lane_pressure,
             _rules_support_allies,
-            _rules_elixir_cycle,  # najniższe score — tylko gdy nic ważniejszego
+            _rules_elixir_cycle,  # lowest score — only when nothing more important
         ):
             candidates.extend(rule(self, ctx))
 
@@ -133,14 +133,14 @@ class LogicAgent:
             self.last_decision = "pass"
             return None
 
-        best = max(candidates, key=lambda c: c.score)  # wygrywa najwyższy score, nie pierwsza reguła
+        best = max(candidates, key=lambda c: c.score)  # highest score wins, not the first rule
         if best.followups:
-            self._combo_queue.extend(best.followups)  # zaplanuj następne tury z wyprzedzeniem
+            self._combo_queue.extend(best.followups)  # plan the next turns ahead
 
         self.last_decision = f"{best.card} ({best.score:.0f}): {best.reason}"
         return self._clamp_play(player, (best.card, best.x, best.y))
 
-    def _can_play(  # filtr: karta w ręce, eliksir, tryb ofensywny vs defensywny
+    def _can_play(  # filter: card in hand, elixir, offensive vs defensive mode
         self,
         board: Board,
         player: int,
@@ -162,7 +162,7 @@ class LogicAgent:
             return False
         return True
 
-    def _clamp_play(  # przytnij (x,y) do legalnej strefy deploy gracza
+    def _clamp_play(  # clamp (x,y) to the player's legal deploy zone
         self, player: int, play: tuple[str, float, float]
     ) -> tuple[str, float, float]:
         card, x, y = play
@@ -192,10 +192,10 @@ class LogicAgent:
             candidates.append(candidate)
 
 
-# --- reguły (scoring) ---
+# --- rules (scoring) ---
 
 
-def _rules_critical_defense(  # Knight/Cannon na Hoga i tank+ranged — score ~100
+def _rules_critical_defense(  # Knight/Cannon vs Hog and tank+ranged — score ~100
     agent: LogicAgent, ctx: BattleContext
 ) -> list[PlayCandidate]:
     out: list[PlayCandidate] = []
@@ -211,7 +211,7 @@ def _rules_critical_defense(  # Knight/Cannon na Hoga i tank+ranged — score ~1
                     PlayCandidate(
                         *knight,
                         SCORE_CRITICAL + 5,
-                        "Knight blokuje Hoga na naszej połowie",
+                        "Knight blocks Hog on our half",
                     )
                 )
             if not ctx.own_cannon_alive:
@@ -220,7 +220,7 @@ def _rules_critical_defense(  # Knight/Cannon na Hoga i tank+ranged — score ~1
                     PlayCandidate(
                         *cannon,
                         SCORE_CRITICAL,
-                        "Cannon na ścieżkę Hoga",
+                        "Cannon on the Hog's path",
                     )
                 )
 
@@ -233,7 +233,7 @@ def _rules_critical_defense(  # Knight/Cannon na Hoga i tank+ranged — score ~1
             PlayCandidate(
                 *cannon,
                 SCORE_CRITICAL - 5,
-                "Cannon na tanka + Musketeer w kolejce",
+                "Cannon on tank + Musketeer queued",
                 followups=[musk],
             )
         )
@@ -241,12 +241,12 @@ def _rules_critical_defense(  # Knight/Cannon na Hoga i tank+ranged — score ~1
     for enemy in ctx.enemies:
         if enemy.name == "Giant" and _at_river(enemy) and not ctx.own_cannon_alive:
             play = _cannon_vs_building_attacker(board, player, enemy)
-            out.append(PlayCandidate(*play, SCORE_HIGH, "Cannon na Gianta przy rzece"))
+            out.append(PlayCandidate(*play, SCORE_HIGH, "Cannon on Giant at the river"))
 
     return [c for c in out if agent._can_play(board, player, c.card, defensive=True)]
 
 
-def _rules_spells(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # Fireball: value trade, clustery, Giant+support
+def _rules_spells(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # Fireball: value trade, clusters, Giant+support
     out: list[PlayCandidate] = []
     board, player = ctx.board, ctx.player
 
@@ -255,7 +255,7 @@ def _rules_spells(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:
             continue
         play = _fireball_on_unit(enemy)
         score = SCORE_HIGH + 10 if enemy.hp <= FIREBALL_DAMAGE else SCORE_MID + 5
-        out.append(PlayCandidate(*play, score, "Fireball na Musketeer"))
+        out.append(PlayCandidate(*play, score, "Fireball on Musketeer"))
 
     cluster = _fireball_best_cluster(ctx.enemies)
     if cluster:
@@ -275,11 +275,11 @@ def _rules_spells(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:
                     PlayCandidate(
                         *_fireball_on_unit(enemy),
                         SCORE_MID,
-                        "Spokój — Fireball na wrogi Cannon",
+                        "Calm — Fireball on enemy Cannon",
                     )
                 )
 
-    # Giant + support za tankiem
+    # Giant + support behind the tank
     for enemy in ctx.enemies:
         if enemy.name != "Giant":
             continue
@@ -293,14 +293,14 @@ def _rules_spells(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:
                 PlayCandidate(
                     *play,
                     SCORE_HIGH,
-                    "Fireball na ranged za Giantem",
+                    "Fireball on ranged unit behind Giant",
                 )
             )
 
     return [c for c in out if agent._can_play(board, player, c.card, defensive=True)]
 
 
-def _rules_hog_counters(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # Hog drugą alejką gdy wróg ma Cannon
+def _rules_hog_counters(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # Hog down the other lane when the enemy has a Cannon
     out: list[PlayCandidate] = []
     board, player = ctx.board, ctx.player
 
@@ -312,14 +312,14 @@ def _rules_hog_counters(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandi
             PlayCandidate(
                 *play,
                 SCORE_HIGH + 5,
-                "Hog drugą alejką — wrogi Cannon zajęty",
+                "Hog down the other lane — enemy Cannon busy",
             )
         )
 
     return [c for c in out if agent._can_play(board, player, c.card, offensive=True)]
 
 
-def _rules_push_combos(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # Giant push + followupy albo solo Hog rush
+def _rules_push_combos(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # Giant push + follow-ups or a solo Hog rush
     out: list[PlayCandidate] = []
     board, player = ctx.board, ctx.player
 
@@ -333,7 +333,7 @@ def _rules_push_combos(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandid
             PlayCandidate(
                 *giant,
                 SCORE_HIGH if ctx.elixir >= ELIXIR_FULL else SCORE_MID + 10,
-                "Giant push — Musketeer + Hog w kolejce",
+                "Giant push — Musketeer + Hog queued",
                 followups=[musk_follow, hog_follow],
             )
         )
@@ -349,14 +349,14 @@ def _rules_push_combos(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandid
             PlayCandidate(
                 *play,
                 SCORE_MID + (10 if ctx.late_game else 0),
-                "Hog rush w otwartą alejkę",
+                "Hog rush into the open lane",
             )
         )
 
     return [c for c in out if agent._can_play(board, player, c.card, offensive=True)]
 
 
-def _rules_tower_defense(  # Knight na jednostkę bijącą wieżę lub świeżego ranged
+def _rules_tower_defense(  # Knight on a unit hitting the tower or a fresh ranged unit
     agent: LogicAgent, ctx: BattleContext
 ) -> list[PlayCandidate]:
     out: list[PlayCandidate] = []
@@ -368,7 +368,7 @@ def _rules_tower_defense(  # Knight na jednostkę bijącą wieżę lub świeżeg
     play = _knight_on_unit(board, player, ctx.tower_threat)
     if play:
         score = SCORE_HIGH + 8 if ctx.elixir < 4.0 else SCORE_MID + 15
-        out.append(PlayCandidate(*play, score, "Knight na jednostkę bijącą wieżę"))
+        out.append(PlayCandidate(*play, score, "Knight on unit hitting the tower"))
 
     for enemy in ctx.enemies:
         if not _ranged_just_crossed(enemy, player):
@@ -379,18 +379,18 @@ def _rules_tower_defense(  # Knight na jednostkę bijącą wieżę lub świeżeg
                 PlayCandidate(
                     *play,
                     SCORE_MID + 12,
-                    "Knight na świeżego ranged za rzeką",
+                    "Knight on fresh ranged unit behind the river",
                 )
             )
 
     return [c for c in out if agent._can_play(board, player, c.card, defensive=True)]
 
 
-def _rules_lane_pressure(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # placeholder — na razie pusto
+def _rules_lane_pressure(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # placeholder — empty for now
     return []
 
 
-def _rules_support_allies(  # Musketeer za Giantem/Knightem przy moście
+def _rules_support_allies(  # Musketeer behind Giant/Knight at the bridge
     agent: LogicAgent, ctx: BattleContext
 ) -> list[PlayCandidate]:
     out: list[PlayCandidate] = []
@@ -400,7 +400,7 @@ def _rules_support_allies(  # Musketeer za Giantem/Knightem przy moście
         if ally.name == "Giant" and _near_bridge(ally, player):
             play = _musketeer_behind_unit(player, ally, dist=3.5)
             out.append(
-                PlayCandidate(*play, SCORE_MID + 8, "Musketeer za Giantem przy moście")
+                PlayCandidate(*play, SCORE_MID + 8, "Musketeer behind Giant at the bridge")
             )
         if (
             ally.name == "Knight"
@@ -410,13 +410,13 @@ def _rules_support_allies(  # Musketeer za Giantem/Knightem przy moście
         ):
             play = _musketeer_behind_unit(player, ally, dist=3.5)
             out.append(
-                PlayCandidate(*play, SCORE_MID + 5, "Musketeer za Knightem na moście")
+                PlayCandidate(*play, SCORE_MID + 5, "Musketeer behind Knight at the bridge")
             )
 
     return [c for c in out if agent._can_play(board, player, c.card, offensive=True)]
 
 
-def _rules_elixir_cycle(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # leak/full + spokój → tanie karty za Kingiem
+def _rules_elixir_cycle(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandidate]:  # leak/full + calm → cheap cards behind the King
     out: list[PlayCandidate] = []
     board, player = ctx.board, ctx.player
 
@@ -432,7 +432,7 @@ def _rules_elixir_cycle(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandi
             PlayCandidate(
                 *play,
                 SCORE_LOW + (15 if leak else 8),
-                "Cycle: Musketeer za Kingiem",
+                "Cycle: Musketeer behind King",
             )
         )
         knight = _knight_behind_king(player)
@@ -440,14 +440,14 @@ def _rules_elixir_cycle(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandi
             PlayCandidate(
                 *knight,
                 SCORE_LOW + (12 if leak else 5),
-                "Cycle: Knight za Kingiem",
+                "Cycle: Knight behind King",
             )
         )
 
     if leak and not ctx.under_threat:
         play = _hog_rush_lane(board, player)
         out.append(
-            PlayCandidate(*play, SCORE_LOW + 10, "Leak — wymuszony Hog rush")
+            PlayCandidate(*play, SCORE_LOW + 10, "Leak — forced Hog rush")
         )
 
     return [
@@ -459,10 +459,10 @@ def _rules_elixir_cycle(agent: LogicAgent, ctx: BattleContext) -> list[PlayCandi
     ]
 
 
-# --- kontekst planszy ---
+# --- board context ---
 
 
-def _build_context(board: Board, player: int) -> BattleContext:  # jednorazowy snapshot dla wszystkich reguł
+def _build_context(board: Board, player: int) -> BattleContext:  # one-off snapshot for all rules
     enemy = 1 - player
     mine = _my_troops(board, player)
     enemies = _enemy_troops(board, player)
@@ -486,7 +486,7 @@ def _build_context(board: Board, player: int) -> BattleContext:  # jednorazowy s
     )
 
 
-def _open_lane(board: Board, player: int) -> str:  # alejka ze słabszą / jedyną żywą princess
+def _open_lane(board: Board, player: int) -> str:  # lane with the weaker / only living princess
     princesses = [
         t for t in _enemy_towers(board, player) if t.name == "Tower" and t.alive
     ]
@@ -504,7 +504,7 @@ def _fireball_hit_count(
     return sum(1 for e in enemies if e.distance_to_xy(cx, cy) <= radius)
 
 
-# --- helpers stanu planszy ---
+# --- board state helpers ---
 
 
 def _my_troops(board: Board, player: int) -> list[Troop]:
@@ -620,7 +620,7 @@ def _lane_for_tower(tower: Troop) -> str:
     return "Tower_R"
 
 
-def _is_quiet_board(board: Board, player: int) -> bool:  # nikt nie walczy na moście / naszej połowie
+def _is_quiet_board(board: Board, player: int) -> bool:  # nobody fighting on the bridge / our half
     active_enemies = [
         e
         for e in _enemy_troops(board, player)
@@ -640,7 +640,7 @@ def _is_quiet_board(board: Board, player: int) -> bool:  # nikt nie walczy na mo
     return True
 
 
-# --- pozycjonowanie kart ---
+# --- card positioning ---
 
 
 def _giant_push_lane(board: Board, player: int) -> tuple[str, float, float]:

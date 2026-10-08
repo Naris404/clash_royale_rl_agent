@@ -1,4 +1,4 @@
-"""Przyspieszony mecz — screenshoty końcówki + modala podsumowania.
+"""Fast-forwarded match — screenshots of the endgame and the summary modal.
 
   python scripts/fast_forward.py --url http://localhost:8000 --out screenshots
 """
@@ -26,14 +26,14 @@ def main() -> None:
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.goto(args.url)
         page.wait_for_timeout(600)
-        page.click("text=Trening z trenerem")
+        page.click("text=Training with coach")
         page.wait_for_timeout(2000)
 
         # 2× tempo
         page.click(".speed-group >> text=2×")
         page.wait_for_timeout(300)
 
-        # kilka zagrań w trakcie meczu
+        # a few plays during the match
         box = page.locator(".arena-canvas canvas").bounding_box()
         plays = 0
         deadline = time_left = args.timeout_s
@@ -46,7 +46,7 @@ def main() -> None:
                 page.screenshot(path=out / "5_summary_modal.png")
                 modal_shot = True
                 break
-            # zagraj losową dostępną kartę co ~2.5 s
+            # play a random available card every ~2.5 s
             cards = page.locator(".card:not(.card-disabled)")
             if box and cards.count() > 0 and plays < 40:
                 try:
@@ -58,7 +58,7 @@ def main() -> None:
             page.wait_for_timeout(2500)
 
         page.screenshot(path=out / "6_end_state.png")
-        print(f"modal: {modal_shot}, zagrane karty: {plays}")
+        print(f"modal: {modal_shot}, cards played: {plays}")
         browser.close()
 
 

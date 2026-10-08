@@ -1,9 +1,9 @@
-"""Curriculum learning: faza 1 vs RandomAgent, faza 2 vs LogicAgent.
+"""Curriculum learning: phase 1 vs RandomAgent, phase 2 vs LogicAgent.
 
-Hipoteza: łatwy przeciwnik na starcie uczy podstaw (zagrywanie kart, eliksir),
-trudniejszy docenia taktykę. Porównanie z baseline w rozdziale eksperymentów.
+Hypothesis: an easy opponent at the start teaches the basics (playing cards, elixir),
+a harder one rewards tactics. Compared with the baseline in the experiments chapter.
 
-Uruchomienie:
+Usage:
   python -m experiments.curriculum --phase1 300000 --phase2 700000
 """
 
@@ -32,7 +32,7 @@ def train_curriculum(
 ) -> MaskablePPO:
     RUN_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"=== Faza 1: vs RandomAgent ({phase1_timesteps:,} kroków) ===")
+    print(f"=== Phase 1: vs RandomAgent ({phase1_timesteps:,} steps) ===")
     env_random = make_vec_training_env(n_envs, seed, opponent="random")
     model = MaskablePPO(
         "MlpPolicy",
@@ -51,7 +51,7 @@ def train_curriculum(
     model.learn(total_timesteps=phase1_timesteps, progress_bar=True)
     env_random.close()
 
-    print(f"=== Faza 2: vs LogicAgent ({phase2_timesteps:,} kroków) ===")
+    print(f"=== Phase 2: vs LogicAgent ({phase2_timesteps:,} steps) ===")
     env_logic = make_vec_training_env(n_envs, seed + 1000, opponent="logic")
     eval_env = make_training_env(seed + 10_000, opponent="logic")
     model.set_env(env_logic)
@@ -74,7 +74,7 @@ def train_curriculum(
 
     final_path = RUN_DIR / "ppo_cr_curriculum_final.zip"
     model.save(str(final_path))
-    print(f"Zapisano: {final_path}")
+    print(f"Saved: {final_path}")
     return model
 
 

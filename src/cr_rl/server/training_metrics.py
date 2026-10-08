@@ -100,7 +100,7 @@ def read_training_metrics(
         reverse=True,
     )
     return {
-        # Ewaluacja 50 epizodów potrafi wstrzymać zapis TB na kilka minut.
+        # Evaluating 50 episodes can stall TB writes for a few minutes.
         "training": time.time() - latest_update < 300.0,
         "latest_run": latest.name,
         "latest_step": latest_step,

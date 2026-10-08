@@ -1,4 +1,4 @@
-"""Testy backendu — REST, protokół WS, logika sesji."""
+"""Backend tests — REST, WS protocol, session logic."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from cr_rl.server.sessions import (
 
 @pytest.fixture()
 def inspector() -> PolicyInspector:
-    # bez modelu — trener heurystyczny, testy deterministyczne i szybkie
+    # no model — heuristic coach, tests are deterministic and fast
     return PolicyInspector(model_path=None)
 
 
@@ -98,8 +98,8 @@ class TestGameSession:
         hits = []
         for _ in range(30):
             hits.extend(session.tick()[0].hits)
-        assert any(not h.ranged and h.owner == 0 for h in hits)  # rycerz → wieża
-        assert any(h.ranged and h.owner == 1 for h in hits)  # wieża → rycerz
+        assert any(not h.ranged and h.owner == 0 for h in hits)  # knight → tower
+        assert any(h.ranged and h.owner == 1 for h in hits)  # tower → knight
 
     def test_coach_mode_emits_hint(self, inspector):
         session = GameSession("s2", MODE_COACH, inspector, seed=1)

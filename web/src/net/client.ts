@@ -13,7 +13,7 @@ export async function createSession(mode: string, lang: string): Promise<Session
     body: JSON.stringify({ mode, lang }),
   });
   if (!response.ok) {
-    throw new Error(`Nie udało się utworzyć sesji: ${response.status}`);
+    throw new Error(`Failed to create session: ${response.status}`);
   }
   return response.json();
 }

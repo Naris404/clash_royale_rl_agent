@@ -18,10 +18,10 @@ from cr_rl.game.cards import (
     cards_dic,
 )
 
-# Plansza: 1 jednostka ≈ 1 kafelek (tile) w Clash Royale.
-# Oficjalna arena CR: 18 kafelków szerokości × 32 długości (wiki / datamining).
-ARENA_WIDTH = 18.0   # kafelki w poziomie (oś X)
-ARENA_LENGTH = 32.0  # kafelki w pionie (oś Y); rzeka na Y = 16
+# Board: 1 unit ≈ 1 tile in Clash Royale.
+# Official CR arena: 18 tiles wide × 32 tiles long (wiki / datamining).
+ARENA_WIDTH = 18.0   # tiles horizontally (X axis)
+ARENA_LENGTH = 32.0  # tiles vertically (Y axis); river at Y = 16
 TICK_DT = 0.1
 MAX_ELIXIR = 10.0
 START_ELIXIR = 5.0
@@ -29,7 +29,7 @@ ELIXIR_PER_SECOND = 1.0 / 2.8
 MATCH_TIME_LIMIT = 180.0
 RIVER_Y = ARENA_LENGTH / 2
 RIVER_HALF_WIDTH = 1.2
-# Dwa mosty (lewy / prawy) — oś alejki = środek pasa (lewy pas: kolumny 2–4, wieża L przy x≈3.5).
+# Two bridges (left / right) — lane axis = lane center (left lane: columns 2–4, tower L at x≈3.5).
 BRIDGE_LANE_X = (3.0, 14.0)
 BRIDGES = [(BRIDGE_LANE_X[0], RIVER_Y), (BRIDGE_LANE_X[1], RIVER_Y)]
 BRIDGE_HALF_WIDTH = 1.8
@@ -38,8 +38,8 @@ BRIDGE_BANK_Y_OFFSET = RIVER_HALF_WIDTH + 0.3
 DEFAULT_SIGHT_RANGE = 9.5
 RANGED_MIN_RANGE = 2.0  # range above melee → hit is shown as a projectile
 
-# Wieże (jak w CR): princess ~6 kafelków od rzeki, król z tyłu.
-# P0 = dół (y rośnie w górę), P1 = góra.
+# Towers (as in CR): princess ~6 tiles from the river, king at the back.
+# P0 = bottom (y grows upward), P1 = top.
 TOWER_LAYOUT = {
     0: {
         "Tower_L": (3.5, 8.0),
@@ -93,19 +93,19 @@ NUM_ZONES = len(_P0_ZONES)
 
 HAND_SIZE = 4
 NUM_PLAYABLE_CARDS = len(PLAYABLE_CARDS)
-NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + slot ręki (0..3) × strefa (45)
+NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (44 plays)
 MAX_UNITS_OBS = 24
 
-# Segmenty wektora obserwacji — jawne offsety zamiast "magicznych" indeksów.
-OBS_GLOBAL_FEATURES = 3  # eliksir P0, eliksir P1, czas
-OBS_TOWER_FEATURES = 6  # HP 6 wież (layout: P0 L/R/King, P1 L/R/King)
+# Observation vector segments — explicit offsets instead of "magic" indices.
+OBS_GLOBAL_FEATURES = 3  # P0 elixir, P1 elixir, time
+OBS_TOWER_FEATURES = 6  # HP of the 6 towers (layout: P0 L/R/King, P1 L/R/King)
 OBS_HAND_BASE = OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES
 OBS_HAND_FEATURES = HAND_SIZE * NUM_PLAYABLE_CARDS
 OBS_UNIT_BASE = OBS_HAND_BASE + OBS_HAND_FEATURES
 OBS_UNIT_FEATURES = MAX_UNITS_OBS * 5
 OBS_DIM = OBS_UNIT_BASE + OBS_UNIT_FEATURES
 
-# Skala nagrody za utratę HP wież (suma max HP jednego gracza: 2× princess + king).
+# Reward scale for tower HP loss (one player's total max HP: 2× princess + king).
 MAX_TOWER_HP_PER_PLAYER = (
     2 * float(cards_dic["Tower"]["hp"]) + float(cards_dic["King_Tower"]["hp"])
 )
@@ -122,7 +122,7 @@ class StepResult:
 
 @dataclass
 class SpellEffect:
-    """Aktywny efekt czaru na planszy (do animacji / podglądu)."""
+    """Active spell effect on the board (for animation / preview)."""
 
     card: str
     x: float
@@ -151,13 +151,13 @@ class HitEvent:
 
 class Board:
     """
-    Uproszczone środowisko Clash Royale pod RL.
+    Simplified Clash Royale environment for RL.
 
     Akcja (int 0..44):
-      0 — nic nie rób
-      1..44 — zagraj kartę (slot ręki 0..3 × strefa 0..10); tylko 4 karty na ręce (cykl z 6)
+      0 — do nothing
+      1..44 — play a card (hand slot 0..3 × zone 0..10); only 4 cards in hand (cycle of 6)
 
-    Gracz 0 uczy się; gracz 1 domyślnie losowy bot (można podpiąć drugi model).
+    Player 0 learns; player 1 is a random bot by default (a second model can be plugged in).
     """
 
     def __init__(
@@ -222,7 +222,7 @@ class Board:
         return self.deck_p0 if player == 0 else self.deck_p1
 
     def _init_hands(self) -> None:
-        """6 unikalnych kart w kolejce: 4 na ręce, po rzucie karta wraca na koniec (bez duplikatów)."""
+        """6 unique cards in the queue: 4 in hand; after a play the card returns to the end (no duplicates)."""
         for player in (0, 1):
             cards = list(dict.fromkeys(self._full_deck(player)))
             self._rng.shuffle(cards)
@@ -317,7 +317,7 @@ class Board:
         ]
 
     def can_play_card_at(self, player: int, card_name: str, x: float, y: float) -> bool:
-        """Sprawdza zagranie bez modyfikowania stanu planszy."""
+        """Checks a play without modifying the board state."""
         if self.done or not self.card_in_hand(player, card_name):
             return False
         stats = cards_dic.get(card_name)
@@ -353,7 +353,7 @@ class Board:
         return hand[slot], zone_idx
 
     def zone_allows(self, player: int, card_name: str, zone_idx: int) -> bool:
-        """Czy karta tego typu może być zagrana w strefie (bez eliksiru i ręki)."""
+        """Whether a card of this type can be played in the zone (ignoring elixir and hand)."""
         if not 0 <= zone_idx < NUM_ZONES:
             return False
         card_type = cards_dic.get(card_name, {}).get("type")
@@ -388,7 +388,7 @@ class Board:
         self._simulate_combat(TICK_DT)
 
         tower_delta = self._tower_hp_delta(towers_before)
-        # Nagroda wyłącznie z HP wież: utrata wroga (+) minus utrata własna (-).
+        # Reward comes only from tower HP: enemy loss (+) minus own loss (-).
         reward = (tower_delta[0] - tower_delta[1]) / MAX_TOWER_HP_PER_PLAYER
 
         self._remove_dead()
@@ -415,7 +415,7 @@ class Board:
         if pending is not None:
             card, x, y = pending
             if not self.play_card_at(player, card, x, y) and not self._is_spell(card):
-                # Zapas: środek własnej połowy (np. Cannon przy rzece)
+                # Fallback: middle of own half (e.g. Cannon near the river)
                 logger.warning(
                     "P%d: pending play %s at (%.1f, %.1f) illegal — fallback to mid",
                     player, card, x, y,
@@ -487,7 +487,7 @@ class Board:
         return self._path_waypoint(troop, target.x, target.y)
 
     def _enforce_no_river_cut(self, troop: Troop) -> None:
-        """Cofa jednostkę, jeśli weszła w rzekę poza mostem."""
+        """Pushes a unit back if it entered the river outside a bridge."""
         if getattr(troop, "jumps_river", False):
             return
         if troop.is_building and troop.speed <= 0:
@@ -503,7 +503,7 @@ class Board:
             troop.y = RIVER_Y + RIVER_HALF_WIDTH + 0.2
 
     def find_nearest_target(self, troop: Troop) -> Optional[Troop]:
-        """Cel tylko w zasięgu wzroku (~9.5 kafelka w CR) — bez cross-lane aggro z drugiej strony."""
+        """Target only within sight range (~9.5 tiles in CR) — no cross-lane aggro from the other side."""
         best: Optional[Troop] = None
         best_dist = float("inf")
         sight = getattr(troop, "sight_range", DEFAULT_SIGHT_RANGE)
@@ -520,12 +520,12 @@ class Board:
         return best
 
     def get_push_waypoint(self, troop: Troop) -> tuple[float, float]:
-        """Marsz alejką w stronę wrogiego King Tower, gdy nic nie jest w zasięgu wzroku."""
+        """Marches along the lane toward the enemy King Tower when nothing is in sight range."""
         kx, ky = TOWER_LAYOUT[1 - troop.owner]["King_Tower"]
         return self._path_waypoint(troop, kx, ky)
 
     def find_tower_target(self, tower: Troop) -> Optional[Troop]:
-        """Wieża strzela do najbliższego wroga w zasięgu (nie do celu poza range)."""
+        """The tower shoots the nearest enemy in range (never a target out of range)."""
         best: Optional[Troop] = None
         best_dist = float("inf")
         for enemy in self.troops:
@@ -542,7 +542,7 @@ class Board:
         return best
 
     def _simulate_combat(self, dt: float) -> tuple[float, float]:
-        """Zwraca (obrażenia zadane przez P0, obrażenia otrzymane przez P0)."""
+        """Returns (damage dealt by P0, damage taken by P0)."""
         dealt_p0 = 0.0
         taken_p0 = 0.0
 
@@ -625,7 +625,7 @@ class Board:
 
     def _tower_hp_delta(self, before: dict[int, float]) -> tuple[float, float]:
         after = self._tower_hp_snapshot()
-        # (korzyść P0, korzyść P1) w sensie utraty HP przeciwnika
+        # (P0 gain, P1 gain) in terms of the opponent's HP loss
         enemy_loss_p0 = before[1] - after[1]
         enemy_loss_p1 = before[0] - after[0]
         return enemy_loss_p0, enemy_loss_p1
@@ -660,11 +660,11 @@ class Board:
         return False, False
 
     def get_observation(self, player: int) -> np.ndarray:
-        """Wektor stanu z perspektywy `player`.
+        """State vector from `player`'s perspective.
 
-        Dla player=1 widok jest lustrzany: własne wieże na początku segmentu,
-        pozycje jednostek obrócone o 180° (x' = W - x, y' = L - y) — dzięki temu
-        model trenowany jako P0 może grać też jako P1.
+        For player=1 the view is mirrored: own towers at the start of the segment,
+        unit positions rotated by 180° (x' = W - x, y' = L - y) — so that a
+        model trained as P0 can also play as P1.
         """
         obs = np.zeros(OBS_DIM, dtype=np.float32)
         enemy = 1 - player
@@ -703,7 +703,7 @@ class Board:
         return obs
 
     def valid_action_mask(self, player: int = 0) -> np.ndarray:
-        """Maska legalnych akcji: noop + (karta, strefa) gdy stać na kartę i strefa przyjmuje jej typ."""
+        """Legal action mask: noop + (card, zone) when the card is affordable and the zone accepts its type."""
         mask = np.zeros(NUM_ACTIONS, dtype=np.bool_)
         mask[0] = True
         elixir = self.elixir[player]
@@ -742,7 +742,7 @@ def run_random_episode(steps: int = 500, seed: int = 0) -> None:
         total_reward += result.reward
         if result.terminated or result.truncated:
             break
-    print(f"Koniec meczu: winner={env.winner}, reward={total_reward:.3f}, steps={env.time:.1f}s")
+    print(f"Match over: winner={env.winner}, reward={total_reward:.3f}, steps={env.time:.1f}s")
 
 
 if __name__ == "__main__":

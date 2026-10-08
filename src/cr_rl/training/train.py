@@ -1,7 +1,7 @@
 """
 Trening PPO (MaskablePPO) — agent RL vs LogicAgent.
 
-Uruchomienie:
+Usage:
   python train.py
   python train.py --timesteps 500000 --n-envs 8
   python evaluate.py --model models/ppo_cr_best.zip
@@ -49,7 +49,7 @@ def make_vec_training_env(n_envs: int, seed: int, opponent: str = "logic") -> Du
 
 
 class WinRateCallback(BaseCallback):
-    """Loguje % wygranych P0 w ostatnich meczach (z bufora info env)."""
+    """Logs P0's win % over recent matches (from the env info buffer)."""
 
     def __init__(self, window: int = 200, verbose: int = 0):
         super().__init__(verbose)
@@ -140,11 +140,11 @@ def train(
 
     final_path = model_dir / "ppo_cr_final.zip"
     model.save(str(final_path))
-    print(f"Zapisano model koncowy: {final_path}")
+    print(f"Saved final model: {final_path}")
 
     best_eval = model_dir / "best_model.zip"
     if best_eval.exists() and model_dir == DEFAULT_MODEL_DIR:
-        # tylko główny trening aktualizuje ppo_cr_best.zip — sweepi mają własne katalogi
+        # only the main training updates ppo_cr_best.zip — sweeps have their own directories
         import shutil
 
         shutil.copy2(best_eval, DEFAULT_BEST_PATH)
@@ -214,13 +214,13 @@ def main() -> None:
     parser.add_argument("--n-envs", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--resume", type=str, default=None, help="Sciezka do .zip aby wznowic trening")
+    parser.add_argument("--resume", type=str, default=None, help="Path to a .zip to resume training")
     parser.add_argument(
         "--eval-only",
         type=str,
         default=None,
         metavar="MODEL.zip",
-        help="Tylko ewaluacja wytrenowanego modelu",
+        help="Evaluate the trained model only",
     )
     parser.add_argument("--eval-episodes", type=int, default=100)
     args = parser.parse_args()
@@ -228,10 +228,10 @@ def main() -> None:
     if args.eval_only:
         stats = evaluate_model(args.eval_only, n_episodes=args.eval_episodes)
         print(
-            f"Wynik vs LogicAgent ({stats['episodes']} meczy): "
-            f"wygrane={stats['wins']} przegrane={stats['losses']} remisy={stats['draws']} "
+            f"Result vs LogicAgent ({stats['episodes']} matches): "
+            f"wins={stats['wins']} losses={stats['losses']} draws={stats['draws']} "
             f"win_rate={stats['win_rate']:.1%} "
-            f"srednia_nagroda={stats['mean_reward']:.4f}"
+            f"mean_reward={stats['mean_reward']:.4f}"
         )
         return
 

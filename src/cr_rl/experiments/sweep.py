@@ -1,9 +1,9 @@
-"""Sweep hiperparametrów — tabela wyników do rozdziału eksperymentalnego pracy.
+"""Hyperparameter sweep — results table for the thesis experiments chapter.
 
-Każda konfiguracja trenuje do własnego katalogu experiments/runs/<nazwa>/,
-potem ewaluacja vs LogicAgent. Wynik: results.json + tabela w konsoli.
+Each configuration trains into its own directory experiments/runs/<name>/,
+then evaluation vs LogicAgent. Output: results.json + a console table.
 
-Uruchomienie:
+Usage:
   python -m experiments.sweep --timesteps 1000000 --configs baseline low_lr
   python -m experiments.sweep --timesteps 20000 --n-envs 2 --eval-episodes 20  # smoke
 """
@@ -45,7 +45,7 @@ def run_sweep(
     for name in configs:
         overrides = CONFIGS.get(name)
         if overrides is None:
-            print(f"Pominięto nieznaną konfigurację: {name}")
+            print(f"Skipped unknown configuration: {name}")
             continue
 
         run_dir = RUNS_DIR / name
@@ -67,7 +67,7 @@ def run_sweep(
             json.dumps(manifest, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        print(f"\n=== [{name}] trening {timesteps:,} kroków → {run_dir} ===")
+        print(f"\n=== [{name}] training {timesteps:,} steps → {run_dir} ===")
         train(
             timesteps=timesteps,
             n_envs=n_envs,
@@ -79,7 +79,7 @@ def run_sweep(
         best = run_dir / "best_model.zip"
         final = run_dir / "ppo_cr_final.zip"
         model_path = best if best.is_file() else final
-        print(f"=== [{name}] ewaluacja ({model_path.name}, {eval_episodes} meczy) ===")
+        print(f"=== [{name}] evaluation ({model_path.name}, {eval_episodes} matches) ===")
         stats = evaluate_model(model_path, n_episodes=eval_episodes, seed=seed + 500)
 
         results.append(
@@ -99,8 +99,8 @@ def run_sweep(
 
 
 def print_table(results: list[dict]) -> None:
-    print("\n=== Wyniki sweepu (vs LogicAgent) ===")
-    header = f"{'konfiguracja':<16} {'win_rate':>9} {'W':>4} {'L':>4} {'D':>4} {'nagroda':>9}"
+    print("\n=== Sweep results (vs LogicAgent) ===")
+    header = f"{'configuration':<16} {'win_rate':>9} {'W':>4} {'L':>4} {'D':>4} {'reward':>9}"
     print(header)
     print("-" * len(header))
     for row in sorted(results, key=lambda r: -r["win_rate"]):
@@ -111,7 +111,7 @@ def print_table(results: list[dict]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Sweep hiperparametrów PPO")
+    parser = argparse.ArgumentParser(description="PPO hyperparameter sweep")
     parser.add_argument("--timesteps", type=int, default=1_000_000)
     parser.add_argument("--n-envs", type=int, default=8)
     parser.add_argument("--eval-episodes", type=int, default=100)
@@ -141,7 +141,7 @@ def main() -> None:
         "results": results,
     }
     out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\nZapisano: {out}")
+    print(f"\nSaved: {out}")
 
 
 if __name__ == "__main__":

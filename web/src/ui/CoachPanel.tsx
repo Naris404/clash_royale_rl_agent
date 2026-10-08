@@ -6,7 +6,7 @@ interface Props {
   strings: Strings;
 }
 
-/** Panel trenera: podpowiedź, pasek oceny pozycji, kluczowe momenty. */
+/** Coach panel: hint, position eval bar, key moments. */
 export function CoachPanel({ store, strings }: Props) {
   const hint = store.hint;
   const evalValue = store.normalizedValue();

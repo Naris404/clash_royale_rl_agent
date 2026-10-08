@@ -13,7 +13,7 @@ function screenFromPath(): Screen {
 }
 
 export default function App() {
-  const [lang, setLang] = useState<Lang>("pl");
+  const [lang, setLang] = useState<Lang>("en");
   const [screen, setScreen] = useState<Screen>(screenFromPath);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export default function App() {
       socketRef.current!.close();
       storeRef.current! = new GameStore();
       const session = await createSession(mode, lang);
-      // podmień subskrypcję na nowy store
+      // swap the subscription to the new store
       const socket = socketRef.current!;
       socket.connect(session.session_id);
       socket.onMessage((msg) => storeRef.current!.apply(msg));

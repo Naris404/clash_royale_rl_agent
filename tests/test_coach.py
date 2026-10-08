@@ -1,4 +1,4 @@
-"""Testy CoachEngine — sugestie, ocena zagrań, kluczowe momenty, fallback."""
+"""CoachEngine tests — suggestions, play grading, key moments, fallback."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def _force_hand(board: Board, player: int, hand: list[str], queue: list[str]) ->
 
 @pytest.fixture(scope="module")
 def untrained_model_path(tmp_path_factory):
-    """Świeży (nietrenowany) MaskablePPO — testuje ścieżkę NN bez treningu."""
+    """Fresh (untrained) MaskablePPO — exercises the NN path without training."""
     from sb3_contrib import MaskablePPO
     from sb3_contrib.common.wrappers import ActionMasker
 
@@ -70,7 +70,7 @@ class TestActionMapping:
         assert _zone_name(nearest_zone(0, "Fireball", 3.2, 25.0)) == "spell-tower-L"
         assert _zone_name(nearest_zone(0, "Fireball", 13.8, 25.0)) == "spell-tower-R"
         assert _zone_name(nearest_zone(0, "Fireball", 9.0, 28.0)) == "spell-king"
-        assert _zone_name(nearest_zone(0, "Fireball", 3.0, 9.0)) == "spell-tower-L"  # nie "mid-L"
+        assert _zone_name(nearest_zone(0, "Fireball", 3.0, 9.0)) == "spell-tower-L"  # not "mid-L"
 
     def test_nearest_zone_for_player1_mirrors(self):
         assert _zone_name(nearest_zone(1, "Knight", 3.0, 23.0)) == "mid-L"
@@ -205,7 +205,7 @@ class TestNeuralPath:
         board.elixir[0] = 10.0
         suggestion = coach.suggest(board)
         if suggestion.card is None:
-            pytest.skip("polityka sugeruje noop — wymuś kartę")
+            pytest.skip("policy suggests noop — force a card")
         grade = coach.grade_move(board, suggestion.card, *_zone_xy(suggestion.zone), player=0)
         assert grade.grade == GRADE_BEST
 
@@ -213,9 +213,9 @@ class TestNeuralPath:
 class TestKeyMoments:
     def test_flags_large_swings_only(self):
         tracker = KeyMomentTracker(threshold=0.01)
-        assert tracker.update(1.0, 0.10) is None  # pierwsza wartość
-        assert tracker.update(2.0, 0.105) is None  # mała zmiana
-        moment = tracker.update(3.0, 0.20)  # duży skok
+        assert tracker.update(1.0, 0.10) is None  # first value
+        assert tracker.update(2.0, 0.105) is None  # small change
+        moment = tracker.update(3.0, 0.20)  # large jump
         assert moment is not None
         assert moment.delta_value == pytest.approx(0.095)
         assert len(tracker.moments) == 1

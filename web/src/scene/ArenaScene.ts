@@ -53,7 +53,7 @@ interface Effect {
   update: (now: number) => boolean;
 }
 
-/** Scena Pixi: arena + wieże + jednostki + czary + efekty walki + podpowiedzi trenera. */
+/** Pixi scene: arena + towers + units + spells + combat effects + coach hints. */
 export class ArenaScene {
   private app: Application;
   private store: GameStore;
@@ -112,13 +112,13 @@ export class ArenaScene {
         try {
           this.art.set(card, await Assets.load<Texture>(url));
         } catch {
-          // brak grafiki → zostaje emoji
+          // no artwork → keep the emoji
         }
       }),
     );
   }
 
-  // --- układ współrzędnych ---
+  // --- coordinate layout ---
 
   private layout(): Layout {
     const { width, height } = this.app.screen;
@@ -143,7 +143,7 @@ export class ArenaScene {
     return { x, y };
   }
 
-  // --- statyczne tło ---
+  // --- static background ---
 
   private rebuildStatic(l: Layout): void {
     const config = this.store.config;
@@ -161,19 +161,19 @@ export class ArenaScene {
       }
     }
 
-    // rzeka
+    // river
     const riverTop = this.toScreen(0, config.river_y + config.river_half_width, l)[1];
     const riverH = 2 * config.river_half_width * l.tile;
     bg.rect(l.ox, riverTop, aw * l.tile, riverH).fill(0x3787d2);
 
-    // mosty
+    // bridges
     const half = config.bridge_half_width;
     for (const bx of config.bridge_lane_x) {
       const [cx] = this.toScreen(bx, 0, l);
       bg.roundRect(cx - half * l.tile, riverTop - 0.15 * l.tile, 2 * half * l.tile, riverH + 0.3 * l.tile, 4).fill(0x8b5a2b);
     }
 
-    // strefy rzutu (dyskretne akcje RL) — delikatne punkty
+    // drop zones (discrete RL actions) — subtle markers
     for (const zones of Object.values(config.deploy_zones)) {
       for (const zone of zones) {
         const [sx, sy] = this.toScreen(zone.x, zone.y, l);
@@ -181,14 +181,14 @@ export class ArenaScene {
       }
     }
 
-    // ramka areny
+    // arena frame
     bg.rect(l.ox, l.oy, aw * l.tile, al * l.tile).stroke({ color: 0x1c4420, width: 3 });
 
     this.staticLayer.removeChildren();
     this.staticLayer.addChild(bg);
   }
 
-  // --- klatka renderująca ---
+  // --- render frame ---
 
   render(now: number): void {
     const config = this.store.config;
@@ -217,7 +217,7 @@ export class ArenaScene {
     this.renderTargeting(l);
   }
 
-  // --- wieże ---
+  // --- towers ---
 
   private renderTowers(snap: Snapshot, l: Layout, now: number): void {
     for (const tower of snap.towers) {
@@ -280,7 +280,7 @@ export class ArenaScene {
     view.hpText.visible = tower.alive;
   }
 
-  // --- jednostki ---
+  // --- units ---
 
   private renderTroops(snap: Snapshot, l: Layout, alpha: number, now: number): void {
     const prevById = new Map<number, TroopState>();
@@ -423,7 +423,7 @@ export class ArenaScene {
   }
 
   private updateSpell(view: SpellView, spell: SpellState, l: Layout, now: number): void {
-    // wiek czaru interpolowany lokalnie między snapshotami
+    // spell age interpolated locally between snapshots
     const age = view.ageAtReceipt + ((now - view.receivedAt) / 1000) * this.store.speed;
     const travel = Math.max(spell.travel_time, 1e-3);
     const t = Math.min(1, age / travel);
@@ -446,7 +446,7 @@ export class ArenaScene {
     }
   }
 
-  // --- efekty walki ---
+  // --- combat effects ---
 
   private addEffect(node: Container, update: (now: number) => boolean): void {
     this.fxLayer.addChild(node);
@@ -532,7 +532,7 @@ export class ArenaScene {
     });
   }
 
-  // --- podpowiedzi i celowanie ---
+  // --- hints and targeting ---
 
   private renderHint(l: Layout, now: number): void {
     const hint = this.store.hint;
@@ -575,7 +575,7 @@ export class ArenaScene {
         .rect(l.ox + l.tile, l.oy + 2 * l.tile, (aw - 2) * l.tile, (al - 4) * l.tile)
         .fill({ color: zoneColor, alpha: 0.12 });
     } else {
-      // połowa gracza (P0): y od 2 do river_y - 0.5 → ekran od góry
+      // player's half (P0): y from 2 to river_y - 0.5 → screen from the top
       const topY = al - (config.river_y - 0.5);
       const bottomY = al - 2;
       this.deployOverlay

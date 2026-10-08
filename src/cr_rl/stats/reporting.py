@@ -1,7 +1,7 @@
 """
-Statystyki treningu i jakości modelu PPO vs LogicAgent.
+Training and model-quality statistics for PPO vs LogicAgent.
 
-Uruchomienie:
+Usage:
   python statistics.py
   python statistics.py --model models/ppo_cr_best.zip --episodes 100
   python statistics.py --plot
@@ -41,8 +41,8 @@ except ImportError:
 STATS_DIR = DEFAULT_MODEL_DIR / "stats"
 COACH_VALIDATION_PATH = STATS_DIR / "coach_validation.json"
 KNOWN_MODELS = (
-    ("Najlepszy (eval)", DEFAULT_BEST_PATH),
-    ("Finalny", DEFAULT_MODEL_DIR / "ppo_cr_final.zip"),
+    ("Best (eval)", DEFAULT_BEST_PATH),
+    ("Final", DEFAULT_MODEL_DIR / "ppo_cr_final.zip"),
     ("Eval callback", DEFAULT_MODEL_DIR / "best_model.zip"),
 )
 
@@ -53,13 +53,13 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        print(f"Nie udalo sie wczytac {path}: {error}")
+        print(f"Failed to load {path}: {error}")
         return None
     return value if isinstance(value, dict) else None
 
 
 def load_experiment_results(root: Path = EXPERIMENT_RUNS_DIR) -> list[dict[str, Any]]:
-    """Normalizuje artefakty sweep/curriculum do wspólnej listy."""
+    """Normalizes sweep/curriculum artifacts into a common list."""
     rows: list[dict[str, Any]] = []
     if not root.is_dir():
         return rows
@@ -118,7 +118,7 @@ def _fmt_float(value: float | int | list | np.ndarray, digits: int = 4) -> str:
 
 
 def _mean_per_eval_step(values: list | np.ndarray) -> list[float]:
-    """SB3 EvalCallback zapisuje wiele epizodów na krok — zwracamy średnią."""
+    """SB3 EvalCallback stores many episodes per step — we return the mean."""
     arr = np.asarray(values, dtype=np.float64)
     if arr.size == 0:
         return []
@@ -150,7 +150,7 @@ def load_tensorboard_scalars(tb_root: Path) -> list[ScalarSeries]:
             accumulator = EventAccumulator(str(run_dir))
             accumulator.Reload()
         except Exception as error:
-            print(f"Nie udalo sie wczytac TensorBoard ({run_dir.name}): {error}")
+            print(f"Failed to load TensorBoard ({run_dir.name}): {error}")
             continue
 
         for tag in accumulator.Tags().get("scalars", []):
@@ -199,7 +199,7 @@ def discover_models(extra: str | None = None) -> list[tuple[str, Path]]:
     if extra:
         path = Path(extra)
         if path.is_file():
-            found.append(("Wybrany", path))
+            found.append(("Selected", path))
             seen.add(path.resolve())
 
     for label, path in KNOWN_MODELS:
@@ -218,7 +218,7 @@ def discover_models(extra: str | None = None) -> list[tuple[str, Path]]:
 
 
 def evaluate_logic_vs_random(episodes: int, seed: int = 0) -> ModelEvalResult:
-    """LogicAgent (P0) vs RandomAgent (P1) — bezpośredni mecz na Board."""
+    """LogicAgent (P0) vs RandomAgent (P1) — direct match on Board."""
     from cr_rl.game.board import Board
     from cr_rl.agents.logic import LogicAgent
     from cr_rl.agents.rl import RandomAgent
@@ -299,8 +299,8 @@ def evaluate_random_baseline(episodes: int, seed: int) -> ModelEvalResult:
 
     env.close()
     return ModelEvalResult(
-        label="Losowy agent (baseline)",
-        path="(brak modelu)",
+        label="Random agent (baseline)",
+        path="(no model)",
         exists=True,
         episodes=episodes,
         wins=wins,
@@ -347,19 +347,19 @@ def evaluate_saved_model(
 
 
 def print_training_curves(series: list[ScalarSeries]) -> None:
-    _section("Logi treningu (TensorBoard)")
+    _section("Training logs (TensorBoard)")
 
     if not _HAS_TB:
-        print("Brak pakietu tensorboard — zainstaluj: pip install tensorboard")
+        print("tensorboard package missing — install: pip install tensorboard")
         return
 
     if not series:
-        print(f"Brak logow w {DEFAULT_MODEL_DIR / 'tb'}")
-        print("Uruchom trening: python train.py")
+        print(f"No logs in {DEFAULT_MODEL_DIR / 'tb'}")
+        print("Start training: cr-rl-train")
         return
 
     runs = sorted({s.run for s in series})
-    print(f"Znalezione runy: {', '.join(runs)}")
+    print(f"Runs found: {', '.join(runs)}")
 
     interesting = [
         "rollout/ep_rew_mean",
@@ -382,50 +382,50 @@ def print_training_curves(series: list[ScalarSeries]) -> None:
         peak = max(best.values)
         print(
             f"  {tag}: "
-            f"pierwsza={_fmt_float(first)} | ostatnia={_fmt_float(last)} | "
-            f"szczyt={_fmt_float(peak)} | punkty={len(best.values)}"
+            f"first={_fmt_float(first)} | last={_fmt_float(last)} | "
+            f"peak={_fmt_float(peak)} | points={len(best.values)}"
         )
 
 
 def print_eval_npz_summary(eval_data: dict[str, Any] | None) -> None:
-    _section("Historia ewaluacji (evaluations.npz)")
+    _section("Evaluation history (evaluations.npz)")
 
     if eval_data is None:
-        print(f"Brak pliku {DEFAULT_MODEL_DIR / 'eval' / 'evaluations.npz'}")
-        print("(pojawia sie po dluższym treningu — callback co ~25k krokow)")
+        print(f"File not found: {DEFAULT_MODEL_DIR / 'eval' / 'evaluations.npz'}")
+        print("(appears after longer training — callback every ~25k steps)")
         return
 
     timesteps = eval_data["timesteps"]
     results = eval_data["results"]
     lengths = eval_data["ep_lengths"]
 
-    print(f"Liczba ewaluacji: {len(timesteps)}")
+    print(f"Number of evaluations: {len(timesteps)}")
     if not timesteps:
         return
 
     best_idx = int(np.argmax(results))
-    print(f"Najlepsza srednia nagroda: {_fmt_float(results[best_idx])} @ krok {timesteps[best_idx]:,}")
-    print(f"Ostatnia srednia nagroda: {_fmt_float(results[-1])} @ krok {timesteps[-1]:,}")
-    print(f"Ostatnia srednia dlugosc meczu: {_fmt_float(lengths[-1], 0)} tickow")
+    print(f"Best mean reward: {_fmt_float(results[best_idx])} @ step {timesteps[best_idx]:,}")
+    print(f"Last mean reward: {_fmt_float(results[-1])} @ step {timesteps[-1]:,}")
+    print(f"Last mean match length: {_fmt_float(lengths[-1], 0)} ticks")
 
 
 def print_model_table(results: list[ModelEvalResult]) -> None:
-    _section("Ewaluacja na zywo vs LogicAgent")
+    _section("Live evaluation vs LogicAgent")
 
     if not results:
-        print("Brak modeli do oceny.")
+        print("No models to evaluate.")
         return
 
-    header = f"{'Model':<28} {'Win%':>7} {'W':>5} {'L':>5} {'D':>4} {'Nagr.':>9} {'Ticki':>8}"
+    header = f"{'Model':<28} {'Win%':>7} {'W':>5} {'L':>5} {'D':>4} {'Rew.':>9} {'Ticks':>8}"
     print(header)
     print("-" * len(header))
 
     for row in results:
         if row.error:
-            print(f"{row.label:<28}  BLAD: {row.error}")
+            print(f"{row.label:<28}  ERROR: {row.error}")
             continue
         if not row.exists:
-            print(f"{row.label:<28}  (brak pliku)")
+            print(f"{row.label:<28}  (file missing)")
             continue
         print(
             f"{row.label:<28} "
@@ -442,23 +442,23 @@ def print_logic_vs_random(result: ModelEvalResult) -> None:
     _section("LogicAgent vs RandomBot")
 
     if not result.exists:
-        print("Brak wyniku ewaluacji.")
+        print("No evaluation result.")
         return
 
-    print(f"Mecze: {result.episodes}")
-    print(f"Wygrane LogicAgent (P0): {result.wins} ({_fmt_pct(result.win_rate)})")
-    print(f"Wygrane RandomBot (P1): {result.losses} ({_fmt_pct(result.losses / max(1, result.episodes))})")
-    print(f"Remisy: {result.draws}")
-    print(f"Srednia dlugosc meczu: {_fmt_float(result.mean_length, 0)} tickow")
+    print(f"Matches: {result.episodes}")
+    print(f"LogicAgent wins (P0): {result.wins} ({_fmt_pct(result.win_rate)})")
+    print(f"RandomBot wins (P1): {result.losses} ({_fmt_pct(result.losses / max(1, result.episodes))})")
+    print(f"Draws: {result.draws}")
+    print(f"Mean match length: {_fmt_float(result.mean_length, 0)} ticks")
 
 
 def print_experiment_summary(results: list[dict[str, Any]]) -> None:
-    _section("Eksperymenty M7")
+    _section("M7 experiments")
     if not results:
-        print(f"Brak wynikow w {EXPERIMENT_RUNS_DIR}")
+        print(f"No results in {EXPERIMENT_RUNS_DIR}")
         return
 
-    header = f"{'Wariant':<28} {'Win%':>7} {'W':>5} {'L':>5} {'D':>4} {'Seed':>7}"
+    header = f"{'Variant':<28} {'Win%':>7} {'W':>5} {'L':>5} {'D':>4} {'Seed':>7}"
     print(header)
     print("-" * len(header))
     for row in sorted(results, key=lambda item: float(item.get("win_rate", 0)), reverse=True):
@@ -474,35 +474,35 @@ def print_experiment_summary(results: list[dict[str, Any]]) -> None:
 
 
 def print_recommendation(results: list[ModelEvalResult]) -> None:
-    _section("Podsumowanie")
+    _section("Summary")
 
-    trained = [r for r in results if r.exists and not r.error and r.label != "Losowy agent (baseline)"]
+    trained = [r for r in results if r.exists and not r.error and r.label != "Random agent (baseline)"]
     if not trained:
-        print("Brak wytrenowanych modeli. Uruchom: python train.py")
+        print("No trained models. Run: cr-rl-train")
         return
 
     best = max(trained, key=lambda r: r.win_rate)
-    baseline = next((r for r in results if r.label == "Losowy agent (baseline)"), None)
+    baseline = next((r for r in results if r.label == "Random agent (baseline)"), None)
 
-    print(f"Najlepszy model: {best.label}")
-    print(f"  Sciezka: {best.path}")
-    print(f"  Win rate ({best.episodes} meczy): {_fmt_pct(best.win_rate)}")
-    print(f"  Srednia nagroda (HP wiez): {_fmt_float(best.mean_reward)}")
+    print(f"Best model: {best.label}")
+    print(f"  Path: {best.path}")
+    print(f"  Win rate ({best.episodes} matches): {_fmt_pct(best.win_rate)}")
+    print(f"  Mean reward (tower HP): {_fmt_float(best.mean_reward)}")
 
     if baseline and baseline.exists:
         delta = best.win_rate - baseline.win_rate
         sign = "+" if delta >= 0 else ""
         print(
-            f"  vs losowy baseline ({_fmt_pct(baseline.win_rate)}): "
+            f"  vs random baseline ({_fmt_pct(baseline.win_rate)}): "
             f"{sign}{_fmt_pct(delta)}"
         )
 
     if best.win_rate >= 0.55:
-        print("  Ocena: stabilnie bije LogicAgent — dobry wynik na projekt.")
+        print("  Verdict: consistently beats LogicAgent — a good result for the project.")
     elif best.win_rate >= 0.45:
-        print("  Ocena: wyrównany poziom — kontynuuj trening (wiecej krokow).")
+        print("  Verdict: even level — continue training (more steps).")
     else:
-        print("  Ocena: slaby wynik — potrzebny dluzszy trening lub tuning hiperparametrow.")
+        print("  Verdict: weak result — needs longer training or hyperparameter tuning.")
 
 
 def save_plots(
@@ -512,7 +512,7 @@ def save_plots(
     output_dir: Path,
 ) -> list[Path]:
     if not _HAS_MPL:
-        print("\nBrak matplotlib — pomijam wykresy (pip install matplotlib).")
+        print("\nmatplotlib missing — skipping plots (pip install matplotlib).")
         return []
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -531,7 +531,7 @@ def save_plots(
             plt.close(fig)
             return
         ax.set_title(title)
-        ax.set_xlabel("Krok treningu")
+        ax.set_xlabel("Training step")
         ax.set_ylabel(ylabel)
         ax.grid(True, alpha=0.3)
         ax.legend(fontsize=8)
@@ -543,41 +543,41 @@ def save_plots(
 
     _plot_series(
         ["rollout/ep_rew_mean", "eval/mean_reward"],
-        "Srednia nagroda w trakcie treningu",
-        "Nagroda",
+        "Mean reward during training",
+        "Reward",
         "reward_curve.png",
     )
     _plot_series(
         ["rollout/win_rate_vs_logic"],
-        "Win rate vs LogicAgent (okno treningowe)",
+        "Win rate vs LogicAgent (training window)",
         "Win rate",
         "win_rate_training.png",
     )
     _plot_series(
         ["train/policy_gradient_loss", "train/loss"],
-        "Strata polityki (policy loss)",
+        "Policy loss",
         "Loss",
         "policy_loss.png",
     )
     _plot_series(
         ["train/entropy_loss"],
-        "Entropia polityki",
+        "Policy entropy",
         "Entropy loss",
         "entropy_loss.png",
     )
     _plot_series(
         ["train/explained_variance", "train/value_loss"],
-        "Stabilnosc uczenia (value function)",
-        "Wartosc",
+        "Training stability (value function)",
+        "Value",
         "training_stability.png",
     )
 
     if eval_data and eval_data["timesteps"]:
         fig, ax = plt.subplots(figsize=(9, 4))
         ax.plot(eval_data["timesteps"], eval_data["results"], marker="o", linewidth=1.8)
-        ax.set_title("Ewaluacja okresowa (eval callback)")
-        ax.set_xlabel("Krok treningu")
-        ax.set_ylabel("Srednia nagroda")
+        ax.set_title("Periodic evaluation (eval callback)")
+        ax.set_xlabel("Training step")
+        ax.set_ylabel("Mean reward")
         ax.grid(True, alpha=0.3)
         path = output_dir / "eval_callback.png"
         fig.tight_layout()
@@ -588,7 +588,7 @@ def save_plots(
     trained_live = [
         r
         for r in live_results
-        if r.exists and not r.error and r.label != "Losowy agent (baseline)"
+        if r.exists and not r.error and r.label != "Random agent (baseline)"
     ]
     if trained_live:
         fig, ax = plt.subplots(figsize=(9, 4))
@@ -598,7 +598,7 @@ def save_plots(
         ax.barh(labels, rates, color=colors)
         ax.set_xlim(0, 100)
         ax.set_xlabel("Win rate (%)")
-        ax.set_title(f"Porownanie modeli ({trained_live[0].episodes} meczy kazdy)")
+        ax.set_title(f"Model comparison ({trained_live[0].episodes} matches each)")
         ax.grid(True, axis="x", alpha=0.3)
         path = output_dir / "model_win_rates.png"
         fig.tight_layout()
@@ -628,7 +628,7 @@ def save_experiment_plots(
         ax.bar_label(bars, fmt="%.1f%%", padding=3)
         ax.set_xlim(0, max(100, max(rates, default=0) + 8))
         ax.set_xlabel("Win rate vs LogicAgent (%)")
-        ax.set_title("Porownanie eksperymentow M7")
+        ax.set_title("M7 experiment comparison")
         ax.grid(True, axis="x", alpha=0.3)
         path = output_dir / "experiment_win_rates.png"
         fig.tight_layout()
@@ -645,7 +645,7 @@ def save_experiment_plots(
         }
         fig, axes = plt.subplots(1, 2, figsize=(10, 4))
         axes[0].bar(
-            ["Wygrane", "Przegrane"],
+            ["Wins", "Losses"],
             [
                 float(coach_validation.get("mean_score_wins", 0)),
                 float(coach_validation.get("mean_score_losses", 0)),
@@ -653,10 +653,10 @@ def save_experiment_plots(
             color=["#22c55e", "#ef4444"],
         )
         axes[0].set_ylim(0, 1)
-        axes[0].set_ylabel("Srednia ocena ruchu")
-        axes[0].set_title("Oceny trenera a wynik")
+        axes[0].set_ylabel("Mean move grade")
+        axes[0].set_title("Coach grades vs outcome")
         axes[1].bar(grade_names, [grade_counts[g] for g in grade_names], color="#8b5cf6")
-        axes[1].set_title("Rozklad ocen ruchow")
+        axes[1].set_title("Move grade distribution")
         axes[1].tick_params(axis="x", rotation=25)
         path = output_dir / "coach_grading_accuracy.png"
         fig.tight_layout()
@@ -701,9 +701,9 @@ def run_statistics(
     save_json: bool = True,
     include_experiments: bool = False,
 ) -> None:
-    print("Clash Royale RL — raport statystyk")
-    print(f"Katalog modeli: {DEFAULT_MODEL_DIR.resolve()}")
-    print(f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("Clash Royale RL — statistics report")
+    print(f"Model directory: {DEFAULT_MODEL_DIR.resolve()}")
+    print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     tb_series = load_tensorboard_scalars(DEFAULT_MODEL_DIR / "tb")
     eval_data = load_eval_npz(DEFAULT_MODEL_DIR / "eval")
@@ -717,17 +717,17 @@ def run_statistics(
 
     live_results: list[ModelEvalResult] = []
     if not skip_baseline:
-        print("\nEwaluacja losowego baseline...")
+        print("\nEvaluating random baseline...")
         live_results.append(evaluate_random_baseline(episodes=min(episodes, 30), seed=seed))
 
     for label, path in models:
-        print(f"Ewaluacja: {label}...")
+        print(f"Evaluating: {label}...")
         live_results.append(
             evaluate_saved_model(label, path, episodes=episodes, seed=seed)
         )
 
     print_model_table(live_results)
-    print("\nEwaluacja LogicAgent vs RandomBot...")
+    print("\nEvaluating LogicAgent vs RandomBot...")
     logic_vs_random = evaluate_logic_vs_random(episodes=min(episodes, 50), seed=seed)
     print_logic_vs_random(logic_vs_random)
     print_recommendation(live_results)
@@ -748,7 +748,7 @@ def run_statistics(
             experiment_results=experiment_results,
             coach_validation=coach_validation,
         )
-        print(f"\nZapisano JSON: {json_path}")
+        print(f"\nSaved JSON: {json_path}")
 
     if plot:
         figures = save_plots(tb_series, eval_data, live_results, STATS_DIR / "figures")
@@ -761,7 +761,7 @@ def run_statistics(
                 )
             )
         if figures:
-            _section("Wykresy")
+            _section("Plots")
             for fig_path in figures:
                 print(f"  {fig_path}")
 
@@ -774,20 +774,20 @@ def main() -> None:
             pass
 
     parser = argparse.ArgumentParser(description="Statystyki treningu PPO")
-    parser.add_argument("--model", type=str, default=None, help="Dodatkowy model .zip do oceny")
-    parser.add_argument("--episodes", type=int, default=50, help="Mecze na model (live eval)")
+    parser.add_argument("--model", type=str, default=None, help="Additional .zip model to evaluate")
+    parser.add_argument("--episodes", type=int, default=50, help="Matches per model (live eval)")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--plot", action="store_true", help="Zapisz wykresy do models/stats/figures/")
+    parser.add_argument("--plot", action="store_true", help="Save plots to models/stats/figures/")
     parser.add_argument(
         "--compare-checkpoints",
         action="store_true",
-        help="Oceń tez wszystkie checkpointy (wolniejsze)",
+        help="Also evaluate all checkpoints (slower)",
     )
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument(
         "--experiments",
         action="store_true",
-        help="Dołącz wyniki sweep/curriculum i walidację trenera",
+        help="Include sweep/curriculum results and coach validation",
     )
     parser.add_argument("--no-json", action="store_true")
     args = parser.parse_args()

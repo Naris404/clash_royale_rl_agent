@@ -1,6 +1,6 @@
-"""FastAPI — REST (sesje, modele, health) + WebSocket na żywo.
+"""FastAPI — REST (sessions, models, health) + live WebSocket.
 
-Uruchomienie dev:
+Dev usage:
   uvicorn cr_rl.server.app:app --reload --port 8000
 
 Produkcja: serwuje zbudowany frontend z web/dist (SPA fallback).
@@ -44,7 +44,7 @@ DEPLOY_MODEL_PATH = os.getenv("MODEL_PATH", str(DEFAULT_MODEL_PATH))
 
 class CreateSessionRequest(BaseModel):
     mode: str = Field(default="coach")
-    lang: str = Field(default="pl", pattern="^(pl|en)$")
+    lang: str = Field(default="en", pattern="^(pl|en)$")
     seed: Optional[int] = None
 
 
@@ -64,8 +64,8 @@ def create_app(
         app.state.inspector = inspector or PolicyInspector(model_path)
         app.state.sessions = SessionManager(app.state.inspector)
         logger.info(
-            "Serwer wystartował; model RL: %s",
-            app.state.inspector.model_path or "brak (trener heurystyczny)",
+            "Server started; RL model: %s",
+            app.state.inspector.model_path or "none (heuristic coach)",
         )
         yield
         for session_id in list(app.state.sessions._sessions):
@@ -115,7 +115,7 @@ def create_app(
     @app.delete("/api/sessions/{session_id}")
     def delete_session(session_id: str) -> dict:
         if app.state.sessions.get(session_id) is None:
-            raise HTTPException(status_code=404, detail="Sesja nie istnieje")
+            raise HTTPException(status_code=404, detail="Session not found")
         app.state.sessions.discard(session_id)
         return {"status": "closed"}
 
@@ -125,7 +125,7 @@ def create_app(
     async def session_ws(websocket: WebSocket, session_id: str) -> None:
         session: Optional[GameSession] = app.state.sessions.get(session_id)
         if session is None:
-            await websocket.close(code=4404, reason="Sesja nie istnieje")
+            await websocket.close(code=4404, reason="Session not found")
             return
 
         await websocket.accept()
@@ -144,7 +144,7 @@ def create_app(
         except WebSocketDisconnect:
             pass
         except Exception:
-            logger.exception("Błąd połączenia WS (sesja %s)", session_id)
+            logger.exception("WS connection error (session %s)", session_id)
         finally:
             session.stop()
             game_task.cancel()
@@ -167,7 +167,7 @@ def create_app(
 
         loop = asyncio.get_running_loop()
         if isinstance(message, PlayCardMsg):
-            # ocena trenera + inferencja — poza pętlą zdarzeń
+            # coach grading + inference — off the event loop
             return await loop.run_in_executor(
                 None, session.handle_play, message.card, message.x, message.y
             )
@@ -181,7 +181,7 @@ def create_app(
             return [PongMsg()]
         return []
 
-    # --- statyczny frontend (produkcja) ---
+    # --- static frontend (production) ---
 
     if WEB_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")

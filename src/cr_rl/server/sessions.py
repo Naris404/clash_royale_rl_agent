@@ -1,8 +1,8 @@
-"""Sesje gry — asyncio loop tickujący Board w tempie rzeczywistym.
+"""Game sessions — asyncio loop ticking the Board in real time.
 
-Jedna sesja = jeden mecz człowiek (P0) vs bot/RL (P1). Silnik gry jest
-współdzielony z treningiem RL (zero ryzyka rozjazdu logiki); sesja dokłada
-identyfikatory jednostek, kadencję czasu rzeczywistego i warstwę trenerską.
+One session = one human (P0) vs bot/RL (P1) match. The game engine is
+shared with RL training (no risk of logic divergence); the session adds
+unit identifiers, real-time cadence and the coaching layer.
 """
 
 from __future__ import annotations
@@ -48,18 +48,18 @@ from cr_rl.server.protocol import (
 
 logger = logging.getLogger(__name__)
 
-MODE_COACH = "coach"  # vs LogicAgent + podpowiedzi trenera
+MODE_COACH = "coach"  # vs LogicAgent + coach hints
 MODE_VS_BOT = "vs_bot"  # vs LogicAgent
-MODE_VS_RL = "vs_rl"  # vs wytrenowany model PPO
+MODE_VS_RL = "vs_rl"  # vs trained PPO model
 VALID_MODES = frozenset({MODE_COACH, MODE_VS_BOT, MODE_VS_RL})
 
-HINT_EVERY_TICKS = 5  # podpowiedź co 0.5 s przy 10 Hz
+HINT_EVERY_TICKS = 5  # hint every 0.5 s at 10 Hz
 MIN_SPEED = 0.25
 MAX_SPEED = 4.0
 
 
 def arena_config() -> dict:
-    """Statyczna konfiguracja areny dla klienta (wiadomość hello)."""
+    """Static arena configuration for the client (hello message)."""
     return {
         "arena_width": ARENA_WIDTH,
         "arena_length": ARENA_LENGTH,
@@ -85,7 +85,7 @@ def arena_config() -> dict:
 
 
 class GameSession:
-    """Jeden mecz: stan Board + przeciwnik + trener; tick() jest thread-safe."""
+    """One match: Board state + opponent + coach; tick() is thread-safe."""
 
     def __init__(
         self,
@@ -93,7 +93,7 @@ class GameSession:
         mode: str,
         inspector: PolicyInspector,
         *,
-        lang: str = "pl",
+        lang: str = "en",
         seed: Optional[int] = None,
     ):
         if mode not in VALID_MODES:
@@ -128,7 +128,7 @@ class GameSession:
         return LogicAgent()
 
     def _build_tower_id_map(self) -> dict[int, str]:
-        """Mapowanie obiektu wieży → stabilne id (np. 'p0_king', 'p1_l')."""
+        """Tower object → stable id mapping (e.g. 'p0_king', 'p1_l')."""
         suffix = {"Tower_L": "l", "Tower_R": "r", "King_Tower": "king"}
         by_pos = {
             (player, pos[0], pos[1]): f"p{player}_{suffix[key]}"
@@ -150,19 +150,19 @@ class GameSession:
                     alive.add(f"p{player}_{suffix[key]}")
         return alive
 
-    # --- interakcja klienta (thread-safe, wołane z executorów) ---
+    # --- client interaction (thread-safe, called from executors) ---
 
     def handle_play(self, card: str, x: float, y: float) -> list[ServerMessage]:
-        """Zagranie człowieka: ocena trenerem PRZED wykonaniem, potem pending."""
+        """Human play: graded by the coach BEFORE execution, then pending."""
         with self._lock:
             if self.board.done:
-                return [ErrorMsg(message="Mecz zakończony")]
+                return [ErrorMsg(message="Match finished")]
             if not self.board.card_in_hand(0, card):
-                return [ErrorMsg(message=f"Brak karty na ręce: {card}")]
+                return [ErrorMsg(message=f"Card not in hand: {card}")]
             if not self.board.can_play_card_at(0, card, x, y):
                 return [
                     ErrorMsg(
-                        message="Nie można zagrać tej karty: sprawdź eliksir i obszar wystawienia"
+                        message="Cannot play this card: check elixir and the deploy area"
                     )
                 ]
 
@@ -216,10 +216,10 @@ class GameSession:
             self._tower_id_map = self._build_tower_id_map()
             self._alive_towers = self._tower_ids_alive()
 
-    # --- pętla gry ---
+    # --- game loop ---
 
     def tick(self) -> list[ServerMessage]:
-        """Jeden krok symulacji + wiadomości (snapshot, hint, eventy). Thread-safe."""
+        """One simulation step + messages (snapshot, hint, events). Thread-safe."""
         with self._lock:
             self.tick_count += 1
 
@@ -257,7 +257,7 @@ class GameSession:
             return messages
 
     async def run(self, outbox: asyncio.Queue) -> None:
-        """Pętla czasu rzeczywistego; tick w executorze, żeby nie blokować pętli."""
+        """Real-time loop; tick runs in an executor so it does not block the loop."""
         self._running = True
         loop = asyncio.get_running_loop()
         try:
@@ -287,7 +287,7 @@ class GameSession:
             config=arena_config(),
         )
 
-    # --- wiadomości ---
+    # --- messages ---
 
     def build_snapshot(self) -> SnapshotMsg:
         board = self.board
@@ -412,16 +412,16 @@ class GameSession:
 
 
 class SessionManager:
-    """Rejestr aktywnych sesji; współdzielony PolicyInspector (jeden model w RAM)."""
+    """Registry of active sessions; shared PolicyInspector (one model in RAM)."""
 
     def __init__(self, inspector: Optional[PolicyInspector] = None):
         self.inspector = inspector or PolicyInspector()
         self._sessions: dict[str, GameSession] = {}
 
-    def create(self, mode: str, lang: str = "pl", seed: Optional[int] = None) -> GameSession:
+    def create(self, mode: str, lang: str = "en", seed: Optional[int] = None) -> GameSession:
         session = GameSession(str(uuid.uuid4()), mode, self.inspector, lang=lang, seed=seed)
         self._sessions[session.id] = session
-        logger.info("Utworzono sesję %s (tryb=%s)", session.id, mode)
+        logger.info("Created session %s (mode=%s)", session.id, mode)
         return session
 
     def get(self, session_id: str) -> Optional[GameSession]:
@@ -431,7 +431,7 @@ class SessionManager:
         session = self._sessions.pop(session_id, None)
         if session is not None:
             session.stop()
-            logger.info("Zamknięto sesję %s", session_id)
+            logger.info("Closed session %s", session_id)
 
     def __len__(self) -> int:
         return len(self._sessions)

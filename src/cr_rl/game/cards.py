@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from cr_rl.game.board import Board
 
-# Zasięgi i prędkości w jednostkach planszy (metry uproszczone).
+# Ranges and speeds in board units (simplified meters).
 clash_royale_ranges = {
     "Melee_Short": 0.8,
     "Melee_Medium": 1.2,
@@ -16,10 +16,10 @@ clash_royale_ranges = {
     "Ranged_Long": 6.5,
 }
 
-# Zasięg wykrywania celu (jak w CR — bez tego jednostki „widzą” całą mapę).
+# Target detection range (as in CR — without it units "see" the whole map).
 DEFAULT_SIGHT_RANGE = 9.5
 
-# Kafelki na sekundę (arena 18×32); poprzednie wartości ~×30 za szybkie.
+# Tiles per second (18×32 arena); the previous values were ~×30 too fast.
 clash_royale_speeds = {
     "slow": 1.2,
     "medium": 1.8,
@@ -137,7 +137,7 @@ CARD_TO_ID = {name: i for i, name in enumerate(PLAYABLE_CARDS)}
 
 
 class Troop:
-    """Jednostka lub budynek na planszy."""
+    """Unit or building on the board."""
 
     def __init__(self, name: str, owner: int, *, is_tower: bool = False):
         self.stats = cards_dic.get(name, {})
@@ -231,7 +231,7 @@ class Troop:
         return self.age >= self.deploy_time
 
     def hit(self, target: Troop, dt: float) -> float:
-        """Atakuje cel; zwraca zadane obrażenia (0 jeśli brak ataku)."""
+        """Attacks the target; returns the damage dealt (0 if no attack)."""
         self.update_cooldown(dt)
         if not self.can_attack() or not self.is_in_range(target):
             self._attack_winding = False
@@ -254,7 +254,7 @@ class Troop:
         return float(self.damage)
 
     def tick_age(self, dt: float) -> bool:
-        """Zwraca False, gdy budynek tymczasowy (np. Cannon) wygasł."""
+        """Returns False when a temporary building (e.g. Cannon) has expired."""
         self.age += dt
         if self.life_span <= 0:
             return True

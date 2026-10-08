@@ -1,10 +1,10 @@
-"""Walidacja offline trenera — zgodność ocen ruchów z realnym wynikiem meczu.
+"""Offline coach validation — agreement of move grades with the real match outcome.
 
-LogicAgent gra jako "człowiek-proxy" (P0) przeciwko LogicAgent (P1);
-każdy ruch P0 jest oceniany przez CoachEngine. Hipoteza pracy dyplomowej:
-wygrane mecze powinny mieć wyższą średnią jakość zagrań niż przegrane.
+LogicAgent plays as a "human proxy" (P0) against LogicAgent (P1);
+every P0 move is graded by CoachEngine. Thesis hypothesis:
+won matches should have a higher average play quality than lost ones.
 
-Uruchomienie:
+Usage:
   python -m coach.validate --games 20
   python -m coach.validate --games 50 --model models/ppo_cr_best.zip
 """
@@ -65,7 +65,7 @@ def play_graded_match(coach: CoachEngine, seed: int, max_steps: int = 2500) -> d
 
 
 def pairwise_outcome_accuracy(matches: list[dict]) -> float | None:
-    """Odsetek par win/loss, w których zwycięzca ma wyższą ocenę ruchów."""
+    """Fraction of win/loss pairs where the winner has the higher move grade."""
     wins = [m for m in matches if m["winner"] == 0]
     losses = [m for m in matches if m["winner"] == 1]
     if not wins or not losses:
@@ -83,15 +83,15 @@ def run_validation(games: int, model_path: str | None, seed: int) -> dict:
     inspector = PolicyInspector(model_path)
     coach = CoachEngine(inspector)
     if not coach.uses_neural_net:
-        print("UWAGA: brak modelu — ocena heurystyczna (self-agreement LogicAgent).")
+        print("WARNING: no model — heuristic grading (LogicAgent self-agreement).")
 
     matches = []
     for game in range(games):
         match = play_graded_match(coach, seed=seed + game)
         matches.append(match)
         print(
-            f"  mecz {game + 1}/{games}: winner={match['winner']} "
-            f"ruchy={match['moves']} srednia_jakosc={match['mean_score']:.3f}"
+            f"  match {game + 1}/{games}: winner={match['winner']} "
+            f"moves={match['moves']} mean_quality={match['mean_score']:.3f}"
         )
 
     wins = [m for m in matches if m["winner"] == 0]
@@ -101,7 +101,7 @@ def run_validation(games: int, model_path: str | None, seed: int) -> dict:
     win_scores = np.array([m["mean_score"] for m in wins]) if wins else np.array([0.5])
     loss_scores = np.array([m["mean_score"] for m in losses]) if losses else np.array([0.5])
 
-    # korelacja punktowo-dwuseriowa: jakość zagrań vs zwycięstwo
+    # point-biserial correlation: play quality vs win
     outcomes = np.array([1.0 if m["winner"] == 0 else 0.0 for m in matches if m["winner"] is not None])
     qualities = np.array([m["mean_score"] for m in matches if m["winner"] is not None])
     correlation = None
@@ -150,21 +150,21 @@ def main() -> None:
 
     summary = run_validation(args.games, args.model, args.seed)
 
-    print("\n=== Podsumowanie walidacji trenera ===")
-    print(f"Mecze: {summary['games']} (W:{summary['wins']} L:{summary['losses']} D:{summary['draws']})")
-    print(f"Srednia jakosc w wygranych:   {summary['mean_score_wins']:.3f}")
-    print(f"Srednia jakosc w przegranych: {summary['mean_score_losses']:.3f}")
-    print(f"Roznica (powinna byc > 0):    {summary['score_gap']:+.3f}")
+    print("\n=== Coach validation summary ===")
+    print(f"Matches: {summary['games']} (W:{summary['wins']} L:{summary['losses']} D:{summary['draws']})")
+    print(f"Mean quality in wins:       {summary['mean_score_wins']:.3f}")
+    print(f"Mean quality in losses:     {summary['mean_score_losses']:.3f}")
+    print(f"Gap (should be > 0):        {summary['score_gap']:+.3f}")
     if summary["outcome_quality_correlation"] is not None:
-        print(f"Korelacja wynik-jakosc:       {summary['outcome_quality_correlation']:+.3f}")
+        print(f"Outcome-quality correlation:{summary['outcome_quality_correlation']:+.3f}")
     if summary["outcome_pairwise_accuracy"] is not None:
-        print(f"Trafnosc par win/loss:        {summary['outcome_pairwise_accuracy']:.1%}")
-    print(f"Zgodnosc karta / akcja:       {summary['card_agreement']:.1%} / {summary['exact_action_agreement']:.1%}")
+        print(f"Win/loss pair accuracy:     {summary['outcome_pairwise_accuracy']:.1%}")
+    print(f"Card / action agreement:    {summary['card_agreement']:.1%} / {summary['exact_action_agreement']:.1%}")
 
     STATS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = STATS_DIR / "coach_validation.json"
     out_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\nZapisano: {out_path}")
+    print(f"\nSaved: {out_path}")
 
 
 if __name__ == "__main__":

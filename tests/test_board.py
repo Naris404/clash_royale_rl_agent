@@ -1,4 +1,4 @@
-"""Testy środowiska Board — mechanika gry, obserwacje, nagrody, determinizm."""
+"""Board environment tests — game mechanics, observations, rewards, determinism."""
 
 from __future__ import annotations
 
@@ -115,8 +115,8 @@ class TestPlayLegality:
         board = _board()
         board.elixir[0] = 10.0
         _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
-        assert not board.play_card_at(0, "Knight", 9.0, RIVER_Y + 5.0)  # strona wroga
-        assert not board.play_card_at(0, "Knight", 0.0, 5.0)  # poza areną
+        assert not board.play_card_at(0, "Knight", 9.0, RIVER_Y + 5.0)  # enemy side
+        assert not board.play_card_at(0, "Knight", 0.0, 5.0)  # outside the arena
 
     def test_action_to_card_zone_mapping(self):
         board = _board()
@@ -126,7 +126,7 @@ class TestPlayLegality:
         assert board.action_to_card_zone(2, 0) == ("Knight", 1)
         assert board.action_to_card_zone(12, 0) == ("Giant", 0)
         assert board.action_to_card_zone(44, 0) == ("Musketeer", 10)
-        assert board.action_to_card_zone(45, 0) == (None, None)  # poza zakresem
+        assert board.action_to_card_zone(45, 0) == (None, None)  # out of range
 
 
 TROOP_ZONES_P0 = {
@@ -213,8 +213,8 @@ class TestSpells:
 
         assert board.play_card_at(0, "Fireball", 9.0, 20.0)
         assert enemy.hp == cards_dic["Giant"]["hp"] - cards_dic["Fireball"]["damage"]
-        assert ally.hp == ally.max_hp  # bez friendly fire
-        assert far_enemy.hp == far_enemy.max_hp  # poza promieniem
+        assert ally.hp == ally.max_hp  # no friendly fire
+        assert far_enemy.hp == far_enemy.max_hp  # outside the radius
 
     def test_fireball_kills_low_hp_unit(self):
         board = _board()
@@ -237,16 +237,16 @@ class TestSpells:
 class TestRiverAndBridges:
     def test_off_bridge_unit_pushed_back_to_own_side(self):
         board = _board()
-        knight = _add_troop(board, "Knight", 0, 9.0, RIVER_Y)  # środek rzeki, poza mostem
+        knight = _add_troop(board, "Knight", 0, 9.0, RIVER_Y)  # middle of the river, off the bridge
         board._enforce_no_river_cut(knight)
-        assert knight.x == pytest.approx(BRIDGE_LANE_X[1])  # bliższy most (x=14)
-        assert knight.y < RIVER_Y - RIVER_HALF_WIDTH  # cofnięty na swoją stronę
+        assert knight.x == pytest.approx(BRIDGE_LANE_X[1])  # nearer bridge (x=14)
+        assert knight.y < RIVER_Y - RIVER_HALF_WIDTH  # pushed back to its own side
 
     def test_hog_not_pushed_back(self):
         board = _board()
         hog = _add_troop(board, "Hog_Rider", 0, 9.0, RIVER_Y)
         board._enforce_no_river_cut(hog)
-        assert (hog.x, hog.y) == (9.0, RIVER_Y)  # Hog skacze przez rzekę
+        assert (hog.x, hog.y) == (9.0, RIVER_Y)  # Hog jumps over the river
 
     def test_ground_unit_crosses_river_via_bridge_lane(self):
         board = _board()
@@ -266,7 +266,7 @@ class TestRiverAndBridges:
 
     @staticmethod
     def _walk_across(board: Board, troop: Troop, max_steps: int = 600) -> list[tuple[float, float]]:
-        """Kroki symulacji aż jednostka przejdzie przez rzekę; zwraca trasę."""
+        """Steps the simulation until the unit crosses the river; returns the path."""
         direction = 1.0 if troop.owner == 0 else -1.0
         far_bank = RIVER_Y + direction * RIVER_HALF_WIDTH
         path = [(troop.x, troop.y)]
@@ -288,7 +288,7 @@ class TestRiverAndBridges:
         assert length < l_path - 2.0
 
         (x0, y0), (x1, y1) = path[0], path[1]
-        assert x1 < x0 and y1 > y0  # od pierwszego kroku w skos, nie najpierw w bok
+        assert x1 < x0 and y1 > y0  # diagonal from the first step, not sideways first
 
     @pytest.mark.parametrize("owner", [0, 1])
     @pytest.mark.parametrize("start", [(8.0, 6.0), (1.5, 10.0), (16.5, 12.0), (9.0, 14.0), (5.0, 13.0)])
@@ -300,7 +300,7 @@ class TestRiverAndBridges:
 
         max_step = knight.speed * TICK_DT + 1e-6
         for (x0, y0), (x1, y1) in zip(path, path[1:]):
-            assert np.hypot(x1 - x0, y1 - y0) <= max_step  # bez „cofania” przez rzekę
+            assert np.hypot(x1 - x0, y1 - y0) <= max_step  # no "going back" across the river
             if (RIVER_Y - RIVER_HALF_WIDTH) < y1 < (RIVER_Y + RIVER_HALF_WIDTH):
                 assert any(abs(x1 - bx) <= BRIDGE_HALF_WIDTH for bx in BRIDGE_LANE_X)
 
@@ -327,12 +327,12 @@ class TestRiverAndBridges:
         )
 
         without, _ = run(with_cannon=False)
-        assert princess(without).hp < princess(without).max_hp  # bez Cannona Hog bije wieżę
+        assert princess(without).hp < princess(without).max_hp  # without the Cannon the Hog hits the tower
 
         board, hog = run(with_cannon=True)
         cannon = next(t for t in board.troops if t.name == "Cannon")
-        assert princess(board).hp == princess(board).max_hp  # wieża nietknięta
-        assert cannon.hp < cannon.max_hp  # Hog zajęty Cannonem
+        assert princess(board).hp == princess(board).max_hp  # tower untouched
+        assert cannon.hp < cannon.max_hp  # Hog busy with the Cannon
 
     def test_hog_rider_jumps_river_in_straight_line(self):
         board = _board()
@@ -348,7 +348,7 @@ class TestTargetingAndCombat:
     def test_sight_range_limits_aggro(self):
         board = _board()
         knight = _add_troop(board, "Knight", 0, 1.0, 4.0)
-        far = _add_troop(board, "Knight", 1, 17.0, 28.0)  # daleko poza sight range
+        far = _add_troop(board, "Knight", 1, 17.0, 28.0)  # far outside sight range
         assert board.find_nearest_target(knight) is None
         near = _add_troop(board, "Knight", 1, knight.x + 3.0, knight.y)
         assert board.find_nearest_target(knight) is near
@@ -378,7 +378,7 @@ class TestTargetingAndCombat:
         board = _board()
         board.time = MATCH_TIME_LIMIT - TICK_DT
         enemy_tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower")
-        enemy_tower.hp -= 500.0  # P1 ma mniej łącznego HP → wygrywa P0
+        enemy_tower.hp -= 500.0  # P1 has less total HP → P0 wins
         result = board.step(0, action_p1=0)
         assert result.truncated
         assert board.winner == 0
@@ -427,7 +427,7 @@ class TestRewardsAndObservations:
         board = _board()
         tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower")
         _add_troop(board, "Hog_Rider", 0, tower.x, tower.y - 1.0)
-        # Hog ma deploy_time=1.0 i first_hit_speed=0.6 — pierwsze obrażenia po ~1.6 s.
+        # Hog has deploy_time=1.0 and first_hit_speed=0.6 — first damage after ~1.6 s.
         rewards = [board.step(0, action_p1=0).reward for _ in range(20)]
         assert sum(rewards) > 0.0
 
@@ -460,22 +460,22 @@ class TestRewardsAndObservations:
     def test_action_mask_legality(self):
         board = _board()
         _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
-        board.elixir[0] = 3.0  # stać tylko na Knighta (3) i Cannona (3)
+        board.elixir[0] = 3.0  # can only afford Knight (3) and Cannon (3)
         mask = board.valid_action_mask(0)
         assert mask.shape == (NUM_ACTIONS,)
         assert mask.dtype == np.bool_
         assert mask[0]
-        assert mask[1:9].all() and not mask[9:12].any()  # Knight: 8 stref wojsk, 3 czarowe off
-        assert not mask[12:23].any()  # Giant (5) — za drogi
+        assert mask[1:9].all() and not mask[9:12].any()  # Knight: 8 troop zones, 3 spell zones off
+        assert not mask[12:23].any()  # Giant (5) — too expensive
         assert mask[23:31].all() and not mask[31:34].any()  # Cannon (3)
-        assert not mask[34:45].any()  # Musketeer (4) — za drogi
+        assert not mask[34:45].any()  # Musketeer (4) — too expensive
 
     def test_action_mask_spell_only_on_spell_zones(self):
         board = _board()
         _force_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Knight"])
         board.elixir[0] = 4.0
         mask = board.valid_action_mask(0)
-        assert not mask[1:9].any() and mask[9:12].all()  # Fireball tylko na 3 strefach czarów
+        assert not mask[1:9].any() and mask[9:12].all()  # Fireball only on the 3 spell zones
         assert mask.sum() == 1 + 3 + 0 + 8 + 8  # noop + Fireball + Giant + Cannon + Musketeer
 
 
@@ -486,18 +486,18 @@ class TestMirroredObservation:
         obs0 = board.get_observation(0)
         obs1 = board.get_observation(1)
 
-        # eliksir zamieniony miejscami
+        # elixir swapped
         assert obs1[0] == obs0[1] and obs1[1] == obs0[0]
-        assert obs0[2] == obs1[2]  # czas wspólny
+        assert obs0[2] == obs1[2]  # time is shared
 
-        # wieże: własne najpierw — blok P1 w obs1 == blok P0 w obs0
+        # towers: own first — P1 block in obs1 == P0 block in obs0
         seg = OBS_GLOBAL_FEATURES
         np.testing.assert_array_equal(obs1[seg : seg + 3], obs0[seg + 3 : seg + 6])
         np.testing.assert_array_equal(obs1[seg + 3 : seg + 6], obs0[seg : seg + 3])
 
-        # jednostka: znak właściciela odwrócony, współrzędne obrócone o 180°
+        # unit: owner sign flipped, coordinates rotated by 180°
         base0 = OBS_UNIT_BASE
-        assert obs0[base0] == 1.0 and obs1[base0] == -1.0  # własna vs wroga
+        assert obs0[base0] == 1.0 and obs1[base0] == -1.0  # own vs enemy
         assert obs0[base0 + 2] == pytest.approx(4.0 / 18.0)
         assert obs0[base0 + 3] == pytest.approx(10.0 / 32.0)
         assert obs1[base0 + 2] == pytest.approx((18.0 - 4.0) / 18.0)
@@ -522,7 +522,7 @@ class TestDeterminism:
     def test_different_seeds_differ(self):
         obs_a = _board(seed=1).get_observation(0)
         obs_b = _board(seed=2).get_observation(0)
-        assert not np.array_equal(obs_a, obs_b)  # różne ręce po tasowaniu
+        assert not np.array_equal(obs_a, obs_b)  # different hands after shuffling
 
 
 class TestGymEnvIntegration:

@@ -1,8 +1,8 @@
-"""Objaśnienia ruchów trenera — regułowe konteksty + szablony PL/EN.
+"""Coach move explanations — rule-based contexts + PL/EN templates.
 
-Sieć neuronowa mówi CO zagrać (akcja + prawdopodobieństwo); ten moduł dokłada
-krótkie DLACZEGO na podstawie czytelnych cech stanu (zagrożenie, pełny eliksir,
-spokojna plansza) — moduł analityczno-trenerski z opisu pracy dyplomowej.
+The neural network says WHAT to play (action + probability); this module adds
+a short WHY based on readable state features (threat, full elixir,
+calm board) — the analytics/coaching module from the thesis description.
 """
 
 from __future__ import annotations
@@ -76,10 +76,10 @@ _REASONS = {
 }
 
 
-def zone_name(zone_idx: int, lang: str = "pl") -> str:
+def zone_name(zone_idx: int, lang: str = "en") -> str:
     if not 0 <= zone_idx < len(DEPLOY_ZONES[0]):
         return str(zone_idx)
-    return ZONE_NAMES.get(lang, ZONE_NAMES["pl"])[DEPLOY_ZONES[0][zone_idx].name]
+    return ZONE_NAMES.get(lang, ZONE_NAMES["en"])[DEPLOY_ZONES[0][zone_idx].name]
 
 
 def build_reason(
@@ -87,10 +87,10 @@ def build_reason(
     player: int,
     card: Optional[str],
     *,
-    lang: str = "pl",
+    lang: str = "en",
 ) -> str:
-    """Krótki kontekst dla sugerowanego ruchu (lub noop, gdy card=None)."""
-    lang = lang if lang in ("pl", "en") else "pl"
+    """Short context for a suggested move (or noop when card=None)."""
+    lang = lang if lang in ("pl", "en") else "en"
 
     if card is None:
         return _REASONS["wait"][lang]
@@ -119,11 +119,11 @@ def format_hint(
     zone_idx: Optional[int],
     prob: Optional[float],
     *,
-    lang: str = "pl",
+    lang: str = "en",
 ) -> str:
-    """Pełny tekst podpowiedzi, np. 'Zagraj Knight — lewa aleja (pewność 62%)'."""
+    """Full hint text, e.g. 'Play Knight — left lane (confidence 62%)'."""
     if card is None:
-        return _REASONS["wait"][lang if lang in ("pl", "en") else "pl"]
+        return _REASONS["wait"][lang if lang in ("pl", "en") else "en"]
     zone = zone_name(zone_idx, lang) if zone_idx is not None else ""
     confidence = f" ({'pewność' if lang == 'pl' else 'confidence'} {prob:.0%})" if prob is not None else ""
     if lang == "en":

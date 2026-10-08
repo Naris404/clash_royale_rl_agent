@@ -1,4 +1,4 @@
-"""Protokół WebSocket — modele pydantic wiadomości klient↔serwer."""
+"""WebSocket protocol — pydantic models for client↔server messages."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-# --- klient → serwer ---
+# --- client → server ---
 
 
 class PlayCardMsg(BaseModel):
@@ -38,7 +38,7 @@ ClientMessage = PlayCardMsg | PauseMsg | SpeedMsg | RematchMsg | PingMsg
 
 
 def parse_client_message(data: dict) -> ClientMessage:
-    """Walidacja wiadomości klienta; ValueError przy nieznanym typie."""
+    """Validates a client message; ValueError on an unknown type."""
     msg_type = data.get("type")
     models = {
         "play": PlayCardMsg,
@@ -49,11 +49,11 @@ def parse_client_message(data: dict) -> ClientMessage:
     }
     model = models.get(msg_type)
     if model is None:
-        raise ValueError(f"Nieznany typ wiadomości: {msg_type!r}")
+        raise ValueError(f"Unknown message type: {msg_type!r}")
     return model.model_validate(data)
 
 
-# --- serwer → klient ---
+# --- server → client ---
 
 
 class TowerState(BaseModel):

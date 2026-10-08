@@ -1,4 +1,4 @@
-"""Testy LogicAgent — legalność zagrań, obrona przed Hogiem, kolejka combo."""
+"""LogicAgent tests — play legality, defense against Hog, combo queue."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ class TestDefenseRules:
         board.elixir[0] = 10.0
         _force_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Knight"])
         musk = _add_enemy(board, "Musketeer", 9.0, RIVER_Y + 1.0)
-        musk.hp = 100.0  # Fireball zabija → wysoki score
+        musk.hp = 100.0  # Fireball kills → high score
         agent = LogicAgent()
         agent.choose_action(board, player=0)
         pending = board._pending_play[0]
@@ -80,7 +80,7 @@ class TestDefenseRules:
 
     def test_passes_when_nothing_legal(self):
         board = _board()
-        board.elixir[0] = 0.0  # nie stać na nic
+        board.elixir[0] = 0.0  # cannot afford anything
         agent = LogicAgent()
         agent.choose_action(board, player=0)
         assert board._pending_play[0] is None
@@ -96,7 +96,7 @@ class TestComboQueue:
         agent.choose_action(board, player=0)
         pending = board._pending_play[0]
         assert pending is not None and pending[0] == "Giant"
-        assert len(agent._combo_queue) == 2  # Musketeer + Hog zaplanowane
+        assert len(agent._combo_queue) == 2  # Musketeer + Hog planned
 
     def test_reset_clears_combo_queue(self):
         agent = LogicAgent()
@@ -121,4 +121,4 @@ class TestIntegration:
             if result.terminated or result.truncated:
                 break
         assert board.done
-        assert steps <= 1801  # limit 180 s / 0.1 s + margines
+        assert steps <= 1801  # limit 180 s / 0.1 s + margin

@@ -1,7 +1,7 @@
 """
-Agent RL — PPO (MaskablePPO) wytrenowany przeciwko LogicAgent.
+RL agent — PPO (MaskablePPO) trained against LogicAgent.
 
-Bez modelu na dysku używa losowych akcji z maską eliksiru (fallback).
+Without a model on disk it uses random actions masked by elixir (fallback).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def load_compatible_model(path: Path):
 
 
 class RandomAgent:
-    """Bot z losowymi legalnymi zagraniami (maska eliksiru + strefy)."""
+    """Bot making random legal plays (elixir + zone mask)."""
 
     def __init__(self, *, seed: int | None = None, play_chance: float = 0.45):
         self._rng = random.Random(seed)
@@ -56,9 +56,9 @@ class RandomAgent:
 
 class RLAgent:
     """
-    Gracz RL: akcja 0..NUM_ACTIONS-1 (noop lub karta ze slotu ręki + strefa).
+    RL player: action 0..NUM_ACTIONS-1 (noop or a hand-slot card + zone).
 
-    Po treningu wczytuje MaskablePPO z models/ppo_cr_best.zip (lub podanej ścieżki).
+    After training it loads MaskablePPO from models/ppo_cr_best.zip (or the given path).
     """
 
     def __init__(
@@ -92,7 +92,7 @@ class RLAgent:
         board.set_pending_play(player, None)
 
         if self._model is not None:
-            obs = board.get_observation(player)  # widok lustrzany dla P1
+            obs = board.get_observation(player)  # mirrored view for P1
             mask = board.valid_action_mask(player)
             action, _ = self._model.predict(
                 obs,

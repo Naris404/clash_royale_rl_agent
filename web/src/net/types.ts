@@ -1,4 +1,4 @@
-// Typy wiadomości WebSocket — lustro server/protocol.py
+// WebSocket message types — mirror of server/protocol.py
 
 export interface ArenaConfig {
   arena_width: number;

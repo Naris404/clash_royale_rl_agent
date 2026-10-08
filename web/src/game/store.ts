@@ -16,8 +16,8 @@ export interface Toast {
 }
 
 /**
- * Mutable store — Pixi czyta go co klatkę bez Reacta; React subskrybuje
- * przez `subscribe`/`getVersion` (useSyncExternalStore) tylko dla HUD.
+ * Mutable store — Pixi reads it every frame without React; React subscribes
+ * through `subscribe`/`getVersion` (useSyncExternalStore) for the HUD only.
  */
 export class GameStore {
   config: ArenaConfig | null = null;
@@ -38,7 +38,7 @@ export class GameStore {
   paused = false;
   speed = 1;
 
-  /** wybrana karta z ręki (tryb celowania) */
+  /** card selected from hand (targeting mode) */
   selectedCard: string | null = null;
 
   private toastSeq = 1;
@@ -78,8 +78,8 @@ export class GameStore {
         this.currSnap = msg;
         this.currAt = performance.now();
         if (msg.done && this.matchEnd == null) {
-          // match_end event zwykle dochodzi w tym samym ticku; snapshot sam
-          // też kończy grę (bezpiecznik)
+          // match_end event usually arrives in the same tick; the snapshot alone
+          // also ends the game (safety net)
           this.selectedCard = null;
         }
         break;
@@ -115,7 +115,7 @@ export class GameStore {
         ];
         break;
       case "pong":
-        return; // bez emisji
+        return; // no emit
     }
     this.emit();
   }
@@ -127,14 +127,14 @@ export class GameStore {
     }
   }
 
-  /** Pozycje do renderu: interpolacja prev→curr (render ~1 snapshot w tyle). */
+  /** Positions for rendering: prev→curr interpolation (render ~1 snapshot behind). */
   interpolationAlpha(now: number): number {
     if (!this.prevSnap || !this.currSnap || !this.config) return 1;
     const intervalMs = (this.config.tick_dt * 1000) / this.speed;
     return Math.min(1, Math.max(0, (now - this.currAt) / intervalMs));
   }
 
-  /** Znormalizowana ocena pozycji 0..1 (0.5 = równo) dla paska eval. */
+  /** Normalized position eval 0..1 (0.5 = even) for the eval bar. */
   normalizedValue(): number | null {
     const value = this.hint?.value;
     if (value == null || !Number.isFinite(value)) return null;
@@ -148,7 +148,7 @@ export class GameStore {
     this.emit();
   }
 
-  /** Lokalny reset po rematch — serwer nie wysyła ponownie hello. */
+  /** Local reset after rematch — the server does not resend hello. */
   resetMatchLocal(): void {
     this.matchEnd = null;
     this.keyMoments = [];

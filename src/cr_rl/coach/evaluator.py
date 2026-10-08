@@ -1,7 +1,7 @@
-"""CoachEngine — sugestie ruchów, ocena zagrań gracza, kluczowe momenty.
+"""CoachEngine — move suggestions, player-play grading, key moments.
 
-Z wytrenowaną siecią (PolicyInspector) używa rozkładu polityki i V(s);
-bez modelu spada na heurystyki LogicAgent (trener działa zawsze).
+With a trained network (PolicyInspector) it uses the policy distribution and V(s);
+without a model it falls back to LogicAgent heuristics (the coach always works).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ GRADE_SCORE = {
     GRADE_UNKNOWN: 0.5,
 }
 
-# Progi klasyfikacji — stroione na nagrodę w skali ułamka HP wież na mecz.
+# Classification thresholds — tuned to the reward scale (fraction of tower HP per match).
 BLUNDER_PROB = 0.05
 INACCURACY_PROB = 0.20
 BLUNDER_DELTA_V = -0.02
@@ -44,7 +44,7 @@ KEY_MOMENT_DELTA_V = 0.01
 
 
 def nearest_zone(player: int, card: str, x: float, y: float) -> int:
-    """Mapuje dowolną pozycję rzutu na najbliższą dyskretną strefę akcji RL."""
+    """Maps any drop position to the nearest discrete RL action zone."""
     zones = DEPLOY_ZONES[player]
     card_type = cards_dic.get(card, {}).get("type")
     allowed = [i for i, zone in enumerate(zones) if zone.allows(card_type)]
@@ -52,7 +52,7 @@ def nearest_zone(player: int, card: str, x: float, y: float) -> int:
 
 
 def encode_action(board: Board, player: int, card: str, zone_idx: int) -> Optional[int]:
-    """Indeks akcji RL dla (karta, strefa); None gdy karty nie ma na ręce."""
+    """RL action index for (card, zone); None when the card is not in hand."""
     hand = board.get_hand(player)
     if card not in hand:
         return None
@@ -63,7 +63,7 @@ def encode_action(board: Board, player: int, card: str, zone_idx: int) -> Option
 
 
 def decode_action(board: Board, player: int, action: int) -> tuple[Optional[str], Optional[int], Optional[int]]:
-    """Akcja → (karta, slot ręki, strefa); (None, None, None) dla noop."""
+    """Action → (card, hand slot, zone); (None, None, None) for noop."""
     if action <= 0:
         return None, None, None
     slot, zone_idx = divmod(action - 1, NUM_ZONES)
@@ -111,9 +111,9 @@ class KeyMoment:
 
 
 class KeyMomentTracker:
-    """Wykrywa duże wahania V(s) — do logu kluczowych momentów meczu."""
+    """Detects large V(s) swings — for the match's key-moment log."""
 
-    def __init__(self, threshold: float = KEY_MOMENT_DELTA_V, lang: str = "pl"):
+    def __init__(self, threshold: float = KEY_MOMENT_DELTA_V, lang: str = "en"):
         self.threshold = threshold
         self.lang = lang
         self._prev: Optional[float] = None
@@ -141,13 +141,13 @@ class KeyMomentTracker:
 
 
 class CoachEngine:
-    """Fasada trenera: suggest() co tick, grade_move() po zagraniu gracza."""
+    """Coach facade: suggest() every tick, grade_move() after the player's play."""
 
     def __init__(
         self,
         inspector: Optional[PolicyInspector] = None,
         *,
-        lang: str = "pl",
+        lang: str = "en",
         sim_ticks_after_move: int = 3,
     ):
         self.inspector = inspector or PolicyInspector()
@@ -159,7 +159,7 @@ class CoachEngine:
     def uses_neural_net(self) -> bool:
         return self.inspector.available
 
-    # --- sugestie ---
+    # --- suggestions ---
 
     def suggest(self, board: Board, player: int = 0) -> Suggestion:
         if self.inspector.available:
@@ -215,10 +215,10 @@ class CoachEngine:
             source="heuristic",
         )
 
-    # --- ocena zagrań ---
+    # --- play grading ---
 
     def grade_move(self, board: Board, card: str, x: float, y: float, player: int = 0) -> MoveGrade:
-        """Ocenia zagranie gracza WYWOŁANE PRZED wykonaniem ruchu na planszy."""
+        """Grades a player's play; MUST be called BEFORE the move is applied to the board."""
         zone_idx = nearest_zone(player, card, x, y)
 
         if not self.inspector.available:
@@ -256,7 +256,7 @@ class CoachEngine:
         self._fallback.reset()
         play = self._fallback._decide_play(board, player)
         if play is None:
-            grade = GRADE_INACCURACY  # heurystyka woli czekać, gracz wydał eliksir
+            grade = GRADE_INACCURACY  # heuristic prefers waiting, player spent elixir
             best_card, best_zone = None, None
         else:
             best_card = play[0]
@@ -304,7 +304,7 @@ class CoachEngine:
     def _simulate_value_after(
         self, board: Board, player: int, card: str, x: float, y: float
     ) -> Optional[float]:
-        """V(s') po zagraniu karty i kilku tickach noop — przybliżona wartość ruchu."""
+        """V(s') after playing the card and a few noop ticks — approximate move value."""
         try:
             sim = copy.deepcopy(board)
             if not sim.play_card_at(player, card, x, y):
@@ -315,5 +315,5 @@ class CoachEngine:
                     break
             return self.inspector.value(sim, player)
         except Exception:
-            logger.exception("Symulacja wartości po ruchu nie powiodła się")
+            logger.exception("Post-move value simulation failed")
             return None

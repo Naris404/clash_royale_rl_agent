@@ -22,7 +22,7 @@ function isValidPlacement(config: ArenaConfig, card: string, x: number, y: numbe
   const isSpell = config.cards[card]?.type === "spell";
   if (x < 1 || x > config.arena_width - 1) return false;
   if (isSpell) return y >= 2 && y <= config.arena_length - 2;
-  return y >= 2 && y <= config.river_y - 0.5; // połowa P0
+  return y >= 2 && y <= config.river_y - 0.5; // P0's half
 }
 
 export function GameScreen({ store, socket, lang, strings, onExit }: Props) {

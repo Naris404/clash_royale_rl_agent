@@ -1,4 +1,4 @@
-"""Test renderowania emoji w headless Chromium."""
+"""Emoji rendering test in headless Chromium."""
 
 from playwright.sync_api import sync_playwright
 

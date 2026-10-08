@@ -1,4 +1,4 @@
-"""Ewaluacja wytrenowanego modelu PPO vs LogicAgent."""
+"""Evaluation of a trained PPO model vs LogicAgent."""
 
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ def main() -> None:
     stats = evaluate_model(args.model, n_episodes=args.episodes, seed=args.seed)
     print(f"Model: {args.model}")
     print(
-        f"Mecze: {stats['episodes']} | "
+        f"Matches: {stats['episodes']} | "
         f"W: {stats['wins']} L: {stats['losses']} D: {stats['draws']} | "
         f"Win rate: {stats['win_rate']:.1%}"
     )
-    print(f"Srednia nagroda (HP wiez): {stats['mean_reward']:.4f}")
-    print(f"Srednia dlugosc meczu (ticki): {stats['mean_length']:.0f}")
+    print(f"Mean reward (tower HP): {stats['mean_reward']:.4f}")
+    print(f"Mean match length (ticks): {stats['mean_length']:.0f}")
 
 
 if __name__ == "__main__":

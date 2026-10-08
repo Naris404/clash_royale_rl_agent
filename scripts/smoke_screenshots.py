@@ -1,4 +1,4 @@
-"""Zrzuty ekranu aplikacji webowej (weryfikacja wizualna) — wymaga działającego serwera.
+"""Screenshots of the web app (visual verification) — requires a running server.
 
   python scripts/smoke_screenshots.py --url http://localhost:8000 --out screenshots
 """
@@ -29,19 +29,19 @@ def main() -> None:
         page.wait_for_timeout(800)
         page.screenshot(path=out / "1_home.png")
 
-        # start treningu z trenerem
-        page.click("text=Trening z trenerem")
+        # start coach training
+        page.click("text=Training with coach")
         page.wait_for_timeout(2500)
         page.screenshot(path=out / "2_game_start.png")
 
-        # zagraj pierwszą kartę z ręki: klik w kartę, potem w środek własnej połowy
+        # play the first card in hand: click the card, then the middle of own half
         page.click(".card:first-child")
         page.wait_for_timeout(300)
         box = page.locator(".arena-canvas canvas").bounding_box()
         if box:
             page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] * 0.72)
         page.locator(".toast").first.wait_for(state="visible", timeout=5000)
-        assert page.locator(".card-selected").count() == 0, "Karta pozostała zaznaczona po zagraniu"
+        assert page.locator(".card-selected").count() == 0, "Card remained selected after being played"
         page.wait_for_timeout(2500)
         page.screenshot(path=out / "3_after_play.png")
 
@@ -52,7 +52,7 @@ def main() -> None:
 
         browser.close()
 
-    print(f"Zapisano zrzuty do {out}/")
+    print(f"Saved screenshots to {out}/")
 
 
 if __name__ == "__main__":

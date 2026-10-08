@@ -1,7 +1,7 @@
-"""Wyciąganie pełnej polityki z MaskablePPO: prawdopodobieństwa akcji + V(s).
+"""Extracting the full policy from MaskablePPO: action probabilities + V(s).
 
-SB3 `predict` zwraca tylko wybraną akcję — trener potrzebuje rozkładu
-(jak dobre są alternatywy) i wartości stanu (pasek oceny pozycji).
+SB3 `predict` returns only the chosen action — the coach needs the distribution
+(how good the alternatives are) and the state value (position eval bar).
 """
 
 from __future__ import annotations
@@ -22,16 +22,16 @@ DEFAULT_MODEL_PATH = MODELS_DIR / "ppo_cr_best.zip"
 
 @dataclass
 class PolicyEstimate:
-    """Ocena jednego stanu przez sieć: najlepsza akcja, rozkład, V(s)."""
+    """One state as evaluated by the network: best action, distribution, V(s)."""
 
     action: int
-    probs: np.ndarray  # (NUM_ACTIONS,), zamaskowane (0 dla nielegalnych)
+    probs: np.ndarray  # (NUM_ACTIONS,), masked (0 for illegal)
     value: float
-    top_k: list[tuple[int, float]] = field(default_factory=list)  # (akcja, p) malejąco
+    top_k: list[tuple[int, float]] = field(default_factory=list)  # (action, p) descending
 
 
 class PolicyInspector:
-    """Wątkowo-bezpieczna inferencja MaskablePPO z rozkładem polityki."""
+    """Thread-safe MaskablePPO inference with the policy distribution."""
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class PolicyInspector:
         return self._model_path
 
     def estimate(self, board: Board, player: int = 0) -> Optional[PolicyEstimate]:
-        """Rozkład polityki + V(s) dla stanu z perspektywy `player`; None bez modelu."""
+        """Policy distribution + V(s) for the state from `player`'s perspective; None without a model."""
         if self._model is None:
             return None
 
@@ -79,7 +79,7 @@ class PolicyInspector:
             probs = distribution.distribution.probs.squeeze(0).cpu().numpy()
             value = float(self._model.policy.predict_values(obs_t).item())
 
-        # czyszczenie artefaktów zmiennoprzecinkowych na nielegalnych akcjach
+        # clean up floating-point artifacts on illegal actions
         probs = np.where(mask, probs, 0.0).astype(np.float64)
         total = probs.sum()
         if total > 0:
@@ -95,6 +95,6 @@ class PolicyInspector:
         )
 
     def value(self, board: Board, player: int = 0) -> Optional[float]:
-        """Samo V(s) — szybsza ścieżka dla paska oceny i kluczowych momentów."""
+        """V(s) only — faster path for the eval bar and key moments."""
         estimate = self.estimate(board, player)
         return estimate.value if estimate else None

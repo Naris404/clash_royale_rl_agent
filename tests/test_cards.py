@@ -1,4 +1,4 @@
-"""Testy mechanik jednostek z cards.py (Troop / Tower)."""
+"""Tests for unit mechanics from cards.py (Troop / Tower)."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ class TestCombatMechanics:
 class TestMovement:
     def test_move_snaps_to_target_without_overshoot(self):
         knight = _troop("Knight", 0, 5.0, 5.0)
-        knight.move_towards_point(5.1, 5.0, 0.1)  # krok 0.18 > dystans 0.1
+        knight.move_towards_point(5.1, 5.0, 0.1)  # step 0.18 > distance 0.1
         assert (knight.x, knight.y) == (5.1, 5.0)
 
     def test_move_step_proportional_to_speed(self):

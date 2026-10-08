@@ -997,7 +997,7 @@ img.next-card-art {
   z-index: 60;
 }
 
-/* --- responsywność --- */
+/* --- responsiveness --- */
 
 @media (max-width: 860px) {
   .home {

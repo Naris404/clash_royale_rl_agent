@@ -1,6 +1,6 @@
 export const CARD_EMOJI: Record<string, string> = {
   Knight: "⚔️",
-  Giant: "🧱", // 🗿 nie renderuje się w środowiskach bez rozszerzonych fontów emoji
+  Giant: "🧱", // 🗿 does not render in environments without extended emoji fonts
   Cannon: "🎯",
   Musketeer: "🔫",
   Hog_Rider: "🐗",
