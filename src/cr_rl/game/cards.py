@@ -76,10 +76,8 @@ class Troop:
     def can_target(self, target: Troop) -> bool:
         if not target.alive or target.owner == self.owner:
             return False
-        if target.is_tower:
-            return "buildings" in self.targets or "ground" in self.targets
         if target.is_building:
-            return "buildings" in self.targets
+            return "buildings" in self.targets or "ground" in self.targets
         if target.unit_type == "air":
             return "air" in self.targets
         return "ground" in self.targets
