@@ -82,6 +82,7 @@ export interface Snapshot {
   time: number;
   time_limit: number;
   elixir: number[];
+  king_active: boolean[];
   towers: TowerState[];
   troops: TroopState[];
   spells: SpellState[];

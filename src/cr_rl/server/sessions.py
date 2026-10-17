@@ -368,6 +368,7 @@ class GameSession:
             time=round(board.time, 2),
             time_limit=MATCH_TIME_LIMIT,
             elixir=[round(e, 2) for e in board.elixir],
+            king_active=[board.is_king_active(p) for p in (0, 1)],
             towers=towers,
             troops=troops,
             spells=spells,
