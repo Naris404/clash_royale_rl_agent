@@ -107,6 +107,7 @@ class SnapshotMsg(BaseModel):
     time: float
     time_limit: float
     elixir: list[float]
+    king_active: list[bool]  # per player: the king tower has woken up and shoots
     towers: list[TowerState]
     troops: list[TroopState]
     spells: list[SpellState]

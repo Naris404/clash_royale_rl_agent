@@ -550,6 +550,15 @@ class Board:
                 best = enemy
         return best
 
+    def is_king_active(self, player: int) -> bool:
+        """A king tower wakes up once it has taken damage or a princess tower of its side fell.
+
+        Derived from tower state: HP never recovers and towers never return, so it is permanent.
+        """
+        own = [t for t in self.towers if t.owner == player]
+        king = next(t for t in own if t.name == "King_Tower")
+        return king.hp < king.max_hp or any(not t.alive for t in own)
+
     def _simulate_combat(self, dt: float) -> tuple[float, float]:
         """Returns (damage dealt by P0, damage taken by P0).
 
@@ -581,6 +590,9 @@ class Board:
 
         for tower in self.towers:
             if not tower.alive:
+                continue
+            if tower.name == "King_Tower" and not self.is_king_active(tower.owner):
+                idlers.append(tower)
                 continue
             target = self.find_tower_target(tower)
             if target is None:

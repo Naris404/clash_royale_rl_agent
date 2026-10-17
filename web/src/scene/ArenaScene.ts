@@ -35,6 +35,7 @@ interface TowerView {
   hpFg: Graphics;
   hpText: Text;
   rubble: Text;
+  sleep: Text;
   flash: Graphics;
   flashUntil: number;
   lastHp: number;
@@ -228,7 +229,7 @@ export class ArenaScene {
         this.towers.set(tower.id, view);
         this.towerLayer.addChild(view.root);
       }
-      this.updateTower(view, tower, l, now);
+      this.updateTower(view, tower, snap.king_active, l, now);
     }
   }
 
@@ -253,14 +254,18 @@ export class ArenaScene {
     const rubble = new Text({ text: "💥", style: { fontSize: size * 0.6 } });
     rubble.anchor.set(0.5);
     rubble.visible = false;
+    const sleep = new Text({ text: "💤", style: { fontSize: size * 0.4 } });
+    sleep.anchor.set(0.5);
+    sleep.position.set(size * 0.3, -size * 0.3);
+    sleep.visible = false;
     const flash = new Graphics();
     flash.roundRect(-size / 2, -size / 2, size, size, 6).fill({ color: 0xffffff, alpha: 0.6 });
     flash.visible = false;
-    root.addChild(base, label, flash, hpBg, hpFg, hpText, rubble);
-    return { root, label, hpFg, hpText, rubble, flash, flashUntil: 0, lastHp: tower.hp, wasAlive: tower.alive };
+    root.addChild(base, label, sleep, flash, hpBg, hpFg, hpText, rubble);
+    return { root, label, hpFg, hpText, rubble, sleep, flash, flashUntil: 0, lastHp: tower.hp, wasAlive: tower.alive };
   }
 
-  private updateTower(view: TowerView, tower: TowerState, l: Layout, now: number): void {
+  private updateTower(view: TowerView, tower: TowerState, kingActive: boolean[], l: Layout, now: number): void {
     const [sx, sy] = this.toScreen(tower.x, tower.y, l);
     view.root.position.set(sx, sy);
     const frac = tower.max_hp > 0 ? Math.max(0, tower.hp / tower.max_hp) : 0;
@@ -279,6 +284,11 @@ export class ArenaScene {
     view.rubble.visible = !tower.alive;
     view.label.visible = tower.alive;
     view.hpText.visible = tower.alive;
+
+    // an idle king (not yet damaged, no princess lost) is dimmed with a sleep badge
+    const idle = tower.alive && tower.name === "King_Tower" && !kingActive[tower.owner];
+    view.label.alpha = idle ? 0.45 : 1;
+    view.sleep.visible = idle;
   }
 
   // --- units ---
