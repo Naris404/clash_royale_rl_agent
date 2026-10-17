@@ -19,7 +19,6 @@ from cr_rl.game.board import (
     BRIDGE_HALF_WIDTH,
     BRIDGE_LANE_X,
     DEPLOY_ZONES,
-    REGULATION_TIME,
     RIVER_HALF_WIDTH,
     RIVER_Y,
     TICK_DT,
@@ -80,7 +79,6 @@ def arena_config() -> dict:
         "cards": {name: stats for name, stats in cards_dic.items()},
         "deck": list(DECK),
         "tick_dt": TICK_DT,
-        "time_limit": REGULATION_TIME,
     }
 
 

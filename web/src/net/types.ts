@@ -12,7 +12,6 @@ export interface ArenaConfig {
   cards: Record<string, CardStats>;
   deck: string[];
   tick_dt: number;
-  time_limit: number;
 }
 
 export interface DeployZone {

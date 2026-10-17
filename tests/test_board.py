@@ -325,6 +325,12 @@ class TestTargetingAndCombat:
         enemy.place((tower.x, tower.y + 5.0))
         assert board.find_tower_target(tower) is enemy
 
+    def test_a_cannon_does_not_shoot_an_enemy_cannon_in_range(self):
+        board = new_board()
+        cannons = [place_unit(board, "Cannon", o, 9.0, 12.0 + 4.5 * o) for o in (0, 1)]
+        _step_seconds(board, 5.0)
+        assert all(c.hp == c.max_hp for c in cannons)
+
     def test_giant_walks_past_troops_to_hit_a_building(self):
         board = new_board()
         giant = place_unit(board, "Giant", 0, 3.0, 19.0)
@@ -794,6 +800,18 @@ class TestCrowns:
         results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
         assert any(r.terminated for r in results)
         assert board.time < REGULATION_TIME
+
+    def test_both_kings_falling_in_the_same_tick_is_a_draw(self):
+        board = new_board()
+        _tower(board, 0, "Tower", "L").hp = 100.0  # the tower HP tiebreak must not decide it
+        for owner, attacker in ((0, 1), (1, 0)):
+            king = _tower(board, owner, "King_Tower")
+            king.hp = 1.0
+            place_unit(board, "Knight", attacker, king.x, king.y - 1.0 if attacker == 1 else king.y + 1.0)
+        results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
+        assert any(r.terminated for r in results)
+        assert board.crowns == [3, 3]
+        assert board.winner is None
 
     def test_more_crowns_at_time_limit_wins_despite_less_tower_hp(self):
         board = new_board()

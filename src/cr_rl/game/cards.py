@@ -71,7 +71,7 @@ class Troop:
     def crosses_river_freely(self) -> bool:
         return self.jumps_river or self.unit_type == "air"
 
-    def place(self,position: tuple[float, float]) -> None:
+    def place(self, position: tuple[float, float]) -> None:
         self.x, self.y = position
 
     def distance_to(self, other: Troop) -> float:
@@ -88,7 +88,7 @@ class Troop:
         if not target.alive or target.owner == self.owner:
             return False
         if target.is_building:
-            return "buildings" in self.targets or "ground" in self.targets
+            return not self.is_building and ("buildings" in self.targets or "ground" in self.targets)
         if target.unit_type == "air":
             return "air" in self.targets
         return "ground" in self.targets

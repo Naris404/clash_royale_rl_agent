@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 import random
 from collections import deque
-from math import sqrt
 from dataclasses import dataclass, field, replace
+from math import sqrt
 from typing import Optional
 
 import numpy as np
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 from cr_rl.game.cards import (
     CARD_TO_ID,
     DEFAULT_SIGHT_RANGE,
-    MIN_MOVE_DISTANCE,
     DECK,
+    MIN_MOVE_DISTANCE,
     Troop,
     Tower,
     cards_dic,
@@ -709,7 +709,7 @@ class Board:
             if tower.alive:
                 continue
             crowns[1 - tower.owner] += KING_CROWNS if tower.name == "King_Tower" else 1
-        return [min(c, KING_CROWNS) for c in crowns]
+        return [min(c, KING_CROWNS) for c in crowns]  # a king kill plus princess towers still caps at 3
 
     @property
     def phase(self) -> str:
@@ -743,10 +743,11 @@ class Board:
     def _end_match(self, crowns: list[int]) -> None:
         """More crowns wins; equal crowns fall to the tiebreak (weakest tower), then a draw."""
         self.done = True
-        if crowns[0] == crowns[1]:
-            crowns = self._weakest_tower_hp()
-        if crowns[0] != crowns[1]:
-            self.winner = 0 if crowns[0] > crowns[1] else 1
+        score = crowns
+        if crowns[0] == crowns[1] and crowns[0] < KING_CROWNS:  # both kings down is a draw
+            score = self._weakest_tower_hp()
+        if score[0] != score[1]:
+            self.winner = 0 if score[0] > score[1] else 1
 
     def _weakest_tower_hp(self) -> list[float]:
         return [min(t.hp for t in self.towers if t.owner == p and t.alive) for p in (0, 1)]
