@@ -14,12 +14,12 @@ mirror deck).
 | | |
 |---|---|
 | Documented layout | 169-dim observation, 45 actions (11 deploy zones) |
-| Simulation | env-v1 in progress: 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak |
+| Simulation | env-v1: 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested ([checklist](playtest-env-v1.md)); frozen at the `env-v1` tag after the user's sign-off |
 | Trained model for this layout | none yet; the **v2 model** is trained only after env-v1 is tagged (ADR-0003) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
-The remaining env-v1 mechanics (overtime) will change the end-of-match rule. Those
-changes land here together with the code.
+The observation and action layout above is the env-v1 contract: it is pinned by
+`tests/test_env_layout.py`, and any change to it needs a new environment version.
 
 ## Agent at a glance
 
@@ -360,3 +360,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-17 | Card stats moved to `card_stats.json` at tournament standard (level 11); tower HP, and so `MAX_TOWER_HP_PER_PLAYER`, changed from 15880 to 10928. |
 | 2026-10-17 | Deck of 8 (Knight, Giant, Hog Rider, Musketeer, Cannon, Fireball, Arrows, Baby Dragon) with air units and splash (#19): `OBS_DIM` 153 → 169 (hand one-hot 4×8, new next-card one-hot, card IDs in Deck order), action space unchanged at 45. v1 and 153-dim checkpoints are ignored at load. |
 | 2026-10-17 | The win rule counts crowns instead of comparing total tower HP at the time limit; the reward is unchanged. |
+| 2026-10-17 | env-v1 playtest ([checklist](playtest-env-v1.md)): troops and buildings can no longer be placed in the river water (the deploy region ends at the bank, `RIVER_Y ∓ 1.2`); the 11 deploy zones, the 45 actions and the 169-dim observation are unchanged and pinned by `tests/test_env_layout.py`. |

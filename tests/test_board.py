@@ -169,6 +169,19 @@ class TestDeployZones:
             else:
                 assert z.card_types == frozenset({"ground", "air", "building"})
 
+    @pytest.mark.parametrize("player", [0, 1])
+    @pytest.mark.parametrize("card", ["Knight", "Cannon", "Baby_Dragon"])
+    def test_troops_and_buildings_cannot_be_placed_in_the_river(self, player, card):
+        board = new_board()
+        board.elixir[player] = 10.0
+        set_hand(board, player, [card])
+        direction = 1.0 if player == 0 else -1.0
+        bank = RIVER_Y - direction * RIVER_HALF_WIDTH
+        for x in (3.0, 9.0):  # on a bridge lane and between the bridges
+            assert not board.can_play_card_at(player, card, x, bank + direction * 0.1)
+            assert not board.can_play_card_at(player, card, x, RIVER_Y)
+            assert board.can_play_card_at(player, card, x, bank - direction * 0.1)
+
     def test_num_actions_is_noop_plus_slots_times_zones(self):
         assert NUM_ACTIONS == 45 == 1 + HAND_SIZE * NUM_ZONES
 

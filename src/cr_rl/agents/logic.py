@@ -19,6 +19,7 @@ from cr_rl.game.board import (
     ARENA_WIDTH,
     BRIDGE_LANE_X,
     REGULATION_TIME,
+    RIVER_HALF_WIDTH,
     RIVER_Y,
     TOWER_LAYOUT,
     Board,
@@ -170,9 +171,9 @@ class LogicAgent:
             y = max(2.0, min(ARENA_LENGTH - 2.0, y))
             return card, x, y
         if player == 0:
-            y = max(2.0, min(RIVER_Y - 0.5, y))
+            y = max(2.0, min(RIVER_Y - RIVER_HALF_WIDTH, y))
         else:
-            y = max(RIVER_Y + 0.5, min(ARENA_LENGTH - 2.0, y))
+            y = max(RIVER_Y + RIVER_HALF_WIDTH, min(ARENA_LENGTH - 2.0, y))
         return card, x, y
 
     def _add_if_legal(
@@ -721,7 +722,7 @@ def _fireball_best_cluster(
 
 def _hog_on_bridge(player: int, lane: str) -> tuple[str, float, float]:
     bx = BRIDGE_LANE_X[0] if lane == "Tower_L" else BRIDGE_LANE_X[1]
-    y = RIVER_Y - 1.0 if player == 0 else RIVER_Y + 1.0
+    y = RIVER_Y - RIVER_HALF_WIDTH if player == 0 else RIVER_Y + RIVER_HALF_WIDTH
     return "Hog_Rider", bx, y
 
 
@@ -777,7 +778,7 @@ def _knight_on_unit(
                 return "Knight", x, y
     x = max(1.0, min(ARENA_WIDTH - 1.0, enemy.x))
     if player == 0:
-        y = max(2.0, min(RIVER_Y - 0.5, enemy.y))
+        y = max(2.0, min(RIVER_Y - RIVER_HALF_WIDTH, enemy.y))
     else:
-        y = max(RIVER_Y + 0.5, min(ARENA_LENGTH - 2.0, enemy.y))
+        y = max(RIVER_Y + RIVER_HALF_WIDTH, min(ARENA_LENGTH - 2.0, enemy.y))
     return "Knight", x, y
