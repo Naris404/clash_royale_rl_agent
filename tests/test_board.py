@@ -306,6 +306,7 @@ class TestTargetingAndCombat:
     @pytest.mark.parametrize("p0_listed_first", [True, False])
     def test_units_that_kill_each_other_in_one_tick_both_die(self, p0_listed_first):
         board = new_board()
+        board.towers = [t for t in board.towers if t.name == "King_Tower"]  # only the duel decides
         owners = (0, 1) if p0_listed_first else (1, 0)
         knights = [place_unit(board, "Knight", o, 9.0, 14.0 + 0.5 * o, hp=1.0) for o in owners]
 
@@ -610,13 +611,13 @@ class TestKingTower:
         return next(t for t in board.towers if t.owner == owner and t.name == "King_Tower")
 
     @staticmethod
-    def _board_with_knight_near_enemy_king(seed: int = 42) -> tuple[Board, Troop]:
+    def _board_with_knight_near_enemy_king(seed: int = 42, y: float = 26.0) -> tuple[Board, Troop]:
         board = new_board(seed)
-        place_unit(board, "Knight", 0, 9.0, 26.0)  # inside the king's range, 4 tiles away
+        place_unit(board, "Knight", 0, 9.0, y)  # inside the king's range
         return board, board.troops[0]
 
     def test_idle_king_does_not_shoot_units_in_range(self):
-        board, _ = self._board_with_knight_near_enemy_king()
+        board, _ = self._board_with_knight_near_enemy_king(y=23.5)  # too far to hit the king yet
         king = self._king(board)
         shots = 0
         for _ in range(round(2.0 / TICK_DT)):  # the Knight is still walking toward the king
@@ -624,6 +625,22 @@ class TestKingTower:
             shots += _hits_from(board, king)
         assert shots == 0
         assert not board.is_king_active(1)
+
+    def test_king_shoots_back_at_a_musketeer_that_finished_a_princess_tower(self):
+        board = new_board()
+        king = self._king(board)
+        princess = next(t for t in board.towers if t.owner == 1 and t is not king and t.x < 9)
+        princess.hp = 1.0
+        musketeer = place_unit(board, "Musketeer", 0, princess.x, princess.y - 4.0)
+
+        king_shots = 0
+        for _ in range(round(8.0 / TICK_DT)):  # the princess falls, the Musketeer walks up and shoots the king
+            board.step(0, action_p1=0)
+            king_shots += _hits_from(board, king)
+
+        assert not princess.alive
+        assert king.hp < king.max_hp
+        assert king_shots > 0
 
     def test_direct_damage_activates_king_which_then_shoots_back(self):
         board, knight = self._board_with_knight_near_enemy_king()

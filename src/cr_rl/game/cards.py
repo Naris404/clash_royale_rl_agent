@@ -81,8 +81,8 @@ class Troop:
         return sqrt((self.x - x) ** 2 + (self.y - y) ** 2)
 
     def is_in_range(self, target: Troop) -> bool:
-        """Range reaches the target's edge, so melee can hit a body it cannot overlap."""
-        return self.distance_to(target) - target.collision_radius <= self.range
+        """Range is measured edge to edge, so both sides of a fight reach each other equally."""
+        return self.distance_to(target) - self.collision_radius - target.collision_radius <= self.range
 
     def can_target(self, target: Troop) -> bool:
         if not target.alive or target.owner == self.owner:
