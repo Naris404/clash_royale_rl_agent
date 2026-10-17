@@ -295,6 +295,17 @@ class TestTargetingAndCombat:
         near = place_unit(board, "Knight", 1, knight.x + 3.0, knight.y)
         assert board.find_nearest_target(knight) is near
 
+    @pytest.mark.parametrize("p0_listed_first", [True, False])
+    def test_units_that_kill_each_other_in_one_tick_both_die(self, p0_listed_first):
+        board = new_board()
+        owners = (0, 1) if p0_listed_first else (1, 0)
+        knights = [place_unit(board, "Knight", o, 9.0, 14.0 + 0.5 * o, hp=1.0) for o in owners]
+
+        for _ in range(30):
+            board.step(0, 0)
+
+        assert not any(k.alive for k in knights)
+
     def test_tower_shoots_only_in_range(self):
         board = new_board()
         tower = next(

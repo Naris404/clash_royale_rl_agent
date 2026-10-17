@@ -134,10 +134,7 @@ class Troop:
         if self.cooldown > 0:
             return 0.0
 
-        target.hp -= self.damage
-        if target.hp <= 0:
-            target.hp = 0
-            target.alive = False
+        target.hp = max(0.0, target.hp - self.damage)  # the board marks deaths at end of tick
         self.cooldown = self.hit_speed
         return float(self.damage)
 

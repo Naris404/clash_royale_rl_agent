@@ -44,14 +44,6 @@ def _princess(board: Board, owner: int, lane: str) -> Troop:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Units act one after another within a tick, so the later-listed Knight starts "
-        "its swing a tick earlier and wins the duel with ~222 HP left; mirror Knights "
-        "should kill each other. Needs simultaneous attack resolution."
-    ),
-)
 def test_mirror_knights_at_the_bridge_kill_each_other():
     board = new_board()
     knights = [_play(board, 0, "Knight", "bridge-L"), _play(board, 1, "Knight", "bridge-L")]

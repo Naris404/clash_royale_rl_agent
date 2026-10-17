@@ -542,64 +542,63 @@ class Board:
         return best
 
     def _simulate_combat(self, dt: float) -> tuple[float, float]:
-        """Returns (damage dealt by P0, damage taken by P0)."""
+        """Returns (damage dealt by P0, damage taken by P0).
+
+        Every unit decides from the same start-of-tick state, all hits land, and only then
+        do units move and deaths take effect, so list order never decides a duel.
+        """
         dealt_p0 = 0.0
         taken_p0 = 0.0
 
+        attackers: list[tuple[Troop, Troop]] = []
+        movers: list[tuple[Troop, Optional[tuple[float, float]]]] = []
+        idlers: list[Troop] = []
+
         for troop in list(self.troops):
-            if not troop.alive:
-                continue
-            if not troop.tick_age(dt):
+            if not troop.alive or not troop.tick_age(dt):
                 continue
             if troop.is_deploying:
                 troop.tick_deploy(dt)
                 continue
-
             target = self.find_nearest_target(troop)
-            if target is None:
-                if troop.speed > 0 and not troop.is_building:
-                    wx, wy = self.get_push_waypoint(troop)
-                    troop.move_towards_point(wx, wy, dt)
-                    self._enforce_no_river_cut(troop)
-                troop.update_cooldown(dt)
-                continue
-
-            if troop.is_in_range(target):
-                dmg = troop.hit(target, dt)
-            elif not troop.is_building or troop.speed > 0:
-                wx, wy = self.get_move_waypoint(troop, target)
-                troop.move_towards_point(wx, wy, dt)
-                self._enforce_no_river_cut(troop)
-                troop.update_cooldown(dt)
-                dmg = 0.0
+            if target is not None and troop.is_in_range(target):
+                attackers.append((troop, target))
+            elif target is not None and (not troop.is_building or troop.speed > 0):
+                movers.append((troop, self.get_move_waypoint(troop, target)))
+            elif target is None and troop.speed > 0 and not troop.is_building:
+                movers.append((troop, self.get_push_waypoint(troop)))
             else:
-                troop.update_cooldown(dt)
-                dmg = 0.0
-
-            if dmg <= 0:
-                continue
-            self._record_hit(troop, target, dmg)
-            if troop.owner == 0:
-                dealt_p0 += dmg
-            elif target.owner == 0:
-                taken_p0 += dmg
+                idlers.append(troop)
 
         for tower in self.towers:
             if not tower.alive:
                 continue
             target = self.find_tower_target(tower)
             if target is None:
-                tower.update_cooldown(dt)
-                dmg = 0.0
+                idlers.append(tower)
             else:
-                dmg = tower.hit(target, dt)
+                attackers.append((tower, target))
+
+        for attacker, target in attackers:
+            dmg = attacker.hit(target, dt)
             if dmg <= 0:
                 continue
-            self._record_hit(tower, target, dmg)
-            if tower.owner == 0:
+            self._record_hit(attacker, target, dmg)
+            if attacker.owner == 0:
                 dealt_p0 += dmg
             elif target.owner == 0:
                 taken_p0 += dmg
+
+        for troop, waypoint in movers:
+            troop.move_towards_point(*waypoint, dt)
+            self._enforce_no_river_cut(troop)
+            troop.update_cooldown(dt)
+        for unit in idlers:
+            unit.update_cooldown(dt)
+
+        for unit in self._all_combatants():
+            if unit.hp <= 0:
+                unit.alive = False
 
         return dealt_p0, taken_p0
 
