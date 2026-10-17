@@ -276,7 +276,7 @@ class Board:
         if self.elixir[player] < cost:
             return False
 
-        radius = float(stats.get("radius", 2.5))
+        radius = float(stats["radius"])
         damage = float(stats.get("damage", 0))
         kx, ky = TOWER_LAYOUT[player]["King_Tower"]
         for unit in self._all_combatants():
