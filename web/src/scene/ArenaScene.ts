@@ -599,8 +599,8 @@ export class ArenaScene {
         .rect(l.ox + l.tile, l.oy + 2 * l.tile, (aw - 2) * l.tile, (al - 4) * l.tile)
         .fill({ color: zoneColor, alpha: 0.12 });
     } else {
-      // player's half (P0): y from 2 to river_y - 0.5 → screen from the top
-      const topY = al - (config.river_y - 0.5);
+      // player's half (P0): y from 2 to the river bank → screen from the top
+      const topY = al - (config.river_y - config.river_half_width);
       const bottomY = al - 2;
       this.deployOverlay
         .rect(l.ox + l.tile, l.oy + topY * l.tile, (aw - 2) * l.tile, (bottomY - topY) * l.tile)

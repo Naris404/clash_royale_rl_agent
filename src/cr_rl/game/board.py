@@ -257,8 +257,8 @@ class Board:
         if not (1.0 <= x <= ARENA_WIDTH - 1.0):
             return False
         if player == 0:
-            return 2.0 <= y <= RIVER_Y - 0.5
-        return RIVER_Y + 0.5 <= y <= ARENA_LENGTH - 2.0
+            return 2.0 <= y <= RIVER_Y - RIVER_HALF_WIDTH  # up to the water's edge, never in it
+        return RIVER_Y + RIVER_HALF_WIDTH <= y <= ARENA_LENGTH - 2.0
 
     def _in_spell_zone(self, player: int, x: float, y: float) -> bool:
         if not (1.0 <= x <= ARENA_WIDTH - 1.0):
