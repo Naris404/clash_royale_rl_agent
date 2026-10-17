@@ -14,7 +14,7 @@ mirror deck).
 | | |
 |---|---|
 | Documented layout | 169-dim observation, 45 actions (11 deploy zones) |
-| Simulation | env-v1 in progress: 8-card Deck, air units and splash; crowns decide the match (no overtime yet, tied crowns at 3:00 are a draw) |
+| Simulation | env-v1 in progress: 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak |
 | Trained model for this layout | none yet; the **v2 model** is trained only after env-v1 is tagged (ADR-0003) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
@@ -28,7 +28,7 @@ changes land here together with the code.
 - **Training opponent:** the rule-based bot (`LogicAgent`); the curriculum
   experiment starts against the random bot (`RandomAgent`).
 - **Decision rate:** one action per simulation tick, 10 Hz (`TICK_DT = 0.1` s).
-- **Episode:** one match, at most 1801 steps (180 s).
+- **Episode:** one match, at most 3001 steps (180 s regulation + 120 s overtime).
 
 Code: `src/cr_rl/game/board.py` (observation, actions, mask, reward),
 `src/cr_rl/env/gym_env.py` (Gymnasium wrapper), `src/cr_rl/training/train.py`
@@ -45,13 +45,16 @@ One `step(action)`:
 1. The opponent picks its action for player 1 (the rule-based bot submits its play
    through `set_pending_play` and returns noop).
 2. Player 0's action is applied, then player 1's.
-3. Elixir regenerates for both players (start 5, max 10, +1 per 2.8 s).
+3. Elixir regenerates for both players (start 5, max 10, +1 per 2.8 s; twice as fast from 2:00 through overtime).
 4. Combat runs for one tick; the reward is computed from the tower-HP change.
 5. Dead units are removed and the clock advances by 0.1 s.
 6. End check: **terminated** when a king tower is destroyed (3 crowns for its
-   destroyer); **truncated** at the 180 s time limit. Either way the player with more
-   crowns wins and equal crowns is a draw (a princess tower is 1 crown). 1800 ticks of 0.1 s accumulate to just under 180.0 in
-   floating point, so a full-length match lasts 1801 steps.
+   destroyer). Otherwise nothing happens before 180 s; then **truncated** as soon as the
+   crowns differ (end of regulation, or the first crown of the up-to-120 s overtime), so the
+   player with more crowns wins (a princess tower is 1 crown). Tied crowns at 180 s start
+   overtime; if it ends without a crown, the player whose weakest standing tower has less
+   HP loses and equal weakest towers are a draw. 1800 ticks of 0.1 s accumulate to just
+   under 180.0 in floating point, so a regulation match lasts 1801 steps.
 
 When the match ends, `info["winner"]` holds the winner (0 or 1) or `None` for a draw;
 it is `None` on every earlier step.
@@ -67,7 +70,7 @@ No `VecNormalize` is applied; every feature is already scaled to [-1, 1].
 |---|---|---|---|
 | 0 | 1 | Own elixir | `elixir / 10` |
 | 1 | 1 | Enemy elixir | `elixir / 10` (visible, unlike the real game) |
-| 2 | 1 | Match time | `min(1, time / 180)` |
+| 2 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime) |
 | 3–5 | 3 | Own towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
 | 6–8 | 3 | Enemy towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
 | 9–40 | 32 | Hand: 4 slots × 8 cards | one-hot per slot |

@@ -13,7 +13,6 @@ from cr_rl.game.board import (
     DEPLOY_ZONES,
     ELIXIR_PER_SECOND,
     HAND_SIZE,
-    MATCH_TIME_LIMIT,
     MAX_ELIXIR,
     NUM_ACTIONS,
     DECK_SIZE,
@@ -24,6 +23,8 @@ from cr_rl.game.board import (
     OBS_NEXT_BASE,
     OBS_TOWER_FEATURES,
     OBS_UNIT_BASE,
+    OVERTIME_TIME,
+    REGULATION_TIME,
     RIVER_HALF_WIDTH,
     RIVER_Y,
     TICK_DT,
@@ -523,7 +524,12 @@ class TestRewardsAndObservations:
         assert obs.dtype == np.float32
         assert -1.0 <= obs.min() and obs.max() <= 1.0
         assert obs[0] == pytest.approx(board.elixir[0] / MAX_ELIXIR)
-        assert obs[2] == pytest.approx(board.time / MATCH_TIME_LIMIT)
+        assert obs[2] == pytest.approx(board.time / REGULATION_TIME)
+
+    def test_time_feature_saturates_at_one_in_overtime(self):
+        board = new_board()
+        board.time = REGULATION_TIME + 30.0
+        assert board.get_observation(0)[2] == 1.0
 
     def test_observation_size_is_pinned(self):
         # 3 global + 6 tower HP + 4 hand slots x 8 cards + 8 next card + 24 units x 5
@@ -787,13 +793,13 @@ class TestCrowns:
         place_unit(board, "Knight", 0, king.x, king.y - 1.0)
         results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
         assert any(r.terminated for r in results)
-        assert board.time < MATCH_TIME_LIMIT
+        assert board.time < REGULATION_TIME
 
     def test_more_crowns_at_time_limit_wins_despite_less_tower_hp(self):
         board = new_board()
         _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
         _tower(board, 0, "King_Tower").hp = 1.0  # P0 is far behind on total HP
-        board.time = MATCH_TIME_LIMIT - TICK_DT
+        board.time = REGULATION_TIME - TICK_DT
         result = board.step(0, action_p1=0)
         assert result.truncated
         assert board.winner == 0
@@ -801,22 +807,120 @@ class TestCrowns:
     def test_more_crowns_for_the_opponent_wins_it_the_match(self):
         board = new_board()
         _knight_destroys(board, _tower(board, 0, "Tower", "R"), attacker=1)
-        board.time = MATCH_TIME_LIMIT - TICK_DT
+        board.time = REGULATION_TIME - TICK_DT
         board.step(0, action_p1=0)
         assert board.winner == 1
-
-    def test_equal_crowns_at_time_limit_is_a_draw_whatever_the_tower_hp(self):
-        board = new_board()
-        _tower(board, 1, "King_Tower").hp = 1.0  # P0 clearly ahead on HP, but no crowns
-        board.time = MATCH_TIME_LIMIT - TICK_DT
-        result = board.step(0, action_p1=0)
-        assert result.truncated
-        assert board.winner is None
 
     def test_same_seed_gives_the_same_outcome(self):
         outcomes = []
         for _ in range(2):
             board = new_board(seed=11)
+            while not board.done:
+                board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
+            outcomes.append((board.winner, board.crowns, board.time))
+        assert outcomes[0] == outcomes[1]
+
+
+class TestDoubleElixir:
+    def _elixir_gained(self, board: Board, start_time: float, seconds: float) -> float:
+        board.time = start_time
+        board.elixir = [0.0, 0.0]
+        _step_seconds(board, seconds)
+        return board.elixir[0]
+
+    def test_elixir_regenerates_at_the_normal_rate_early_in_regulation(self):
+        gained = self._elixir_gained(new_board(), 60.0, 5.0)
+        assert gained == pytest.approx(5.0 * ELIXIR_PER_SECOND)
+
+    def test_elixir_regenerates_twice_as_fast_in_the_last_minute_of_regulation(self):
+        board = new_board()
+        gained = self._elixir_gained(board, REGULATION_TIME - 60.0 + 1.0, 5.0)
+        assert board.phase == "double_elixir"
+        assert gained == pytest.approx(2 * 5.0 * ELIXIR_PER_SECOND)
+
+    def test_elixir_stays_at_double_rate_through_overtime_with_no_triple(self):
+        board = new_board()
+        gained = self._elixir_gained(board, REGULATION_TIME + 30.0, 5.0)
+        assert board.phase == "overtime"
+        assert gained == pytest.approx(2 * 5.0 * ELIXIR_PER_SECOND)
+
+
+class TestMatchPhases:
+    def test_phases_follow_the_clock(self):
+        board = new_board()
+        assert board.phase == "regulation"
+        board.time = REGULATION_TIME - 60.0 + 1.0
+        assert board.phase == "double_elixir"
+        board.time = REGULATION_TIME + 1.0
+        assert board.phase == "overtime"
+
+    def test_clock_counts_down_the_current_period(self):
+        board = new_board()
+        assert board.clock == pytest.approx(REGULATION_TIME)
+        board.time = REGULATION_TIME - 10.0
+        assert board.clock == pytest.approx(10.0)
+        board.time = REGULATION_TIME + 30.0
+        assert board.clock == pytest.approx(OVERTIME_TIME - 30.0)
+
+
+class TestOvertime:
+    def _tied_at_regulation_end(self) -> Board:
+        board = new_board()
+        board.time = REGULATION_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        return board
+
+    def test_tied_crowns_at_the_end_of_regulation_start_overtime(self):
+        board = self._tied_at_regulation_end()
+        assert not board.done
+        assert board.phase == "overtime"
+
+    def test_a_tie_with_crowns_each_also_goes_to_overtime(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _knight_destroys(board, _tower(board, 0, "Tower", "L"), attacker=1)
+        board.time = REGULATION_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        assert not board.done
+
+    @pytest.mark.parametrize("attacker", [0, 1])
+    def test_the_first_crown_in_overtime_wins_at_once(self, attacker):
+        board = self._tied_at_regulation_end()
+        _knight_destroys(board, _tower(board, 1 - attacker, "Tower", "R"), attacker=attacker)
+        assert board.done
+        assert board.winner == attacker
+        assert board.time < REGULATION_TIME + OVERTIME_TIME - 1.0
+
+    def test_overtime_without_a_crown_is_decided_by_the_weakest_tower(self):
+        board = self._tied_at_regulation_end()
+        _tower(board, 0, "Tower", "L").hp = 500.0
+        _tower(board, 1, "Tower", "R").hp = 900.0
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        result = board.step(0, action_p1=0)
+        assert result.truncated
+        assert board.winner == 1  # P0's weakest tower (500) is below P1's (900)
+
+    def test_a_damaged_king_tower_counts_as_the_weakest_tower(self):
+        board = self._tied_at_regulation_end()
+        _tower(board, 1, "King_Tower").hp = 100.0
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        assert board.winner == 0
+
+    def test_equal_weakest_towers_are_a_draw(self):
+        board = self._tied_at_regulation_end()
+        _tower(board, 0, "Tower", "L").hp = 700.0
+        _tower(board, 1, "Tower", "R").hp = 700.0
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        assert board.done
+        assert board.winner is None
+
+    def test_same_seed_gives_the_same_overtime_outcome(self):
+        outcomes = []
+        for _ in range(2):
+            board = new_board(seed=5)
+            board.time = REGULATION_TIME - TICK_DT
             while not board.done:
                 board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
             outcomes.append((board.winner, board.crowns, board.time))

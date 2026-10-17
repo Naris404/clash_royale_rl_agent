@@ -19,7 +19,7 @@ from cr_rl.game.board import (
     BRIDGE_HALF_WIDTH,
     BRIDGE_LANE_X,
     DEPLOY_ZONES,
-    MATCH_TIME_LIMIT,
+    REGULATION_TIME,
     RIVER_HALF_WIDTH,
     RIVER_Y,
     TICK_DT,
@@ -80,7 +80,7 @@ def arena_config() -> dict:
         "cards": {name: stats for name, stats in cards_dic.items()},
         "deck": list(DECK),
         "tick_dt": TICK_DT,
-        "time_limit": MATCH_TIME_LIMIT,
+        "time_limit": REGULATION_TIME,
     }
 
 
@@ -364,7 +364,8 @@ class GameSession:
         return SnapshotMsg(
             tick=self.tick_count,
             time=round(board.time, 2),
-            time_limit=MATCH_TIME_LIMIT,
+            phase=board.phase,
+            clock=round(board.clock, 2),
             elixir=[round(e, 2) for e in board.elixir],
             king_active=[board.is_king_active(p) for p in (0, 1)],
             towers=towers,

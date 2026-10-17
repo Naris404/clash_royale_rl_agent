@@ -105,7 +105,8 @@ class SnapshotMsg(BaseModel):
     type: Literal["snapshot"] = "snapshot"
     tick: int
     time: float
-    time_limit: float
+    phase: Literal["regulation", "double_elixir", "overtime"]
+    clock: float  # seconds left in the current period (regulation or overtime)
     elixir: list[float]
     king_active: list[bool]  # per player: the king tower has woken up and shoots
     towers: list[TowerState]

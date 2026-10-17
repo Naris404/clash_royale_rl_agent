@@ -76,11 +76,14 @@ export interface HitState {
   ranged: boolean;
 }
 
+export type MatchPhase = "regulation" | "double_elixir" | "overtime";
+
 export interface Snapshot {
   type: "snapshot";
   tick: number;
   time: number;
-  time_limit: number;
+  phase: MatchPhase;
+  clock: number; // seconds left in the current period
   elixir: number[];
   king_active: boolean[];
   towers: TowerState[];

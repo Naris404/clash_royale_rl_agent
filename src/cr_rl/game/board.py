@@ -29,7 +29,9 @@ TICK_DT = 0.1
 MAX_ELIXIR = 10.0
 START_ELIXIR = 5.0
 ELIXIR_PER_SECOND = 1.0 / 2.8
-MATCH_TIME_LIMIT = 180.0
+REGULATION_TIME = 180.0  # 3:00; the leader on crowns wins, a tie goes to overtime
+DOUBLE_ELIXIR_TIME = 120.0  # elixir regenerates twice as fast from 2:00 on, through overtime
+OVERTIME_TIME = 120.0  # up to 2:00 of sudden death, then the tiebreak
 RIVER_Y = ARENA_LENGTH / 2
 RIVER_HALF_WIDTH = 1.2
 # Two bridges (left / right) — lane axis = lane center (left lane: columns 2–4, tower L at x≈3.5).
@@ -441,7 +443,8 @@ class Board:
         return 0
 
     def _regen_elixir(self) -> None:
-        gain = ELIXIR_PER_SECOND * TICK_DT
+        rate = ELIXIR_PER_SECOND * (2 if self.time >= DOUBLE_ELIXIR_TIME else 1)
+        gain = rate * TICK_DT
         for p in range(2):
             self.elixir[p] = min(MAX_ELIXIR, self.elixir[p] + gain)
 
@@ -708,21 +711,45 @@ class Board:
             crowns[1 - tower.owner] += KING_CROWNS if tower.name == "King_Tower" else 1
         return [min(c, KING_CROWNS) for c in crowns]
 
+    @property
+    def phase(self) -> str:
+        """Match phase: "regulation", "double_elixir" (last minute of regulation) or "overtime"."""
+        if self.time >= REGULATION_TIME:
+            return "overtime"
+        return "double_elixir" if self.time >= DOUBLE_ELIXIR_TIME else "regulation"
+
+    @property
+    def clock(self) -> float:
+        """Seconds left in the current period: regulation, or overtime once it has started."""
+        end = REGULATION_TIME + OVERTIME_TIME if self.phase == "overtime" else REGULATION_TIME
+        return max(0.0, end - self.time)
+
     def _check_end(self) -> tuple[bool, bool]:
         crowns = self.crowns
         if max(crowns) >= KING_CROWNS:
             self._end_match(crowns)
             return True, False
-        if self.time >= MATCH_TIME_LIMIT:
+        if self.time < REGULATION_TIME:
+            return False, False
+        if crowns[0] != crowns[1]:
+            # End of regulation, or the first crown of overtime (sudden death).
+            self._end_match(crowns)
+            return False, True
+        if self.time >= REGULATION_TIME + OVERTIME_TIME:
             self._end_match(crowns)
             return False, True
         return False, False
 
     def _end_match(self, crowns: list[int]) -> None:
-        """More crowns wins; equal crowns is a draw (winner None)."""
+        """More crowns wins; equal crowns fall to the tiebreak (weakest tower), then a draw."""
         self.done = True
+        if crowns[0] == crowns[1]:
+            crowns = self._weakest_tower_hp()
         if crowns[0] != crowns[1]:
             self.winner = 0 if crowns[0] > crowns[1] else 1
+
+    def _weakest_tower_hp(self) -> list[float]:
+        return [min(t.hp for t in self.towers if t.owner == p and t.alive) for p in (0, 1)]
 
     def get_observation(self, player: int) -> np.ndarray:
         """State vector from `player`'s perspective.
@@ -735,7 +762,7 @@ class Board:
         enemy = 1 - player
         obs[0] = self.elixir[player] / MAX_ELIXIR
         obs[1] = self.elixir[enemy] / MAX_ELIXIR
-        obs[2] = min(1.0, self.time / MATCH_TIME_LIMIT)
+        obs[2] = min(1.0, self.time / REGULATION_TIME)
 
         towers = [t for t in self.towers if t.owner == player]
         towers += [t for t in self.towers if t.owner == enemy]

@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cr_rl.coach.inference import PolicyInspector
+from cr_rl.game.board import REGULATION_TIME
 from cr_rl.game.cards import DECK, cards_dic
 from cr_rl.server.app import create_app
 from cr_rl.server.protocol import parse_client_message
@@ -92,6 +93,8 @@ class TestGameSession:
         assert snapshot.next_card not in snapshot.hand
         assert snapshot.hits == []
         assert snapshot.king_active == [False, False]
+        assert snapshot.phase == "regulation"
+        assert snapshot.clock == pytest.approx(REGULATION_TIME - snapshot.time)
 
     def test_snapshot_carries_hits_of_last_tick(self, inspector):
         session = GameSession("s1", MODE_VS_BOT, inspector, seed=1)
