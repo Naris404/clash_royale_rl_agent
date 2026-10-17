@@ -102,10 +102,6 @@ action = agent.choose_action(env.board, player=0)
 obs, reward, done, trunc, info = env.step(action)
 ```
 
-**Observation** (`OBS_DIM`): own and enemy elixir, time, HP of the 6 towers, one-hot hand (4×6), up to 24 units (sorted).
-
-**Reward**: only the change in total tower HP `(enemy loss − own loss) / max_tower_HP`.
-
 `LogicAgent` uses `board.set_pending_play()` — `gym_env` wires up both modes correctly.
 
 ## Configuration

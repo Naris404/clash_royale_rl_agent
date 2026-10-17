@@ -54,7 +54,8 @@ One `step(action)`:
    wins and equal HP is a draw. 1800 ticks of 0.1 s accumulate to just under 180.0 in
    floating point, so a full-length match lasts 1801 steps.
 
-The match winner is returned in `info["winner"]` (0, 1, or `None` for a draw).
+When the match ends, `info["winner"]` holds the winner (0 or 1) or `None` for a draw;
+it is `None` on every earlier step.
 
 ## Observation
 
@@ -109,9 +110,10 @@ layout disagree.
 | 0 | noop (always legal) |
 | 1–44 | play the card in hand slot `s` at zone `z`, where `s, z = divmod(action − 1, 11)` |
 
-So actions 1–11 are slot 0 at zones 0–10, actions 12–22 are slot 1, and so on. The
-**deploy zones** are fixed points, not regions (ADR-0002). Player 0 coordinates; for
-player 1 the y coordinate is mirrored (`y → 32 − y`):
+So actions 1–11 are slot 0 at zones 0–10, actions 12–22 are slot 1, and so on. For
+the agent each **deploy zone** is a single fixed placement point (ADR-0002); humans
+in the web client place at continuous coordinates. Player 0 coordinates; for player 1
+the y coordinate is mirrored (`y → 32 − y`):
 
 | Zone | Name | (x, y) | Accepts | Purpose |
 |---|---|---|---|---|
@@ -206,14 +208,14 @@ was trained with the same values.
 | `learning_rate` | 3e-4, constant | Standard Adam step size for PPO (SB3 default); the sweep tests 1e-4 and 1e-3. |
 | `n_envs` | 8 | Eight environments with different seeds decorrelate the samples in a rollout. They run sequentially in one process (`DummyVecEnv`), so this buys sample diversity, not speed. |
 | `n_steps` (per env) | `max(2048 // n_envs, 256)` = 256 | A rollout of 2048 transitions (the PPO default size), with a floor of 256 steps (25.6 s of match time) per environment so each segment is longer than the discount horizon. |
-| `batch_size` | 256 | 8 minibatches per epoch over the 2048-transition rollout. |
-| `n_epochs` | 10 | SB3 default; the clipped objective keeps 10 passes over the same rollout stable. |
+| `batch_size` | 256 | 8 minibatches per epoch over the 2048-transition rollout: enough gradient steps per rollout while each minibatch still spans several environments and game phases. |
+| `n_epochs` | 10 | SB3 default. Simulation steps are the expensive part, so each rollout is reused for 10 passes; the clipped objective keeps that reuse from moving the policy too far. |
 | `gamma` | 0.995 | A play pays off only when units reach a tower: a Giant from back-L walks about 15 s (150 ticks) to the enemy princess tower. At 10 Hz, γ = 0.995 gives an effective horizon of 1/(1−γ) = 200 ticks (20 s) and a half-life of about 14 s; the default 0.99 (100 ticks, 7 s half-life) would discount a slow push nearly to zero. |
-| `gae_lambda` | 0.95 | SB3 default bias/variance trade-off for advantage estimates. |
-| `clip_range` | 0.2 | SB3 default PPO clipping. |
+| `gae_lambda` | 0.95 | SB3 default. Advantages still credit rewards a few seconds after the action (λγ = 0.945 per tick) while damping the variance of the noisy tower-damage returns. |
+| `clip_range` | 0.2 | SB3 default. Limits each update to a ±20% change in action probabilities, which keeps the rare card-play actions from being suppressed by one bad rollout. |
 | `ent_coef` | 0.02 | SB3 uses 0. Noop is legal on every tick and right most of the time, so without an entropy bonus the policy tends to collapse to waiting early; 0.02 keeps card plays explored. The sweep tests 0.005 and 0.05. |
-| `vf_coef` | 0.5 | SB3 default. |
-| `max_grad_norm` | 0.5 | SB3 default gradient clipping. |
+| `vf_coef` | 0.5 | SB3 default. With separate networks it only scales the value loss against the policy loss in the shared Adam step. |
+| `max_grad_norm` | 0.5 | SB3 default. Clips the rare large gradients from steps where a tower falls and the reward spikes. |
 | `net_arch` | pi [256, 256], vf [256, 256] | See [Network architecture](#network-architecture); the sweep tests 128 and 512 units. |
 | `total_timesteps` | 1,000,000 | About 555 full-length matches; small enough that several variants fit a laptop budget. |
 | `seed` | 42 | Fixed for reproducibility; environment `i` uses seed `42 + i`. |
@@ -231,14 +233,17 @@ was trained with the same values.
 - **Checkpoints:** every 100,000 steps to `models/checkpoints/`; the final model goes
   to `models/ppo_cr_final.zip`.
 - **Logging:** TensorBoard in `models/tb/`, including `rollout/win_rate_vs_logic`
-  (player 0 win rate over the last 200 finished matches).
+  (player 0 win rate over the last 200 decisive matches, draws skipped, logged every
+  5,000 steps).
 - **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--resume`, and
   `--eval-only MODEL.zip --eval-episodes N`.
 
-**Seeding and determinism.** The board seed only shuffles the starting deck order; the
+**Seeding and determinism.** The board seed only shuffles the starting card order; the
 simulation and the rule-based bot are deterministic. A `ClashRoyaleEnv` built with a
 seed reuses that seed on every reset, so each training environment replays the same
-opening hand every episode, and episodes differ only through the stochastic policy.
+opening hand every episode. Against the rule-based bot, episodes differ only through
+the stochastic policy; against the random bot (curriculum phase 1), its unreseeded RNG
+adds variation.
 See [Known limitations](#known-limitations).
 
 **Experiments** (`src/cr_rl/experiments/`, results under `experiment_runs/`):
@@ -267,16 +272,22 @@ return and match length. The v1 model is not part of that comparison.
 ### v1 model (historical)
 
 The **v1 model** was trained on the pre-env-v1 game (commit `de8d9f4`, June 2026)
-with the hyperparameters above for 1,000,000 steps. It cannot run in env-v1 or in the
+with the hyperparameters above for about 1,000,000 steps (SB3 finishes the last
+2048-step rollout, so roughly 1,001,472). It cannot run in env-v1 or in the
 current 45-action layout (ADR-0003). It is kept as a historical result, not as a
 comparison point for v2.
 
-Differences from the current layout: 3 deploy zones per player, (3, 6), (9, 6) and
-(14, 6) for player 0, giving 13 actions. There were no dedicated building or spell
-zones: `play_card` moved a building to y = 11 (5 tiles from the river) and cast a
-spell at the zone mirrored onto the enemy side, e.g. (3, 26). The player 0
-observation (153 features, same layout) and the reward were the same as today; the
-player 1 view was not mirrored yet.
+Differences from the current game and layout:
+
+- 3 deploy zones per player, (3, 6), (9, 6) and (14, 6) for player 0, giving 13
+  actions. There were no dedicated building or spell zones: `play_card` moved a
+  building to y = 11 (5 tiles from the river) and cast a spell at the zone mirrored
+  onto the enemy side, e.g. (3, 26).
+- The mask filtered by elixir only: every zone was legal for any affordable card.
+- Units walked L-shaped paths to the bridges; diagonal bridge-bank pathing came later
+  (ADR-0001), which changed the dynamics the v1 model was trained on.
+- The player 0 observation (153 features, same layout) and the reward were the same
+  as today; the player 1 view was not mirrored yet.
 
 Evaluation recorded in [`docs/thesis/ocena.ipynb`](thesis/ocena.ipynb): 30 matches as
 player 0 vs the rule-based bot, seeds 0–29, deterministic policy.
@@ -285,15 +296,17 @@ player 0 vs the rule-based bot, seeds 0–29, deterministic policy.
 |---|---|---|---|---|---|---|
 | v1 model, final weights (1M steps) | 21 | 9 | 0 | **70.0%** | 0.065 | 1801 |
 | v1 model, eval-callback best (650k steps) | 2 | 28 | 0 | 6.7% | −0.201 | 1794 |
-| Untrained random policy (random legal action on 50% of ticks) | 14 | 16 | 0 | 46.7% | −0.056 | 1801 |
+| `RLAgent` without weights (random legal action on 50% of ticks; not the random bot) | 14 | 16 | 0 | 46.7% | −0.056 | 1801 |
 | Rule-based bot vs random bot (50 matches) | 50 | 0 | 0 | 100.0% | — | 1051 |
 
 How to read the result:
 
-- Almost every match ran to the time limit (mean length 1801), so the wins are mostly
-  total-tower-HP wins, not king-tower wins.
-- An untrained random policy already wins 46.7% against the rule-based bot, so 70% is
-  a moderate improvement over chance-level play, from a small sample (30 matches).
+- The final weights' mean length of 1801 is the maximum, so every one of its 30
+  matches ran to the time limit: all 21 wins are total-tower-HP wins, none a
+  king-tower win.
+- `RLAgent` without weights, playing random legal actions, already wins 46.7% against
+  the rule-based bot, so 70% is a moderate improvement over chance-level play, from a
+  small sample (30 matches).
 - The training-time win rate (`rollout/win_rate_vs_logic`) ended at 25.5% (peak
   28%). It measures the stochastic policy on the 8 fixed training seeds, while the 70%
   is the deterministic policy on 30 other seeds.
