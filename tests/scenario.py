@@ -33,9 +33,10 @@ def place_unit(
     *,
     hp: Optional[float] = None,
 ) -> Troop:
-    """Put a unit on the board at (x, y), for setups legal play cannot reach."""
+    """Put a fully deployed unit on the board at (x, y), for setups legal play cannot reach."""
     unit = Troop(name, owner)
     unit.place((x, y))
+    unit.deploy_remaining = 0.0
     if hp is not None:
         unit.hp = hp
     board.troops.append(unit)

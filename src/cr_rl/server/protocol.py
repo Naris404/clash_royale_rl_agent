@@ -75,6 +75,7 @@ class TroopState(BaseModel):
     y: float
     hp: float
     max_hp: float
+    deploy_remaining: float  # seconds until the unit can move and attack; 0 once deployed
 
 
 class SpellState(BaseModel):

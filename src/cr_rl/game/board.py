@@ -551,6 +551,9 @@ class Board:
                 continue
             if not troop.tick_age(dt):
                 continue
+            if troop.is_deploying:
+                troop.tick_deploy(dt)
+                continue
 
             target = self.find_nearest_target(troop)
             if target is None:
