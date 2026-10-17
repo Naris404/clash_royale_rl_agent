@@ -368,12 +368,14 @@ class GameSession:
             time=round(board.time, 2),
             time_limit=MATCH_TIME_LIMIT,
             elixir=[round(e, 2) for e in board.elixir],
+            king_active=[board.is_king_active(p) for p in (0, 1)],
             towers=towers,
             troops=troops,
             spells=spells,
             hits=hits,
             hand=board.get_hand(0),
             next_card=queue[0] if queue else None,
+            crowns=board.crowns,
             done=board.done,
             winner=board.winner,
         )
@@ -399,6 +401,7 @@ class GameSession:
             kind="match_end",
             detail={
                 "winner": self.board.winner,
+                "crowns": self.board.crowns,
                 "time": self.board.time,
                 "moves": len(self.move_log),
                 "mean_score": (sum(scores) / len(scores)) if scores else None,

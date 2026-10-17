@@ -14,7 +14,7 @@ mirror deck).
 | | |
 |---|---|
 | Documented layout | 153-dim observation, 45 actions (11 deploy zones) |
-| Simulation | pre-env-v1: 6-card deck, no crowns, total-tower-HP win rule at the time limit |
+| Simulation | pre-env-v1: 6-card deck; crowns decide the match (no overtime yet, tied crowns at 3:00 are a draw) |
 | Trained model for this layout | none yet; the **v2 model** is trained only after env-v1 is tagged (ADR-0003) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
@@ -49,9 +49,9 @@ One `step(action)`:
 3. Elixir regenerates for both players (start 5, max 10, +1 per 2.8 s).
 4. Combat runs for one tick; the reward is computed from the tower-HP change.
 5. Dead units are removed and the clock advances by 0.1 s.
-6. End check: **terminated** when a king tower is destroyed (its owner loses);
-   **truncated** at the 180 s time limit, where the player with more total tower HP
-   wins and equal HP is a draw. 1800 ticks of 0.1 s accumulate to just under 180.0 in
+6. End check: **terminated** when a king tower is destroyed (3 crowns for its
+   destroyer); **truncated** at the 180 s time limit. Either way the player with more
+   crowns wins and equal crowns is a draw (a princess tower is 1 crown). 1800 ticks of 0.1 s accumulate to just under 180.0 in
    floating point, so a full-length match lasts 1801 steps.
 
 When the match ends, `info["winner"]` holds the winner (0 or 1) or `None` for a draw;
@@ -350,3 +350,4 @@ Facts about the current code that the v2 work should address:
 |---|---|
 | 2026-10-17 | First version: documents the 45-action / 11-zone layout and records the v1 model as a historical result. |
 | 2026-10-17 | Card stats moved to `card_stats.json` at tournament standard (level 11); tower HP, and so `MAX_TOWER_HP_PER_PLAYER`, changed from 15880 to 10928. |
+| 2026-10-17 | The win rule counts crowns instead of comparing total tower HP at the time limit; the reward is unchanged. |

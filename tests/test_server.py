@@ -89,6 +89,7 @@ class TestGameSession:
         assert {t.id for t in snapshot.towers} == {"p0_l", "p0_r", "p0_king", "p1_l", "p1_r", "p1_king"}
         assert len(snapshot.hand) == 4
         assert snapshot.hits == []
+        assert snapshot.king_active == [False, False]
 
     def test_snapshot_carries_hits_of_last_tick(self, inspector):
         session = GameSession("s1", MODE_VS_BOT, inspector, seed=1)
@@ -186,6 +187,8 @@ class TestGameSession:
         messages = session.tick()
         events = [m for m in messages if m.type == "event" and m.kind == "tower_down"]
         assert events and events[0].detail["tower"].startswith("p1_")
+        snapshot = next(m for m in messages if m.type == "snapshot")
+        assert snapshot.crowns == [1, 0]
 
     def test_match_end_event_has_summary(self, inspector):
         session = GameSession("s9", MODE_COACH, inspector, seed=1)
@@ -195,6 +198,7 @@ class TestGameSession:
         messages = session.tick()
         end = next(m for m in messages if m.type == "event" and m.kind == "match_end")
         assert end.detail["winner"] == 0
+        assert end.detail["crowns"] == [3, 0]
         assert "grade_counts" in end.detail
 
 

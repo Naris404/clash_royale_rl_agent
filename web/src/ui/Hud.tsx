@@ -16,10 +16,14 @@ const SPEEDS = [0.5, 1, 2];
 export function Hud({ snap, paused, speed, onPause, onSpeed, onMenu, strings }: Props) {
   const time = snap?.time ?? 0;
   const limit = snap?.time_limit ?? 180;
+  const crowns = snap?.crowns ?? [0, 0];
   return (
     <div className="hud">
       <div className="hud-timer" title="Timer">
         ⏱ {formatTime(Math.min(time, limit))} / {formatTime(limit)}
+      </div>
+      <div className="hud-crowns" title={strings.crowns}>
+        👑 {crowns[0]} – {crowns[1]}
       </div>
       <div className="hud-controls">
         <button className="btn" onClick={onMenu}>⌂ {strings.menu}</button>
