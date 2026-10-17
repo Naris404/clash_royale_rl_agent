@@ -82,12 +82,14 @@ export interface Snapshot {
   time: number;
   time_limit: number;
   elixir: number[];
+  king_active: boolean[];
   towers: TowerState[];
   troops: TroopState[];
   spells: SpellState[];
   hits: HitState[];
   hand: string[];
   next_card: string;
+  crowns: number[];
   done: boolean;
   winner?: number | null;
 }
@@ -145,6 +147,7 @@ export interface MoveLogEntry {
 
 export interface MatchEndDetail {
   winner?: number | null;
+  crowns: number[];
   time: number;
   moves: number;
   mean_score?: number | null;

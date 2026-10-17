@@ -382,15 +382,6 @@ class TestTargetingAndCombat:
         assert result.terminated
         assert board.winner == 0
 
-    def test_time_limit_truncates_and_picks_hp_leader(self):
-        board = new_board()
-        board.time = MATCH_TIME_LIMIT - TICK_DT
-        enemy_tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower")
-        enemy_tower.hp -= 500.0  # P1 has less total HP → P0 wins
-        result = board.step(0, action_p1=0)
-        assert result.truncated
-        assert board.winner == 0
-
 
 class TestDeployTime:
     @pytest.mark.parametrize("card", ["Knight", "Giant", "Musketeer", "Hog_Rider"])
@@ -599,6 +590,115 @@ class TestMirroredObservation:
         assert obs1[base0 + 3] == pytest.approx((32.0 - 10.0) / 32.0)
 
 
+class TestKingTower:
+    """The king stays idle until it takes damage or one of its princess towers falls."""
+
+    @staticmethod
+    def _king(board: Board, owner: int = 1) -> Troop:
+        return next(t for t in board.towers if t.owner == owner and t.name == "King_Tower")
+
+    @staticmethod
+    def _board_with_knight_near_enemy_king(seed: int = 42) -> tuple[Board, Troop]:
+        board = new_board(seed)
+        place_unit(board, "Knight", 0, 9.0, 26.0)  # inside the king's range, 4 tiles away
+        return board, board.troops[0]
+
+    def test_idle_king_does_not_shoot_units_in_range(self):
+        board, _ = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        shots = 0
+        for _ in range(round(2.0 / TICK_DT)):  # the Knight is still walking toward the king
+            board.step(0, action_p1=0)
+            shots += _hits_from(board, king)
+        assert shots == 0
+        assert not board.is_king_active(1)
+
+    def test_direct_damage_activates_king_which_then_shoots_back(self):
+        board, knight = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        _step_seconds(board, 6.0)  # the Knight reaches the king and starts hitting it
+
+        assert king.hp < king.max_hp
+        assert board.is_king_active(1)
+        assert knight.hp < knight.max_hp or not knight.alive
+        assert not board.is_king_active(0)  # activation is per player
+
+    def test_fireball_on_the_king_activates_it(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 30.0)
+        assert board.is_king_active(1)
+
+    def test_fireball_splash_clipping_the_king_activates_it(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 27.8)  # 2.2 tiles away, radius 2.5
+        assert board.is_king_active(1)
+
+    def test_fireball_missing_the_king_leaves_it_idle(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 26.0)
+        assert not board.is_king_active(1)
+
+    def test_active_king_shoots_units_in_range(self):
+        board, knight = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        king.hp -= 1.0  # any damage activates it
+        shots = 0
+        for _ in range(round(2.0 / TICK_DT)):
+            board.step(0, action_p1=0)
+            shots += _hits_from(board, king)
+        assert board.is_king_active(1)
+        assert shots > 0
+
+    @pytest.mark.parametrize("lane", ["L", "R"])
+    def test_destroying_a_princess_tower_activates_the_king(self, lane):
+        board = new_board()
+        princess = next(
+            t for t in board.towers
+            if t.owner == 1 and t.name == "Tower" and (t.x < ARENA_WIDTH / 2) == (lane == "L")
+        )
+        princess.hp = 1.0
+        place_unit(board, "Knight", 0, princess.x, princess.y - 1.0)
+        assert not board.is_king_active(1)
+
+        _step_seconds(board, 5.0)
+
+        assert not princess.alive
+        king = self._king(board)
+        assert king.hp == king.max_hp  # nothing touched the king itself
+        assert board.is_king_active(1)
+
+    def test_activation_is_permanent(self):
+        board = new_board()
+        self._king(board).hp -= 1.0
+        assert board.is_king_active(1)
+        _step_seconds(board, 10.0)
+        assert board.is_king_active(1)
+
+    def test_reset_makes_kings_idle_again(self):
+        board = new_board()
+        self._king(board).hp -= 1.0
+        board.reset(seed=42)
+        assert not board.is_king_active(0)
+        assert not board.is_king_active(1)
+
+    def test_same_seed_same_king_activation_time(self):
+        def activation_tick(seed: int) -> int:
+            board, _ = self._board_with_knight_near_enemy_king(seed)
+            for tick in range(200):
+                board.step(0, action_p1=0)
+                if board.is_king_active(1):
+                    return tick
+            pytest.fail("king never activated")
+
+        assert activation_tick(3) == activation_tick(3)
+
+
 class TestDeterminism:
     def test_same_seed_same_match(self):
         actions = [0, 1, 5, 0, 12, 3, 0, 0, 7, 2] * 5
@@ -633,3 +733,91 @@ class TestGymEnvIntegration:
         obs, reward, terminated, truncated, info = env.step(action)
         assert env.observation_space.contains(obs)
         assert isinstance(reward, float)
+
+
+def _tower(board: Board, owner: int, name: str, side: str | None = None) -> Troop:
+    return next(
+        t
+        for t in board.towers
+        if t.owner == owner and t.name == name and (side is None or (t.x < ARENA_WIDTH / 2) == (side == "L"))
+    )
+
+
+def _knight_destroys(board: Board, tower: Troop, *, attacker: int) -> None:
+    """Weaken `tower` to a sliver and let an enemy Knight standing next to it finish it."""
+    tower.hp = 1.0
+    place_unit(board, "Knight", attacker, tower.x, tower.y - 1.0 if attacker == 1 else tower.y + 1.0)
+    for _ in range(round(10.0 / TICK_DT)):
+        if not tower.alive or board.done:
+            break
+        board.step(0, action_p1=0)
+    assert not tower.alive
+
+
+class TestCrowns:
+    def test_match_starts_without_crowns(self):
+        assert new_board().crowns == [0, 0]
+
+    @pytest.mark.parametrize("attacker", [0, 1])
+    def test_destroying_a_princess_tower_scores_one_crown(self, attacker):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1 - attacker, "Tower", "L"), attacker=attacker)
+        expected = [0, 0]
+        expected[attacker] = 1
+        assert board.crowns == expected
+        assert not board.done
+
+    def test_both_princess_towers_score_two_crowns(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _knight_destroys(board, _tower(board, 1, "Tower", "R"), attacker=0)
+        assert board.crowns == [2, 0]
+
+    def test_destroying_the_king_scores_three_crowns_and_ends_the_match(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "King_Tower"), attacker=0)
+        assert board.crowns == [3, 0]
+        assert board.done
+        assert board.winner == 0
+
+    def test_king_win_does_not_wait_for_the_clock(self):
+        board = new_board()
+        king = _tower(board, 1, "King_Tower")
+        king.hp = 1.0
+        place_unit(board, "Knight", 0, king.x, king.y - 1.0)
+        results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
+        assert any(r.terminated for r in results)
+        assert board.time < MATCH_TIME_LIMIT
+
+    def test_more_crowns_at_time_limit_wins_despite_less_tower_hp(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _tower(board, 0, "King_Tower").hp = 1.0  # P0 is far behind on total HP
+        board.time = MATCH_TIME_LIMIT - TICK_DT
+        result = board.step(0, action_p1=0)
+        assert result.truncated
+        assert board.winner == 0
+
+    def test_more_crowns_for_the_opponent_wins_it_the_match(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 0, "Tower", "R"), attacker=1)
+        board.time = MATCH_TIME_LIMIT - TICK_DT
+        board.step(0, action_p1=0)
+        assert board.winner == 1
+
+    def test_equal_crowns_at_time_limit_is_a_draw_whatever_the_tower_hp(self):
+        board = new_board()
+        _tower(board, 1, "King_Tower").hp = 1.0  # P0 clearly ahead on HP, but no crowns
+        board.time = MATCH_TIME_LIMIT - TICK_DT
+        result = board.step(0, action_p1=0)
+        assert result.truncated
+        assert board.winner is None
+
+    def test_same_seed_gives_the_same_outcome(self):
+        outcomes = []
+        for _ in range(2):
+            board = new_board(seed=11)
+            while not board.done:
+                board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
+            outcomes.append((board.winner, board.crowns, board.time))
+        assert outcomes[0] == outcomes[1]

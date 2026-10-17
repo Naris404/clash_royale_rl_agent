@@ -107,6 +107,9 @@ OBS_UNIT_BASE = OBS_NEXT_BASE + DECK_SIZE
 OBS_UNIT_FEATURES = MAX_UNITS_OBS * 5
 OBS_DIM = OBS_UNIT_BASE + OBS_UNIT_FEATURES
 
+# Crowns a player holds once the enemy king tower is down (this ends the match at once).
+KING_CROWNS = 3
+
 # Reward scale for tower HP loss (one player's total max HP: 2× princess + king).
 MAX_TOWER_HP_PER_PLAYER = (
     2 * float(cards_dic["Tower"]["hp"]) + float(cards_dic["King_Tower"]["hp"])
@@ -541,6 +544,15 @@ class Board:
                 best = enemy
         return best
 
+    def is_king_active(self, player: int) -> bool:
+        """A king tower wakes up once it has taken damage or a princess tower of its side fell.
+
+        Derived from tower state: HP never recovers and towers never return, so it is permanent.
+        """
+        own = [t for t in self.towers if t.owner == player]
+        king = next(t for t in own if t.name == "King_Tower")
+        return king.hp < king.max_hp or any(not t.alive for t in own)
+
     def _simulate_combat(self, dt: float) -> tuple[float, float]:
         """Returns (damage dealt by P0, damage taken by P0).
 
@@ -572,6 +584,9 @@ class Board:
 
         for tower in self.towers:
             if not tower.alive:
+                continue
+            if tower.name == "King_Tower" and not self.is_king_active(tower.owner):
+                idlers.append(tower)
                 continue
             target = self.find_tower_target(tower)
             if target is None:
@@ -643,34 +658,31 @@ class Board:
         enemy_loss_p1 = before[0] - after[0]
         return enemy_loss_p0, enemy_loss_p1
 
+    @property
+    def crowns(self) -> list[int]:
+        """Crowns per player: 1 per enemy princess tower destroyed, 3 once the enemy king is down."""
+        crowns = [0, 0]
+        for tower in self.towers:
+            if tower.alive:
+                continue
+            crowns[1 - tower.owner] += KING_CROWNS if tower.name == "King_Tower" else 1
+        return [min(c, KING_CROWNS) for c in crowns]
+
     def _check_end(self) -> tuple[bool, bool]:
-        kings = {0: None, 1: None}
-        for t in self.towers:
-            if t.name == "King_Tower":
-                kings[t.owner] = t
-
-        if kings[0] and not kings[0].alive:
-            self.winner = 1
-            self.done = True
+        crowns = self.crowns
+        if max(crowns) >= KING_CROWNS:
+            self._end_match(crowns)
             return True, False
-        if kings[1] and not kings[1].alive:
-            self.winner = 0
-            self.done = True
-            return True, False
-
         if self.time >= MATCH_TIME_LIMIT:
-            hp0 = self._tower_hp_snapshot()[0]
-            hp1 = self._tower_hp_snapshot()[1]
-            if hp0 > hp1:
-                self.winner = 0
-            elif hp1 > hp0:
-                self.winner = 1
-            else:
-                self.winner = None
-            self.done = True
+            self._end_match(crowns)
             return False, True
-
         return False, False
+
+    def _end_match(self, crowns: list[int]) -> None:
+        """More crowns wins; equal crowns is a draw (winner None)."""
+        self.done = True
+        if crowns[0] != crowns[1]:
+            self.winner = 0 if crowns[0] > crowns[1] else 1
 
     def get_observation(self, player: int) -> np.ndarray:
         """State vector from `player`'s perspective.
