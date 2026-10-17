@@ -40,5 +40,8 @@ cr-rl-prepare-model = "cr_rl.deploy.prepare_model:main"
 where = ["src"]
 include = ["cr_rl*"]
 
+[tool.setuptools.package-data]
+"cr_rl.game" = ["card_stats.json"]
+
 [tool.basedpyright]
 extraPaths = ["src", "tests"]

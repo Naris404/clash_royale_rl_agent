@@ -155,7 +155,7 @@ The reward is the per-step change in tower HP, from player 0's perspective:
 r_t = (enemy_tower_hp_lost_t − own_tower_hp_lost_t) / MAX_TOWER_HP_PER_PLAYER
 ```
 
-with `MAX_TOWER_HP_PER_PLAYER = 2 × 4424 + 7032 = 15880` (one player's total tower
+with `MAX_TOWER_HP_PER_PLAYER = 2 × 3052 + 4824 = 10928` (one player's total tower
 HP). There is no shaping and no terminal win/loss bonus, so the episode return is the
 net tower damage as a fraction of one player's total tower HP, bounded by [-1, 1].
 
@@ -349,3 +349,4 @@ Facts about the current code that the v2 work should address:
 | Date | Change |
 |---|---|
 | 2026-10-17 | First version: documents the 45-action / 11-zone layout and records the v1 model as a historical result. |
+| 2026-10-17 | Card stats moved to `card_stats.json` at tournament standard (level 11); tower HP, and so `MAX_TOWER_HP_PER_PLAYER`, changed from 15880 to 10928. |

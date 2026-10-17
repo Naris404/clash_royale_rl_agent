@@ -1,129 +1,19 @@
 from __future__ import annotations
 
+import json
 from math import sqrt
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from cr_rl.game.board import Board
 
-# Ranges and speeds in board units (simplified meters).
-clash_royale_ranges = {
-    "Melee_Short": 0.8,
-    "Melee_Medium": 1.2,
-    "Melee_Long": 1.6,
-    "Ranged_Short": 4.5,
-    "Ranged_Medium": 5.5,
-    "Ranged_Long": 6.5,
-}
-
 # Target detection range (as in CR — without it units "see" the whole map).
 DEFAULT_SIGHT_RANGE = 9.5
 
-# Tiles per second (18×32 arena); the previous values were ~×30 too fast.
-clash_royale_speeds = {
-    "slow": 1.2,
-    "medium": 1.8,
-    "fast": 2.6,
-    "very_fast": 3.5,
-}
-
-cards_dic = {
-    "Knight": {
-        "damage": 293,
-        "hp": 2566,
-        "targets": ["ground"],
-        "range": "Melee_Medium",
-        "damage/sec": 244,
-        "hit_speed": 1.2,
-        "speed": "medium",
-        "elisir": 3,
-        "life_span": 0,
-        "type": "ground",
-    },
-    "Giant": {
-        "damage": 253,
-        "hp": 3968,
-        "targets": ["buildings"],
-        "range": "Melee_Medium",
-        "damage/sec": 168,
-        "hit_speed": 1.5,
-        "speed": "slow",
-        "elisir": 5,
-        "life_span": 0,
-        "type": "ground",
-    },
-    "Cannon": {
-        "damage": 167,
-        "hp": 682,
-        "targets": ["ground"],
-        "range": 5.5,
-        "damage/sec": 167,
-        "hit_speed": 1.0,
-        "first_hit_speed": 1.0,
-        "deploy_time": 1.0,
-        "speed": 0,
-        "elisir": 3,
-        "life_span": 30,
-        "type": "building",
-    },
-    "Musketeer": {
-        "damage": 238,
-        "hp": 760,
-        "targets": ["ground", "air"],
-        "range": 6.0,
-        "damage/sec": 238,
-        "hit_speed": 1.0,
-        "speed": "medium",
-        "elisir": 4,
-        "life_span": 0,
-        "type": "ground",
-    },
-    "Hog_Rider": {
-        "damage": 264,
-        "hp": 1408,
-        "targets": ["buildings"],
-        "range": "Melee_Medium",
-        "damage/sec": 165,
-        "hit_speed": 1.6,
-        "first_hit_speed": 0.6,
-        "deploy_time": 1.0,
-        "speed": "very_fast",
-        "elisir": 4,
-        "life_span": 0,
-        "type": "ground",
-        "jumps_river": True,
-    },
-    "Fireball": {
-        "damage": 575,
-        "radius": 2.5,
-        "elisir": 4,
-        "type": "spell",
-    },
-    "Tower": {
-        "damage": 158,
-        "hp": 4424,
-        "targets": ["ground", "air"],
-        "range": 7.5,
-        "damage/sec": 197,
-        "hit_speed": 0.8,
-        "speed": 0,
-        "elisir": 0,
-        "life_span": 0,
-        "type": "building",
-    },
-    "King_Tower": {
-        "damage": 158,
-        "hp": 7032,
-        "targets": ["ground", "air"],
-        "range": 7.0,
-        "damage/sec": 197,
-        "hit_speed": 1.0,
-        "speed": 0,
-        "elisir": 0,
-        "life_span": 0,
-        "type": "building",
-    },
-}
+# Combat stats live in one data file that records its source and card level.
+CARD_STATS_PATH = Path(__file__).with_name("card_stats.json")
+cards_dic: dict[str, dict] = json.loads(CARD_STATS_PATH.read_text(encoding="utf-8"))["cards"]
 
 PLAYABLE_CARDS = (
     "Knight",
@@ -148,7 +38,6 @@ class Troop:
         self.hp = self.max_hp
         self.damage = self.stats.get("damage", 0)
         self.targets = list(self.stats.get("targets", []))
-        self.damage_sec = self.stats.get("damage/sec", 0)
         self.hit_speed = self.stats.get("hit_speed", 0)
         self.first_hit_speed = self.stats.get("first_hit_speed", self.hit_speed)
         self.deploy_time = self.stats.get("deploy_time", 0.0)
@@ -156,14 +45,8 @@ class Troop:
         self.elisir = self.stats.get("elisir", 0)
         self.life_span = self.stats.get("life_span", 0)
         self.unit_type = self.stats.get("type", "ground")
-
         self.range = self.stats.get("range", 0)
-        if self.range in clash_royale_ranges:
-            self.range = clash_royale_ranges[self.range]
-
         self.speed = self.stats.get("speed", 0)
-        if self.speed in clash_royale_speeds:
-            self.speed = clash_royale_speeds[self.speed]
 
         self.x = 0.0
         self.y = 0.0
