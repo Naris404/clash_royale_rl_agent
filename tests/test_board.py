@@ -320,13 +320,6 @@ class TestTargetingAndCombat:
         assert knight.hp == knight.max_hp
         assert [(e.x, e.y) for e in giant_hits] == [(enemy_tower.x, enemy_tower.y)]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Troops that target ground ignore buildings (only towers count), so a Knight "
-            "walks past an enemy Cannon; in the real game ground targeting includes buildings."
-        ),
-    )
     def test_knight_attacks_enemy_cannon_in_its_way(self):
         board = new_board()
         cannon = place_unit(board, "Cannon", 1, 9.0, 20.0)
