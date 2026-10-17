@@ -6,7 +6,8 @@ A simplified [Clash Royale](https://supercell.com/en/games/clashroyale/) simulat
 
 - **18×32 tile board** (matching the official CR arena)
 - **Two bridges** — units cannot cross the river except at a bridge (Hog jumps)
-- **6 cards in the deck**, **4 in hand** — a queue without duplicates (as in the game)
+- **Fixed 8-card Deck** (Knight, Giant, Hog Rider, Musketeer, Cannon, Fireball, Arrows, Baby Dragon), **4 in hand** plus a visible next card — a cycling queue as in the game
+- **Air units and splash damage** — Baby Dragon flies over the river and hits all nearby enemies; Arrows and Fireball are area spells
 - **Towers** with ~7.5 tile range; they shoot enemies as soon as they enter range
 - **`RLAgent`** — PPO (MaskablePPO) trained against `LogicAgent`
 - **`LogicAgent`** — rule-based bot (defense, Hog, Cannon, etc.)
