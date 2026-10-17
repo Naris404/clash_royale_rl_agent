@@ -16,15 +16,18 @@ MIN_MOVE_DISTANCE = 0.05  # closer than this to a waypoint counts as arrived
 CARD_STATS_PATH = Path(__file__).with_name("card_stats.json")
 cards_dic: dict[str, dict] = json.loads(CARD_STATS_PATH.read_text(encoding="utf-8"))["cards"]
 
-PLAYABLE_CARDS = (
+# The fixed mirror Deck both players use (ADR-0004); the order defines the card ids.
+DECK = (
     "Knight",
     "Giant",
-    "Cannon",
-    "Musketeer",
     "Hog_Rider",
+    "Musketeer",
+    "Cannon",
     "Fireball",
+    "Arrows",
+    "Baby_Dragon",
 )
-CARD_TO_ID = {name: i for i, name in enumerate(PLAYABLE_CARDS)}
+CARD_TO_ID = {name: i for i, name in enumerate(DECK)}
 
 
 class Troop:
@@ -47,6 +50,7 @@ class Troop:
         self.life_span = self.stats.get("life_span", 0)
         self.unit_type = self.stats.get("type", "ground")
         self.range = self.stats.get("range", 0)
+        self.splash_radius = self.stats.get("splash_radius", 0)
         self.speed = self.stats.get("speed", 0)
 
         self.x = 0.0
@@ -61,7 +65,11 @@ class Troop:
     def is_building(self) -> bool:
         return self.unit_type == "building" or self.is_tower
 
-    def place(self, position: tuple[float, float]) -> None:
+    @property
+    def crosses_river_freely(self) -> bool:
+        return self.jumps_river or self.unit_type == "air"
+
+    def place(self,position: tuple[float, float]) -> None:
         self.x, self.y = position
 
     def distance_to(self, other: Troop) -> float:

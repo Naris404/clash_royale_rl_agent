@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from cr_rl.game.cards import PLAYABLE_CARDS  # noqa: E402
+from cr_rl.game.cards import DECK  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def main() -> None:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     cards: dict[str, dict] = {}
-    for card in PLAYABLE_CARDS:
+    for card in DECK:
         item = by_name.get(card.replace("_", " "))
         if item is None:
             logger.warning("%s: not found in the API response", card)

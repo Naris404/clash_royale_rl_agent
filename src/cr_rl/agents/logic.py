@@ -24,7 +24,7 @@ from cr_rl.game.board import (
     Board,
 )
 
-from cr_rl.game.cards import PLAYABLE_CARDS, Troop, cards_dic
+from cr_rl.game.cards import Troop, cards_dic
 
 # --- meta constants (elixir thresholds + rule score scale) ---
 
@@ -91,7 +91,6 @@ class LogicAgent:
   Uses board.set_pending_play() — any position on own half.
     """
 
-    deck: list[str] = field(default_factory=lambda: list(PLAYABLE_CARDS))
     _combo_queue: deque[tuple[str, float, float]] = field(default_factory=deque)
     last_decision: str = ""
 

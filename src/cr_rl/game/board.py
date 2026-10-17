@@ -14,7 +14,7 @@ from cr_rl.game.cards import (
     CARD_TO_ID,
     DEFAULT_SIGHT_RANGE,
     MIN_MOVE_DISTANCE,
-    PLAYABLE_CARDS,
+    DECK,
     Troop,
     Tower,
     cards_dic,
@@ -54,7 +54,7 @@ TOWER_LAYOUT = {
     },
 }
 
-TROOP_CARD_TYPES = frozenset({"ground", "building"})
+TROOP_CARD_TYPES = frozenset({"ground", "air", "building"})
 SPELL_CARD_TYPES = frozenset({"spell"})
 
 
@@ -93,7 +93,7 @@ DEPLOY_ZONES: dict[int, tuple[DeployZone, ...]] = {
 NUM_ZONES = len(_P0_ZONES)
 
 HAND_SIZE = 4
-NUM_PLAYABLE_CARDS = len(PLAYABLE_CARDS)
+DECK_SIZE = len(DECK)
 NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (44 plays)
 MAX_UNITS_OBS = 24
 
@@ -101,8 +101,9 @@ MAX_UNITS_OBS = 24
 OBS_GLOBAL_FEATURES = 3  # P0 elixir, P1 elixir, time
 OBS_TOWER_FEATURES = 6  # HP of the 6 towers (layout: P0 L/R/King, P1 L/R/King)
 OBS_HAND_BASE = OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES
-OBS_HAND_FEATURES = HAND_SIZE * NUM_PLAYABLE_CARDS
-OBS_UNIT_BASE = OBS_HAND_BASE + OBS_HAND_FEATURES
+OBS_HAND_FEATURES = HAND_SIZE * DECK_SIZE
+OBS_NEXT_BASE = OBS_HAND_BASE + OBS_HAND_FEATURES  # one-hot of the visible next card
+OBS_UNIT_BASE = OBS_NEXT_BASE + DECK_SIZE
 OBS_UNIT_FEATURES = MAX_UNITS_OBS * 5
 OBS_DIM = OBS_UNIT_BASE + OBS_UNIT_FEATURES
 
@@ -156,20 +157,12 @@ class Board:
 
     Akcja (int 0..44):
       0 — do nothing
-      1..44 — play a card (hand slot 0..3 × zone 0..10); only 4 cards in hand (cycle of 6)
+      1..44 — play a card (hand slot 0..3 × zone 0..10); 4 cards in hand, cycling the 8-card Deck
 
     Player 0 learns; player 1 is a random bot by default (a second model can be plugged in).
     """
 
-    def __init__(
-        self,
-        deck_p0: Optional[list[str]] = None,
-        deck_p1: Optional[list[str]] = None,
-        *,
-        seed: Optional[int] = None,
-    ):
-        self.deck_p0 = list(deck_p0 or PLAYABLE_CARDS)
-        self.deck_p1 = list(deck_p1 or PLAYABLE_CARDS)
+    def __init__(self, *, seed: Optional[int] = None):
         self._rng = random.Random(seed)
         self.np_rng = np.random.default_rng(seed)
 
@@ -219,13 +212,10 @@ class Board:
         self._init_hands()
         return self.get_observation(player=0)
 
-    def _full_deck(self, player: int) -> list[str]:
-        return self.deck_p0 if player == 0 else self.deck_p1
-
     def _init_hands(self) -> None:
-        """6 unique cards in the queue: 4 in hand; after a play the card returns to the end (no duplicates)."""
+        """Shuffled Deck: 4 cards in hand, the rest queued; a played card returns to the back of the queue."""
         for player in (0, 1):
-            cards = list(dict.fromkeys(self._full_deck(player)))
+            cards = list(DECK)
             self._rng.shuffle(cards)
             queue: deque[str] = deque(cards)
             self.hand[player] = [queue.popleft() for _ in range(HAND_SIZE)]
@@ -233,6 +223,10 @@ class Board:
 
     def get_hand(self, player: int) -> list[str]:
         return list(self.hand[player])
+
+    def get_next_card(self, player: int) -> str:
+        """The visible next card: the one drawn after the next play."""
+        return self.hand_queue[player][0]
 
     def card_in_hand(self, player: int, card_name: str) -> bool:
         return card_name in self.hand[player]
@@ -475,7 +469,7 @@ class Board:
 
     def _path_waypoint(self, troop: Troop, dest_x: float, dest_y: float) -> tuple[float, float]:
         """Diagonal to the bridge bank, straight over the bridge, then diagonal to the target."""
-        if troop.jumps_river or troop.speed <= 0:
+        if troop.crosses_river_freely or troop.speed <= 0:
             return dest_x, dest_y
         if not self._river_between(troop.y, dest_y):
             return dest_x, dest_y
@@ -494,7 +488,7 @@ class Board:
 
     def _enforce_no_river_cut(self, troop: Troop) -> None:
         """Pushes a unit back if it entered the river outside a bridge."""
-        if getattr(troop, "jumps_river", False):
+        if troop.crosses_river_freely:
             return
         if troop.is_building and troop.speed <= 0:
             return
@@ -589,6 +583,7 @@ class Board:
             dmg = attacker.hit(target, dt)
             if dmg <= 0:
                 continue
+            self._apply_splash(attacker, target, dmg)
             self._record_hit(attacker, target, dmg)
             if attacker.owner == 0:
                 dealt_p0 += dmg
@@ -607,6 +602,16 @@ class Board:
                 unit.alive = False
 
         return dealt_p0, taken_p0
+
+    def _apply_splash(self, attacker: Troop, target: Troop, damage: float) -> None:
+        """Splash attackers also hit every other enemy the attacker can target near the target."""
+        if attacker.splash_radius <= 0:
+            return
+        for other in self._all_combatants():
+            if other is target or not attacker.can_target(other):
+                continue
+            if other.distance_to(target) <= attacker.splash_radius:
+                other.hp = max(0.0, other.hp - damage)
 
     def _record_hit(self, attacker: Troop, target: Troop, damage: float) -> None:
         self.hit_events.append(
@@ -688,9 +693,8 @@ class Board:
             idx += 1
 
         for slot, card_name in enumerate(self.get_hand(player)):
-            card_id = CARD_TO_ID.get(card_name)
-            if card_id is not None:
-                obs[OBS_HAND_BASE + slot * NUM_PLAYABLE_CARDS + card_id] = 1.0
+            obs[OBS_HAND_BASE + slot * DECK_SIZE + CARD_TO_ID[card_name]] = 1.0
+        obs[OBS_NEXT_BASE + CARD_TO_ID[self.get_next_card(player)]] = 1.0
 
         enemy_kx, enemy_ky = TOWER_LAYOUT[enemy]["King_Tower"]
         alive_troops = [t for t in self.troops if t.alive]
@@ -699,7 +703,7 @@ class Board:
         for slot, troop in enumerate(alive_troops[:MAX_UNITS_OBS]):
             base = OBS_UNIT_BASE + slot * 5
             obs[base] = 1.0 if troop.owner == player else -1.0
-            obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, NUM_PLAYABLE_CARDS - 1)
+            obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, DECK_SIZE - 1)
             if player == 0:
                 ux, uy = troop.x, troop.y
             else:

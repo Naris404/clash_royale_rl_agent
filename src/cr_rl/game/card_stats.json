@@ -1,7 +1,7 @@
 {
-  "source": "https://clashroyale.fandom.com/wiki/Cards (per-card pages: Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball, Princess_Towers, King's_Tower), retrieved 2026-10-17",
+  "source": "https://clashroyale.fandom.com/wiki/Cards (per-card pages: Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball, Princess_Towers, King's_Tower), retrieved 2026-10-17; Arrows and Baby_Dragon entered from memory of the same wiki at level 11 because the wiki was unreachable (Cloudflare block), so re-check them against Arrows and Baby_Dragon pages",
   "card_level": 11,
-  "units": "hp and damage at card_level; range in tiles; speed in tiles per second (wiki speed / 60); times in seconds; elisir is the elixir cost",
+  "units": "hp and damage at card_level; range, radius and splash_radius in tiles; speed in tiles per second (wiki speed / 60); times in seconds; elisir is the elixir cost",
   "cards": {
     "Knight": {
       "damage": 202,
@@ -71,6 +71,25 @@
       "radius": 2.5,
       "elisir": 4,
       "type": "spell"
+    },
+    "Arrows": {
+      "damage": 366,
+      "radius": 4.0,
+      "elisir": 3,
+      "type": "spell"
+    },
+    "Baby_Dragon": {
+      "damage": 160,
+      "hp": 1152,
+      "targets": ["ground", "air"],
+      "range": 3.5,
+      "splash_radius": 1.5,
+      "hit_speed": 1.5,
+      "deploy_time": 1.0,
+      "speed": 1.5,
+      "elisir": 4,
+      "life_span": 0,
+      "type": "air"
     },
     "Tower": {
       "damage": 109,
