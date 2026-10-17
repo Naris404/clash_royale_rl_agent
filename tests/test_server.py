@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cr_rl.coach.inference import PolicyInspector
-from cr_rl.game.cards import Troop
+from cr_rl.game.cards import PLAYABLE_CARDS, cards_dic
 from cr_rl.server.app import create_app
 from cr_rl.server.protocol import parse_client_message
 from cr_rl.server.sessions import (
@@ -16,6 +16,7 @@ from cr_rl.server.sessions import (
     GameSession,
     SessionManager,
 )
+from scenario import place_unit
 
 
 @pytest.fixture()
@@ -92,9 +93,7 @@ class TestGameSession:
     def test_snapshot_carries_hits_of_last_tick(self, inspector):
         session = GameSession("s1", MODE_VS_BOT, inspector, seed=1)
         tower = next(t for t in session.board.towers if t.owner == 1 and t.name == "Tower")
-        knight = Troop("Knight", 0)
-        knight.place((tower.x, tower.y - 1.0))
-        session.board.troops.append(knight)
+        place_unit(session.board, "Knight", 0, tower.x, tower.y - 1.0)
         hits = []
         for _ in range(30):
             hits.extend(session.tick()[0].hits)
@@ -113,46 +112,40 @@ class TestGameSession:
         for _ in range(HINT_EVERY_TICKS * 2):
             assert all(m.type != "hint" for m in session.tick())
 
-    def test_handle_play_grades_and_sets_pending(self, inspector):
+    def test_handle_play_grades_and_logs_move(self, inspector):
         session = GameSession("s4", MODE_COACH, inspector, seed=1)
         card = session.board.get_hand(0)[0]
         messages = session.handle_play(card, 9.0, 6.0)
         feedback = next(m for m in messages if m.type == "feedback")
         assert feedback.card == card
-        assert session.board._pending_play[0] == (card, 9.0, 6.0)
         assert len(session.move_log) == 1
 
     def test_handle_play_rejects_card_not_in_hand(self, inspector):
         session = GameSession("s5", MODE_COACH, inspector, seed=1)
         hand = session.board.get_hand(0)
-        missing = next(c for c in ("Knight", "Giant", "Cannon", "Musketeer", "Hog_Rider", "Fireball") if c not in hand)
+        missing = next(c for c in PLAYABLE_CARDS if c not in hand)
         messages = session.handle_play(missing, 9.0, 6.0)
         assert messages[0].type == "error"
 
     def test_handle_play_rejects_invalid_zone_and_low_elixir(self, inspector):
         session = GameSession("s-invalid", MODE_COACH, inspector, seed=1)
-        card = next(
-            name
-            for name in session.board.get_hand(0)
-            if session.board._is_spell(name) is False
-        )
+        hand = session.board.get_hand(0)
+        card = next(name for name in hand if cards_dic[name]["type"] != "spell")
         assert session.handle_play(card, 9.0, 24.0)[0].type == "error"
         session.board.elixir[0] = 0.0
         assert session.handle_play(card, 9.0, 6.0)[0].type == "error"
-        assert session.board._pending_play[0] is None
+        session.tick()
+        assert session.board.get_hand(0) == hand
+        assert not any(t.owner == 0 for t in session.board.troops)
 
     def test_handle_play_executes_on_next_tick(self, inspector):
         session = GameSession("s-exec", MODE_VS_BOT, inspector, seed=1)
         session.board.elixir[0] = 10.0
-        card = next(
-            name
-            for name in session.board.get_hand(0)
-            if session.board._is_spell(name) is False
-        )
+        card = next(name for name in session.board.get_hand(0) if cards_dic[name]["type"] != "spell")
         session.handle_play(card, 9.0, 6.0)
         session.tick()
-        assert session.board._pending_play[0] is None
-        assert any(t.owner == 0 and t.name == card for t in session.board.troops)
+        assert card not in session.board.get_hand(0)
+        assert [(t.name, t.x, t.y) for t in session.board.troops if t.owner == 0] == [(card, 9.0, 6.0)]
 
     def test_rematch_resets_state(self, inspector):
         session = GameSession("s6", MODE_COACH, inspector, seed=1)

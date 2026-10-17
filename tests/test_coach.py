@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from collections import deque
-
 import numpy as np
 import pytest
 
-from cr_rl.game.board import DEPLOY_ZONES, NUM_ACTIONS, NUM_ZONES, Board
+from cr_rl.game.board import DEPLOY_ZONES, NUM_ACTIONS, NUM_ZONES
 from cr_rl.coach.evaluator import (
     GRADE_BEST,
     GRADE_BLUNDER,
@@ -20,12 +18,7 @@ from cr_rl.coach.evaluator import (
     nearest_zone,
 )
 from cr_rl.coach.inference import PolicyInspector
-
-
-def _board(seed: int = 42) -> Board:
-    env = Board(seed=seed)
-    env.reset(seed=seed)
-    return env
+from scenario import new_board, set_hand
 
 
 def _zone_name(zone_idx: int, player: int = 0) -> str:
@@ -35,11 +28,6 @@ def _zone_name(zone_idx: int, player: int = 0) -> str:
 def _zone_xy(zone_idx: int, player: int = 0) -> tuple[float, float]:
     zone = DEPLOY_ZONES[player][zone_idx]
     return zone.x, zone.y
-
-
-def _force_hand(board: Board, player: int, hand: list[str], queue: list[str]) -> None:
-    board.hand[player] = list(hand)
-    board.hand_queue[player] = deque(queue)
 
 
 @pytest.fixture(scope="module")
@@ -77,8 +65,8 @@ class TestActionMapping:
         assert _zone_name(nearest_zone(1, "Fireball", 3.5, 8.0)) == "spell-tower-L"
 
     def test_encode_decode_roundtrip(self):
-        board = _board()
-        _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
+        board = new_board()
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])
         action = encode_action(board, 0, "Giant", 7)
         assert action == 1 + 1 * 11 + 7
         card, slot, zone = decode_action(board, 0, action)
@@ -99,12 +87,12 @@ class TestActionMapping:
         assert "pull" in format_hint("Cannon", zone, 0.5, lang="en")
 
     def test_encode_returns_none_for_card_not_in_hand(self):
-        board = _board()
-        _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
+        board = new_board()
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])
         assert encode_action(board, 0, "Fireball", 0) is None
 
     def test_decode_noop(self):
-        board = _board()
+        board = new_board()
         assert decode_action(board, 0, 0) == (None, None, None)
 
 
@@ -128,14 +116,14 @@ class TestOutdatedCheckpoint:
         MaskablePPO("MlpPolicy", V1Env(), n_steps=8, batch_size=8, verbose=0).save(str(path))
         inspector = PolicyInspector(path)
         assert not inspector.available
-        assert CoachEngine(inspector).suggest(_board()).source == "heuristic"
+        assert CoachEngine(inspector).suggest(new_board()).source == "heuristic"
 
 
 class TestHeuristicFallback:
     def test_suggestion_without_model_is_legal(self):
         coach = CoachEngine(PolicyInspector(model_path=None))
         assert not coach.uses_neural_net
-        board = _board()
+        board = new_board()
         board.elixir[0] = 10.0
         for _ in range(30):
             suggestion = coach.suggest(board)
@@ -149,7 +137,7 @@ class TestHeuristicFallback:
 
     def test_grade_matches_heuristic_choice(self):
         coach = CoachEngine(PolicyInspector(model_path=None))
-        board = _board()
+        board = new_board()
         board.elixir[0] = 10.0
         suggestion = coach.suggest(board)
         assert suggestion.card is not None
@@ -161,7 +149,7 @@ class TestNeuralPath:
     def test_estimate_probs_and_value(self, untrained_model_path):
         inspector = PolicyInspector(untrained_model_path)
         assert inspector.available
-        board = _board()
+        board = new_board()
         estimate = inspector.estimate(board, player=0)
         assert estimate is not None
         assert estimate.probs.shape == (NUM_ACTIONS,)
@@ -174,14 +162,14 @@ class TestNeuralPath:
 
     def test_estimate_mirrored_player1(self, untrained_model_path):
         inspector = PolicyInspector(untrained_model_path)
-        board = _board()
+        board = new_board()
         estimate = inspector.estimate(board, player=1)
         assert estimate is not None and np.isfinite(estimate.value)
 
     def test_suggestion_and_grade_with_model(self, untrained_model_path):
         coach = CoachEngine(PolicyInspector(untrained_model_path))
         assert coach.uses_neural_net
-        board = _board()
+        board = new_board()
         board.elixir[0] = 10.0
 
         suggestion = coach.suggest(board)
@@ -191,7 +179,7 @@ class TestNeuralPath:
             assert suggestion.slot is not None and suggestion.zone is not None
             assert suggestion.top
 
-        _force_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Fireball"])
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])
         grade = coach.grade_move(board, "Knight", 3.0, 6.0, player=0)
         assert grade.grade in (GRADE_BEST, GRADE_GOOD, GRADE_INACCURACY, GRADE_BLUNDER)
         assert grade.human_prob is not None and 0.0 <= grade.human_prob <= 1.0
@@ -201,7 +189,7 @@ class TestNeuralPath:
 
     def test_best_move_graded_best(self, untrained_model_path):
         coach = CoachEngine(PolicyInspector(untrained_model_path))
-        board = _board()
+        board = new_board()
         board.elixir[0] = 10.0
         suggestion = coach.suggest(board)
         if suggestion.card is None:

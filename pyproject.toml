@@ -41,4 +41,4 @@ where = ["src"]
 include = ["cr_rl*"]
 
 [tool.basedpyright]
-extraPaths = ["src"]
+extraPaths = ["src", "tests"]
