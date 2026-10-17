@@ -116,7 +116,7 @@ def _play_random_match(seed: int, steps: int = 1200) -> list[tuple[float, float]
     trace: list[tuple[float, float]] = []
     for _ in range(steps):
         board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
-        assert not any(_off_bridge_in_water(t) for t in board.troops if not t.jumps_river)
+        assert not any(_off_bridge_in_water(t) for t in board.troops if not t.crosses_river_freely)
         trace += [(t.x, t.y) for t in board.troops]
     return trace
 
@@ -127,3 +127,16 @@ def test_same_seed_gives_the_same_crowded_match():
 
     assert len(first) > 1000  # the match really was crowded
     assert first == second
+
+
+def test_air_and_ground_units_do_not_push_each_other():
+    alone = new_board()
+    lone_knight = place_unit(alone, "Knight", 0, 9.0, 10.0)
+    shared = new_board()
+    knight = place_unit(shared, "Knight", 0, 9.0, 10.0)
+    place_unit(shared, "Baby_Dragon", 0, 9.0, 10.0)
+
+    _step(alone, 0.2)
+    _step(shared, 0.2)
+
+    assert (knight.x, knight.y) == (lone_knight.x, lone_knight.y)

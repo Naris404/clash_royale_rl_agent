@@ -10,7 +10,7 @@ from collections import deque
 from typing import Optional
 
 from cr_rl.game.board import HAND_SIZE, Board
-from cr_rl.game.cards import PLAYABLE_CARDS, Troop
+from cr_rl.game.cards import DECK, Troop
 
 
 def new_board(seed: int = 42) -> Board:
@@ -19,7 +19,7 @@ def new_board(seed: int = 42) -> Board:
 
 def set_hand(board: Board, player: int, hand: list[str]) -> None:
     """Start `player`'s hand with these cards; the rest of the deck follows in deck order."""
-    cards = list(hand) + [c for c in PLAYABLE_CARDS if c not in hand]
+    cards = list(hand) + [c for c in DECK if c not in hand]
     board.hand[player] = cards[:HAND_SIZE]
     board.hand_queue[player] = deque(cards[HAND_SIZE:])
 

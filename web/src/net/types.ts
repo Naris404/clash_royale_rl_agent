@@ -10,7 +10,7 @@ export interface ArenaConfig {
   deploy_zones: Record<string, DeployZone[]>;
   tower_layout: Record<string, Record<string, number[]>>;
   cards: Record<string, CardStats>;
-  playable_cards: string[];
+  deck: string[];
   tick_dt: number;
   time_limit: number;
 }
@@ -88,7 +88,7 @@ export interface Snapshot {
   spells: SpellState[];
   hits: HitState[];
   hand: string[];
-  next_card?: string | null;
+  next_card: string;
   crowns: number[];
   done: boolean;
   winner?: number | null;

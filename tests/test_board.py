@@ -16,11 +16,12 @@ from cr_rl.game.board import (
     MATCH_TIME_LIMIT,
     MAX_ELIXIR,
     NUM_ACTIONS,
-    NUM_PLAYABLE_CARDS,
+    DECK_SIZE,
     NUM_ZONES,
     OBS_DIM,
     OBS_GLOBAL_FEATURES,
     OBS_HAND_BASE,
+    OBS_NEXT_BASE,
     OBS_TOWER_FEATURES,
     OBS_UNIT_BASE,
     RIVER_HALF_WIDTH,
@@ -28,7 +29,7 @@ from cr_rl.game.board import (
     TICK_DT,
     Board,
 )
-from cr_rl.game.cards import CARD_TO_ID, PLAYABLE_CARDS, Troop, cards_dic
+from cr_rl.game.cards import CARD_TO_ID, DECK, Troop, cards_dic
 from scenario import new_board, place_unit, set_hand
 
 ZONE_NAMES = [z.name for z in DEPLOY_ZONES[0]]
@@ -43,27 +44,38 @@ def _hits_from(board: Board, unit: Troop) -> int:
     return sum(1 for e in board.hit_events if (e.from_x, e.from_y) == (unit.x, unit.y))
 
 
+DECK_CARDS = {"Knight", "Giant", "Hog_Rider", "Musketeer", "Cannon", "Fireball", "Arrows", "Baby_Dragon"}
+
+
 class TestHands:
-    def test_initial_hand_is_4_distinct_deck_cards(self):
+    def test_both_players_use_the_fixed_8_card_deck(self):
+        assert set(DECK) == DECK_CARDS and len(DECK) == DECK_SIZE == 8
         board = new_board()
         for player in (0, 1):
             hand = board.get_hand(player)
             assert len(hand) == HAND_SIZE
-            assert len(set(hand)) == HAND_SIZE
-            assert set(hand) <= set(PLAYABLE_CARDS)
+            assert set(hand) | {board.get_next_card(player)} <= DECK_CARDS
+            assert len(set(hand) | {board.get_next_card(player)}) == HAND_SIZE + 1
+
+    def test_next_card_is_the_first_queued_card(self):
+        board = new_board()
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])  # queue: Hog_Rider, Fireball, Arrows, Baby_Dragon
+        assert board.get_next_card(0) == "Hog_Rider"
 
     def test_played_card_returns_after_the_queued_cards(self):
         board = new_board()
-        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])  # queue: Hog_Rider, Fireball
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])  # queue: Hog_Rider, Fireball, Arrows, Baby_Dragon
 
-        def play(card: str) -> list[str]:
+        def play(card: str) -> tuple[list[str], str]:
             board.elixir[0] = 10.0
             assert board.play_card(0, card, 0)
-            return board.get_hand(0)
+            return board.get_hand(0), board.get_next_card(0)
 
-        assert play("Knight") == ["Giant", "Cannon", "Musketeer", "Hog_Rider"]
-        assert play("Giant") == ["Cannon", "Musketeer", "Hog_Rider", "Fireball"]
-        assert play("Cannon") == ["Musketeer", "Hog_Rider", "Fireball", "Knight"]
+        assert play("Knight") == (["Giant", "Cannon", "Musketeer", "Hog_Rider"], "Fireball")
+        assert play("Giant") == (["Cannon", "Musketeer", "Hog_Rider", "Fireball"], "Arrows")
+        assert play("Cannon") == (["Musketeer", "Hog_Rider", "Fireball", "Arrows"], "Baby_Dragon")
+        assert play("Musketeer") == (["Hog_Rider", "Fireball", "Arrows", "Baby_Dragon"], "Knight")
+        assert play("Hog_Rider") == (["Fireball", "Arrows", "Baby_Dragon", "Knight"], "Giant")
 
 
 class TestElixir:
@@ -154,7 +166,7 @@ class TestDeployZones:
             if z.name in SPELL_ZONES_P0:
                 assert z.card_types == frozenset({"spell"})
             else:
-                assert z.card_types == frozenset({"ground", "building"})
+                assert z.card_types == frozenset({"ground", "air", "building"})
 
     def test_num_actions_is_noop_plus_slots_times_zones(self):
         assert NUM_ACTIONS == 45 == 1 + HAND_SIZE * NUM_ZONES
@@ -513,15 +525,23 @@ class TestRewardsAndObservations:
         assert obs[0] == pytest.approx(board.elixir[0] / MAX_ELIXIR)
         assert obs[2] == pytest.approx(board.time / MATCH_TIME_LIMIT)
 
-    def test_observation_tower_hp_and_hand_onehot(self):
+    def test_observation_size_is_pinned(self):
+        # 3 global + 6 tower HP + 4 hand slots x 8 cards + 8 next card + 24 units x 5
+        assert OBS_DIM == 3 + 6 + 4 * 8 + 8 + 24 * 5 == 169
+        assert NUM_ACTIONS == 45
+
+    def test_observation_tower_hp_hand_and_next_card_onehot(self):
         board = new_board()
         obs = board.get_observation(0)
         towers = obs[OBS_GLOBAL_FEATURES : OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES]
         np.testing.assert_array_equal(towers, 1.0)  # all towers at full HP
         for slot, card in enumerate(board.get_hand(0)):
-            base = OBS_HAND_BASE + slot * NUM_PLAYABLE_CARDS
+            base = OBS_HAND_BASE + slot * DECK_SIZE
             assert obs[base + CARD_TO_ID[card]] == 1.0
-            assert obs[base : base + NUM_PLAYABLE_CARDS].sum() == 1.0
+            assert obs[base : base + DECK_SIZE].sum() == 1.0
+        next_onehot = obs[OBS_NEXT_BASE : OBS_NEXT_BASE + DECK_SIZE]
+        assert next_onehot[CARD_TO_ID[board.get_next_card(0)]] == 1.0
+        assert next_onehot.sum() == 1.0
 
     def test_action_mask_legality(self):
         board = new_board()

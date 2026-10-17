@@ -113,7 +113,7 @@ class SnapshotMsg(BaseModel):
     spells: list[SpellState]
     hits: list[HitState] = Field(default_factory=list)
     hand: list[str]
-    next_card: Optional[str]
+    next_card: str
     crowns: list[int]
     done: bool
     winner: Optional[int]
