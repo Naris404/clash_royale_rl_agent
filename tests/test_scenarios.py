@@ -101,14 +101,6 @@ def test_fireball_leaves_full_hp_musketeer_alive():
     assert musketeer.hp < musketeer.max_hp
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "At tournament standard a Fireball leaves the Musketeer on a sliver of HP that "
-        "one princess-tower shot removes; with the current stats (Fireball 575, "
-        "Musketeer 760, tower 158) it takes two. Revisit with the card data file."
-    ),
-)
 def test_fireballed_musketeer_falls_to_one_tower_shot():
     board = new_board()
     musketeer = _fireball_fresh_musketeer(board)

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 from cr_rl.game.cards import (
     CARD_TO_ID,
+    DEFAULT_SIGHT_RANGE,
     PLAYABLE_CARDS,
     Troop,
     Tower,
@@ -35,7 +36,6 @@ BRIDGES = [(BRIDGE_LANE_X[0], RIVER_Y), (BRIDGE_LANE_X[1], RIVER_Y)]
 BRIDGE_HALF_WIDTH = 1.8
 # Waypoint on the river bank before / after a bridge, set back from the water.
 BRIDGE_BANK_Y_OFFSET = RIVER_HALF_WIDTH + 0.3
-DEFAULT_SIGHT_RANGE = 9.5
 RANGED_MIN_RANGE = 2.0  # range above melee → hit is shown as a projectile
 
 # Towers (as in CR): princess ~6 tiles from the river, king at the back.

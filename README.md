@@ -109,7 +109,7 @@ obs, reward, done, trunc, info = env.step(action)
 | File | What to change |
 |------|----------------|
 | `src/cr_rl/game/board.py` → `TOWER_LAYOUT`, `BRIDGE_LANE_X` | Tower / bridge positions |
-| `src/cr_rl/game/cards.py` → `cards_dic` | Card stats |
+| `src/cr_rl/game/card_stats.json` | Card combat stats (source and card level recorded in the file) |
 | `cr-rl-train --timesteps --n-envs` | Training length and parallelism |
 
 ## Web platform
