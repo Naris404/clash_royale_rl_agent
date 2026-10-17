@@ -2,114 +2,105 @@
 
 from __future__ import annotations
 
-from collections import deque
+import logging
 
-from cr_rl.game.board import ARENA_WIDTH, RIVER_Y, Board
-from cr_rl.game.cards import Troop, cards_dic
+from cr_rl.game.board import RIVER_Y, Board
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.agents.rl import RandomAgent
+from scenario import new_board, place_unit, set_hand
 
 
-def _board(seed: int = 42) -> Board:
-    env = Board(seed=seed)
-    env.reset(seed=seed)
-    return env
-
-
-def _force_hand(board: Board, player: int, hand: list[str], queue: list[str]) -> None:
-    board.hand[player] = list(hand)
-    board.hand_queue[player] = deque(queue)
-
-
-def _add_enemy(board: Board, name: str, x: float, y: float) -> Troop:
-    troop = Troop(name, 1)
-    troop.place((x, y))
-    board.troops.append(troop)
-    return troop
+def _decide_and_step(agent: LogicAgent, board: Board) -> list[str]:
+    """One agent decision plus one Board step; returns the P0 cards that entered play."""
+    before = board.get_hand(0)
+    agent.choose_action(board, player=0)
+    board.step(0, action_p1=0)
+    return [card for card in before if card not in board.get_hand(0)]
 
 
 class TestLegality:
-    def test_pending_play_is_legal_and_affordable(self):
-        board = _board()
+    def test_every_decided_play_is_legal_and_executed(self, caplog):
+        board = new_board()
         agent = LogicAgent()
-        for _ in range(50):
-            agent.choose_action(board, player=0)
-            pending = board._pending_play[0]
-            if pending is not None:
-                card, x, y = pending
-                assert board.card_in_hand(0, card)
-                assert board.elixir[0] >= cards_dic[card]["elisir"]
-                assert 1.0 <= x <= ARENA_WIDTH - 1.0
-                if card != "Fireball":
-                    assert 2.0 <= y <= RIVER_Y - 0.5
-            board.step(0, action_p1=0)
-            if board.done:
-                break
+        with caplog.at_level(logging.WARNING, logger="cr_rl.game.board"):
+            for _ in range(600):
+                before = board.get_hand(0)
+                agent.choose_action(board, player=0)
+                board.step(0)  # P1: the Board's seeded random bot
+                if agent.last_decision != "pass":
+                    assert board.get_hand(0) != before, agent.last_decision
+                if board.done:
+                    break
+        assert not caplog.records  # no illegal play fell back to the Board's default spot
 
-    def test_choose_action_returns_noop_and_clears_on_step(self):
-        board = _board()
+    def test_a_decided_play_is_executed_once(self):
+        board = new_board()
         agent = LogicAgent()
         board.elixir[0] = 10.0
-        assert agent.choose_action(board, player=0) == 0
+        assert agent.choose_action(board, player=0) == 0  # the play goes through the Board
         board.step(0, action_p1=0)
-        assert board._pending_play[0] is None
+        troops_after_play = len(board.troops)
+        hand_after_play = board.get_hand(0)
+        board.step(0, action_p1=0)
+        assert len(board.troops) == troops_after_play
+        assert board.get_hand(0) == hand_after_play
 
 
 class TestDefenseRules:
     def test_reacts_to_hog_on_own_side(self):
-        board = _board()
+        board = new_board()
         board.elixir[0] = 10.0
-        _force_hand(board, 0, ["Knight", "Cannon", "Musketeer", "Giant"], ["Hog_Rider", "Fireball"])
-        _add_enemy(board, "Hog_Rider", 9.0, RIVER_Y - 1.5)
-        agent = LogicAgent()
-        agent.choose_action(board, player=0)
-        pending = board._pending_play[0]
-        assert pending is not None
-        assert pending[0] in ("Knight", "Cannon")
+        set_hand(board, 0, ["Knight", "Cannon", "Musketeer", "Giant"])
+        place_unit(board, "Hog_Rider", 1, 9.0, RIVER_Y - 1.5)
+        assert _decide_and_step(LogicAgent(), board)[0] in ("Knight", "Cannon")
 
     def test_fireballs_valuable_musketeer(self):
-        board = _board()
+        board = new_board()
         board.elixir[0] = 10.0
-        _force_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"], ["Hog_Rider", "Knight"])
-        musk = _add_enemy(board, "Musketeer", 9.0, RIVER_Y + 1.0)
-        musk.hp = 100.0  # Fireball kills → high score
-        agent = LogicAgent()
-        agent.choose_action(board, player=0)
-        pending = board._pending_play[0]
-        assert pending is not None and pending[0] == "Fireball"
+        set_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"])
+        musketeer = place_unit(board, "Musketeer", 1, 9.0, RIVER_Y + 1.0, hp=100.0)
+        assert _decide_and_step(LogicAgent(), board) == ["Fireball"]
+        assert not musketeer.alive
 
     def test_passes_when_nothing_legal(self):
-        board = _board()
+        board = new_board()
         board.elixir[0] = 0.0  # cannot afford anything
         agent = LogicAgent()
-        agent.choose_action(board, player=0)
-        assert board._pending_play[0] is None
+        assert _decide_and_step(agent, board) == []
         assert agent.last_decision == "pass"
 
 
 class TestComboQueue:
-    def test_giant_push_schedules_followups(self):
-        board = _board()
-        board.elixir[0] = 10.0
-        _force_hand(board, 0, ["Giant", "Musketeer", "Hog_Rider", "Knight"], ["Cannon", "Fireball"])
-        agent = LogicAgent()
-        agent.choose_action(board, player=0)
-        pending = board._pending_play[0]
-        assert pending is not None and pending[0] == "Giant"
-        assert len(agent._combo_queue) == 2  # Musketeer + Hog planned
+    @staticmethod
+    def _giant_ready_board() -> Board:
+        board = new_board()
+        set_hand(board, 0, ["Giant", "Musketeer", "Hog_Rider", "Knight"])
+        return board
 
-    def test_reset_clears_combo_queue(self):
+    def test_giant_push_is_followed_by_musketeer_and_hog(self):
+        board = self._giant_ready_board()
         agent = LogicAgent()
-        agent._combo_queue.append(("Knight", 9.0, 10.0))
-        agent.last_decision = "x"
+        played = []
+        for _ in range(3):
+            board.elixir[0] = 10.0
+            played += _decide_and_step(agent, board)
+        assert played == ["Giant", "Musketeer", "Hog_Rider"]
+
+    def test_reset_drops_the_unfinished_combo(self):
+        agent = LogicAgent()
+        board = self._giant_ready_board()
+        board.elixir[0] = 10.0
+        assert _decide_and_step(agent, board) == ["Giant"]
+
         agent.reset()
-        assert not agent._combo_queue
-        assert agent.last_decision == ""
+        fresh = self._giant_ready_board()
+        fresh.elixir[0] = 10.0
+        assert _decide_and_step(agent, fresh) == ["Giant"]  # not the queued Musketeer
 
 
 class TestIntegration:
     def test_full_match_vs_random_terminates(self):
-        board = _board(seed=3)
+        board = new_board(seed=3)
         logic = LogicAgent()
         random_bot = RandomAgent(seed=3, play_chance=0.42)
         steps = 0
