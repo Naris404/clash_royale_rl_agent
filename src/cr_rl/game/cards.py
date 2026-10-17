@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 # Target detection range (as in CR — without it units "see" the whole map).
 DEFAULT_SIGHT_RANGE = 9.5
+MELEE_RANGE = 2.0  # tiles; attackers up to this range are melee
 MIN_MOVE_DISTANCE = 0.05  # closer than this to a waypoint counts as arrived
 
 # Combat stats live in one data file that records its source and card level.
@@ -81,8 +82,13 @@ class Troop:
         return sqrt((self.x - x) ** 2 + (self.y - y) ** 2)
 
     def is_in_range(self, target: Troop) -> bool:
-        """Range is measured edge to edge, so both sides of a fight reach each other equally."""
-        return self.distance_to(target) - self.collision_radius - target.collision_radius <= self.range
+        """Range reaches the target's edge. Ranged attackers aim at a building's centre instead.
+
+        A big body (a tower) then cannot be hit from further out than it can shoot back, while
+        melee still reaches a footprint it cannot overlap.
+        """
+        edge = 0.0 if target.is_building and self.range > MELEE_RANGE else target.collision_radius
+        return self.distance_to(target) - edge <= self.range
 
     def can_target(self, target: Troop) -> bool:
         if not target.alive or target.owner == self.owner:
