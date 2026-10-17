@@ -414,6 +414,17 @@ class TestDeployTime:
             swings += _hits_from(board, hog)
         assert swings > 0
 
+    def test_unit_in_deploy_can_be_targeted_by_enemies(self):
+        board = new_board()
+        board.elixir[0] = 10.0
+        set_hand(board, 0, ["Knight"])
+        assert board.play_card(0, "Knight", ZONE_NAMES.index("bridge-L"))
+        knight = board.troops[0]
+        musketeer = place_unit(board, "Musketeer", 1, knight.x, knight.y + 4.0)
+
+        assert knight.is_deploying
+        assert board.find_nearest_target(musketeer) is knight
+
     def test_unit_in_deploy_can_be_damaged(self):
         board = new_board()
         board.elixir = [10.0, 10.0]
