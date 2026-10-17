@@ -370,15 +370,6 @@ class TestTargetingAndCombat:
         assert result.terminated
         assert board.winner == 0
 
-    def test_time_limit_truncates_and_picks_hp_leader(self):
-        board = new_board()
-        board.time = MATCH_TIME_LIMIT - TICK_DT
-        enemy_tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower")
-        enemy_tower.hp -= 500.0  # P1 has less total HP → P0 wins
-        result = board.step(0, action_p1=0)
-        assert result.truncated
-        assert board.winner == 0
-
 
 class TestDeployTime:
     @pytest.mark.parametrize("card", ["Knight", "Giant", "Musketeer", "Hog_Rider"])
@@ -613,3 +604,91 @@ class TestGymEnvIntegration:
         obs, reward, terminated, truncated, info = env.step(action)
         assert env.observation_space.contains(obs)
         assert isinstance(reward, float)
+
+
+def _tower(board: Board, owner: int, name: str, side: str | None = None) -> Troop:
+    return next(
+        t
+        for t in board.towers
+        if t.owner == owner and t.name == name and (side is None or (t.x < ARENA_WIDTH / 2) == (side == "L"))
+    )
+
+
+def _knight_destroys(board: Board, tower: Troop, *, attacker: int) -> None:
+    """Weaken `tower` to a sliver and let an enemy Knight standing next to it finish it."""
+    tower.hp = 1.0
+    place_unit(board, "Knight", attacker, tower.x, tower.y - 1.0 if attacker == 1 else tower.y + 1.0)
+    for _ in range(round(10.0 / TICK_DT)):
+        if not tower.alive or board.done:
+            break
+        board.step(0, action_p1=0)
+    assert not tower.alive
+
+
+class TestCrowns:
+    def test_match_starts_without_crowns(self):
+        assert new_board().crowns == [0, 0]
+
+    @pytest.mark.parametrize("attacker", [0, 1])
+    def test_destroying_a_princess_tower_scores_one_crown(self, attacker):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1 - attacker, "Tower", "L"), attacker=attacker)
+        expected = [0, 0]
+        expected[attacker] = 1
+        assert board.crowns == expected
+        assert not board.done
+
+    def test_both_princess_towers_score_two_crowns(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _knight_destroys(board, _tower(board, 1, "Tower", "R"), attacker=0)
+        assert board.crowns == [2, 0]
+
+    def test_destroying_the_king_scores_three_crowns_and_ends_the_match(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "King_Tower"), attacker=0)
+        assert board.crowns == [3, 0]
+        assert board.done
+        assert board.winner == 0
+
+    def test_king_win_does_not_wait_for_the_clock(self):
+        board = new_board()
+        king = _tower(board, 1, "King_Tower")
+        king.hp = 1.0
+        place_unit(board, "Knight", 0, king.x, king.y - 1.0)
+        results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
+        assert any(r.terminated for r in results)
+        assert board.time < MATCH_TIME_LIMIT
+
+    def test_more_crowns_at_time_limit_wins_despite_less_tower_hp(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _tower(board, 0, "King_Tower").hp = 1.0  # P0 is far behind on total HP
+        board.time = MATCH_TIME_LIMIT - TICK_DT
+        result = board.step(0, action_p1=0)
+        assert result.truncated
+        assert board.winner == 0
+
+    def test_more_crowns_for_the_opponent_wins_it_the_match(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 0, "Tower", "R"), attacker=1)
+        board.time = MATCH_TIME_LIMIT - TICK_DT
+        board.step(0, action_p1=0)
+        assert board.winner == 1
+
+    def test_equal_crowns_at_time_limit_is_a_draw_whatever_the_tower_hp(self):
+        board = new_board()
+        _tower(board, 1, "King_Tower").hp = 1.0  # P0 clearly ahead on HP, but no crowns
+        board.time = MATCH_TIME_LIMIT - TICK_DT
+        result = board.step(0, action_p1=0)
+        assert result.truncated
+        assert board.winner is None
+
+    def test_same_seed_gives_the_same_outcome(self):
+        outcomes = []
+        for _ in range(2):
+            board = new_board(seed=11)
+            while not board.done:
+                board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
+            outcomes.append((board.winner, board.crowns, board.time))
+        assert outcomes[0] == outcomes[1]
