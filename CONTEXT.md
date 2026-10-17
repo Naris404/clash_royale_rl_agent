@@ -45,6 +45,12 @@ The delay after a card is placed before its unit can move or attack; the unit ca
 already be targeted and damaged. Spells have none.
 _Avoid_: spawn delay, cast time
 
+**Collision**:
+Units and buildings occupy space: overlapping units push each other apart, the
+heavier (by card mass) giving way less, while buildings and towers never move.
+Pushing never carries a ground unit into the river off a bridge lane.
+_Avoid_: overlap handling, separation
+
 **King tower activation**:
 The king tower stays idle until it takes any damage (including splash or spells) or
 one of its princess towers is destroyed; once active it stays active.

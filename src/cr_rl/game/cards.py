@@ -48,6 +48,8 @@ class Troop:
         self.unit_type = self.stats.get("type", "ground")
         self.range = self.stats.get("range", 0)
         self.speed = self.stats.get("speed", 0)
+        self.collision_radius = self.stats.get("collision_radius", 0.0)
+        self.mass = self.stats.get("mass", 0)
 
         self.x = 0.0
         self.y = 0.0
@@ -71,7 +73,8 @@ class Troop:
         return sqrt((self.x - x) ** 2 + (self.y - y) ** 2)
 
     def is_in_range(self, target: Troop) -> bool:
-        return self.distance_to(target) <= self.range
+        """Range reaches the target's edge, so melee can hit a body it cannot overlap."""
+        return self.distance_to(target) - target.collision_radius <= self.range
 
     def can_target(self, target: Troop) -> bool:
         if not target.alive or target.owner == self.owner:

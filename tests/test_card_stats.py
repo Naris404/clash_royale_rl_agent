@@ -48,3 +48,11 @@ def test_every_troop_and_building_has_a_deploy_time_and_spells_have_none():
             assert "deploy_time" not in cards_dic[name], name
         else:
             assert cards_dic[name]["deploy_time"] > 0, name
+
+
+def test_every_body_has_a_collision_radius_and_every_mobile_unit_a_mass():
+    for name, stats in cards_dic.items():
+        if stats["type"] == "spell":
+            continue
+        assert stats["collision_radius"] > 0, name
+        assert ("mass" in stats) == (stats["speed"] > 0), name

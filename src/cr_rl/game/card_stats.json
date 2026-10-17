@@ -1,7 +1,7 @@
 {
   "source": "https://clashroyale.fandom.com/wiki/Cards (per-card pages: Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball, Princess_Towers, King's_Tower), retrieved 2026-10-17",
   "card_level": 11,
-  "units": "hp and damage at card_level; range in tiles; speed in tiles per second (wiki speed / 60); times in seconds; elisir is the elixir cost",
+  "units": "hp and damage at card_level; range in tiles; speed in tiles per second (wiki speed / 60); times in seconds; elisir is the elixir cost; collision_radius in tiles (a building's footprint); mass is the push weight of a mobile unit, heavier pushes lighter (buildings and towers never move)",
   "cards": {
     "Knight": {
       "damage": 202,
@@ -13,7 +13,9 @@
       "speed": 1.0,
       "elisir": 3,
       "life_span": 0,
-      "type": "ground"
+      "type": "ground",
+      "collision_radius": 0.5,
+      "mass": 6
     },
     "Giant": {
       "damage": 253,
@@ -25,7 +27,9 @@
       "speed": 0.75,
       "elisir": 5,
       "life_span": 0,
-      "type": "ground"
+      "type": "ground",
+      "collision_radius": 0.75,
+      "mass": 18
     },
     "Cannon": {
       "damage": 212,
@@ -38,7 +42,8 @@
       "speed": 0,
       "elisir": 3,
       "life_span": 30,
-      "type": "building"
+      "type": "building",
+      "collision_radius": 1.0
     },
     "Musketeer": {
       "damage": 217,
@@ -50,7 +55,9 @@
       "speed": 1.0,
       "elisir": 4,
       "life_span": 0,
-      "type": "ground"
+      "type": "ground",
+      "collision_radius": 0.5,
+      "mass": 4
     },
     "Hog_Rider": {
       "damage": 317,
@@ -64,7 +71,9 @@
       "elisir": 4,
       "life_span": 0,
       "type": "ground",
-      "jumps_river": true
+      "jumps_river": true,
+      "collision_radius": 0.6,
+      "mass": 4
     },
     "Fireball": {
       "damage": 688,
@@ -81,7 +90,8 @@
       "speed": 0,
       "elisir": 0,
       "life_span": 0,
-      "type": "building"
+      "type": "building",
+      "collision_radius": 1.5
     },
     "King_Tower": {
       "damage": 109,
@@ -92,7 +102,8 @@
       "speed": 0,
       "elisir": 0,
       "life_span": 0,
-      "type": "building"
+      "type": "building",
+      "collision_radius": 2.0
     }
   }
 }

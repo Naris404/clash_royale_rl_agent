@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import random
 from collections import deque
+from math import sqrt
 from dataclasses import dataclass, field, replace
 from typing import Optional
 
@@ -38,6 +39,7 @@ BRIDGE_HALF_WIDTH = 1.8
 # Waypoint on the river bank before / after a bridge, set back from the water.
 BRIDGE_BANK_Y_OFFSET = RIVER_HALF_WIDTH + 0.3
 RANGED_MIN_RANGE = 2.0  # range above melee → hit is shown as a projectile
+COLLISION_PASSES = 4  # relaxation passes per tick so chains of overlapping units settle
 
 # Towers (as in CR): princess ~6 tiles from the river, king at the back.
 # P0 = bottom (y grows upward), P1 = top.
@@ -492,13 +494,15 @@ class Board:
     def get_move_waypoint(self, troop: Troop, target: Troop) -> tuple[float, float]:
         return self._path_waypoint(troop, target.x, target.y)
 
+    def _in_river_off_bridge(self, troop: Troop) -> bool:
+        """Whether a ground unit stands in the water away from any bridge lane."""
+        if troop.jumps_river or troop.is_building:
+            return False
+        return self._in_river_water(troop.y) and not self._on_bridge_lane(troop)
+
     def _enforce_no_river_cut(self, troop: Troop) -> None:
-        """Pushes a unit back if it entered the river outside a bridge."""
-        if getattr(troop, "jumps_river", False):
-            return
-        if troop.is_building and troop.speed <= 0:
-            return
-        if not self._in_river_water(troop.y) or self._on_bridge_lane(troop):
+        """Puts a unit back on the bank of the nearest bridge if it entered the river outside one."""
+        if not self._in_river_off_bridge(troop):
             return
 
         bx = self._nearest_bridge_x(troop.x)
@@ -606,7 +610,42 @@ class Board:
             if unit.hp <= 0:
                 unit.alive = False
 
+        self._resolve_collisions()
         return dealt_p0, taken_p0
+
+    def _resolve_collisions(self) -> None:
+        bodies = self._all_combatants()
+        for _ in range(COLLISION_PASSES):
+            for i, a in enumerate(bodies):
+                for b in bodies[i + 1:]:
+                    self._separate(a, b)
+
+    def _separate(self, a: Troop, b: Troop) -> None:
+        dx, dy = b.x - a.x, b.y - a.y
+        dist = sqrt(dx * dx + dy * dy)
+        overlap = a.collision_radius + b.collision_radius - dist
+        if overlap <= 0:
+            return
+        nx, ny = (dx / dist, dy / dist) if dist > 1e-9 else (1.0, 0.0)
+        # Heavier units give way less; a body without mass (building, tower) never moves.
+        give_a = 1 / a.mass if a.mass > 0 else 0.0
+        give_b = 1 / b.mass if b.mass > 0 else 0.0
+        total = give_a + give_b
+        if total == 0:
+            return
+        self._shove(a, -nx * overlap * give_a / total, -ny * overlap * give_a / total)
+        self._shove(b, nx * overlap * give_b / total, ny * overlap * give_b / total)
+
+    def _shove(self, unit: Troop, dx: float, dy: float) -> None:
+        """Moves a unit by a push, keeping it in the arena and out of the river off a bridge."""
+        if unit.mass <= 0:
+            return
+        r = unit.collision_radius
+        old = unit.x, unit.y
+        unit.x = min(max(unit.x + dx, r), ARENA_WIDTH - r)
+        unit.y = min(max(unit.y + dy, r), ARENA_LENGTH - r)
+        if self._in_river_off_bridge(unit):
+            unit.x, unit.y = old
 
     def _record_hit(self, attacker: Troop, target: Troop, damage: float) -> None:
         self.hit_events.append(
