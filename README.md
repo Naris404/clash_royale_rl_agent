@@ -83,6 +83,10 @@ Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball
 
 ### RL agent (PPO)
 
+The full description of the agent (observation features, actions and masking,
+reward, network, hyperparameters, training setup and results) is in
+[docs/rl-agent.md](docs/rl-agent.md).
+
 ```python
 from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.agents.rl import RLAgent
