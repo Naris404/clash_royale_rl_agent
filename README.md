@@ -83,6 +83,10 @@ Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball
 
 ### RL agent (PPO)
 
+The full description of the agent (observation features, actions and masking,
+reward, network, hyperparameters, training setup and results) is in
+[docs/rl-agent.md](docs/rl-agent.md).
+
 ```python
 from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.agents.rl import RLAgent
@@ -97,10 +101,6 @@ obs, _ = env.reset()
 action = agent.choose_action(env.board, player=0)
 obs, reward, done, trunc, info = env.step(action)
 ```
-
-**Observation** (`OBS_DIM`): own and enemy elixir, time, HP of the 6 towers, one-hot hand (4×6), up to 24 units (sorted).
-
-**Reward**: only the change in total tower HP `(enemy loss − own loss) / max_tower_HP`.
 
 `LogicAgent` uses `board.set_pending_play()` — `gym_env` wires up both modes correctly.
 
