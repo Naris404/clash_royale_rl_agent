@@ -263,18 +263,13 @@ class TestRiverAndBridges:
             if (RIVER_Y - RIVER_HALF_WIDTH) < y1 < (RIVER_Y + RIVER_HALF_WIDTH):
                 assert any(abs(x1 - bx) <= BRIDGE_HALF_WIDTH for bx in BRIDGE_LANE_X)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "A ground unit within 0.05 tiles short of the far bank still routes to that "
-            "bank, and moves under 0.05 tiles are skipped, so it freezes there."
-        ),
-    )
-    def test_unit_just_past_the_far_bank_keeps_walking(self):
+    @pytest.mark.parametrize("owner", [0, 1])
+    def test_unit_just_past_the_far_bank_keeps_walking(self, owner):
+        direction = 1.0 if owner == 0 else -1.0
         board = new_board()
-        knight = place_unit(board, "Knight", 0, 3.0, RIVER_Y + 1.48)
+        knight = place_unit(board, "Knight", owner, 3.0, RIVER_Y + direction * 1.48)
         _step_seconds(board, 1.0)
-        assert knight.y > RIVER_Y + 2.0
+        assert direction * (knight.y - RIVER_Y) > 2.0
 
     def test_hog_rider_jumps_river_in_straight_line(self):
         board = new_board()
@@ -331,13 +326,6 @@ class TestTargetingAndCombat:
         assert knight.hp == knight.max_hp
         assert [(e.x, e.y) for e in giant_hits] == [(enemy_tower.x, enemy_tower.y)]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Troops that target ground ignore buildings (only towers count), so a Knight "
-            "walks past an enemy Cannon; in the real game ground targeting includes buildings."
-        ),
-    )
     def test_knight_attacks_enemy_cannon_in_its_way(self):
         board = new_board()
         cannon = place_unit(board, "Cannon", 1, 9.0, 20.0)

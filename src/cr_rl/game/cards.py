@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 # Target detection range (as in CR — without it units "see" the whole map).
 DEFAULT_SIGHT_RANGE = 9.5
+MIN_MOVE_DISTANCE = 0.05  # closer than this to a waypoint counts as arrived
 
 # Combat stats live in one data file that records its source and card level.
 CARD_STATS_PATH = Path(__file__).with_name("card_stats.json")
@@ -75,10 +76,8 @@ class Troop:
     def can_target(self, target: Troop) -> bool:
         if not target.alive or target.owner == self.owner:
             return False
-        if target.is_tower:
-            return "buildings" in self.targets or "ground" in self.targets
         if target.is_building:
-            return "buildings" in self.targets
+            return "buildings" in self.targets or "ground" in self.targets
         if target.unit_type == "air":
             return "air" in self.targets
         return "ground" in self.targets
@@ -94,7 +93,7 @@ class Troop:
         dx = x - self.x
         dy = y - self.y
         distance = sqrt(dx * dx + dy * dy)
-        if distance <= 0.05:
+        if distance <= MIN_MOVE_DISTANCE:
             return
 
         step = min(self.speed * dt, distance)
