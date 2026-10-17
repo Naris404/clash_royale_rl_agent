@@ -579,6 +579,115 @@ class TestMirroredObservation:
         assert obs1[base0 + 3] == pytest.approx((32.0 - 10.0) / 32.0)
 
 
+class TestKingTower:
+    """The king stays idle until it takes damage or one of its princess towers falls."""
+
+    @staticmethod
+    def _king(board: Board, owner: int = 1) -> Troop:
+        return next(t for t in board.towers if t.owner == owner and t.name == "King_Tower")
+
+    @staticmethod
+    def _board_with_knight_near_enemy_king(seed: int = 42) -> tuple[Board, Troop]:
+        board = new_board(seed)
+        place_unit(board, "Knight", 0, 9.0, 26.0)  # inside the king's range, 4 tiles away
+        return board, board.troops[0]
+
+    def test_idle_king_does_not_shoot_units_in_range(self):
+        board, _ = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        shots = 0
+        for _ in range(round(2.0 / TICK_DT)):  # the Knight is still walking toward the king
+            board.step(0, action_p1=0)
+            shots += _hits_from(board, king)
+        assert shots == 0
+        assert not board.is_king_active(1)
+
+    def test_direct_damage_activates_king_which_then_shoots_back(self):
+        board, knight = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        _step_seconds(board, 6.0)  # the Knight reaches the king and starts hitting it
+
+        assert king.hp < king.max_hp
+        assert board.is_king_active(1)
+        assert knight.hp < knight.max_hp or not knight.alive
+        assert not board.is_king_active(0)  # activation is per player
+
+    def test_fireball_on_the_king_activates_it(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 30.0)
+        assert board.is_king_active(1)
+
+    def test_fireball_splash_clipping_the_king_activates_it(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 27.8)  # 2.2 tiles away, radius 2.5
+        assert board.is_king_active(1)
+
+    def test_fireball_missing_the_king_leaves_it_idle(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 26.0)
+        assert not board.is_king_active(1)
+
+    def test_active_king_shoots_units_in_range(self):
+        board, knight = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        king.hp -= 1.0  # any damage activates it
+        shots = 0
+        for _ in range(round(2.0 / TICK_DT)):
+            board.step(0, action_p1=0)
+            shots += _hits_from(board, king)
+        assert board.is_king_active(1)
+        assert shots > 0
+
+    @pytest.mark.parametrize("lane", ["L", "R"])
+    def test_destroying_a_princess_tower_activates_the_king(self, lane):
+        board = new_board()
+        princess = next(
+            t for t in board.towers
+            if t.owner == 1 and t.name == "Tower" and (t.x < ARENA_WIDTH / 2) == (lane == "L")
+        )
+        princess.hp = 1.0
+        place_unit(board, "Knight", 0, princess.x, princess.y - 1.0)
+        assert not board.is_king_active(1)
+
+        _step_seconds(board, 5.0)
+
+        assert not princess.alive
+        king = self._king(board)
+        assert king.hp == king.max_hp  # nothing touched the king itself
+        assert board.is_king_active(1)
+
+    def test_activation_is_permanent(self):
+        board = new_board()
+        self._king(board).hp -= 1.0
+        assert board.is_king_active(1)
+        _step_seconds(board, 10.0)
+        assert board.is_king_active(1)
+
+    def test_reset_makes_kings_idle_again(self):
+        board = new_board()
+        self._king(board).hp -= 1.0
+        board.reset(seed=42)
+        assert not board.is_king_active(0)
+        assert not board.is_king_active(1)
+
+    def test_same_seed_same_king_activation_time(self):
+        def activation_tick(seed: int) -> int:
+            board, _ = self._board_with_knight_near_enemy_king(seed)
+            for tick in range(200):
+                board.step(0, action_p1=0)
+                if board.is_king_active(1):
+                    return tick
+            pytest.fail("king never activated")
+
+        assert activation_tick(3) == activation_tick(3)
+
+
 class TestDeterminism:
     def test_same_seed_same_match(self):
         actions = [0, 1, 5, 0, 12, 3, 0, 0, 7, 2] * 5
