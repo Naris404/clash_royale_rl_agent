@@ -1,7 +1,7 @@
 {
-  "source": "https://clashroyale.fandom.com/wiki/Cards (per-card pages: Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball, Arrows, Baby_Dragon, Princess_Towers, King's_Tower), retrieved 2026-10-17; Arrows and Baby_Dragon checked against the game by the project owner",
+  "source": "https://clashroyale.fandom.com/wiki/Cards (per-card pages: Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball, Arrows, Baby_Dragon, Princess_Towers, King's_Tower), retrieved 2026-10-17; Arrows and Baby_Dragon checked against the game by the project owner; Fireball tower_damage 207 is from memory and still to be checked",
   "card_level": 11,
-  "units": "hp and damage at card_level; range, radius and splash_radius in tiles; speed in tiles per second (wiki speed / 60); times in seconds; elisir is the elixir cost; collision_radius in tiles (a building's footprint); mass is the push weight of a mobile unit, heavier pushes lighter (buildings and towers never move)",
+  "units": "hp and damage at card_level; range, radius and splash_radius in tiles; speed in tiles per second (wiki speed / 60); times in seconds; elisir is the elixir cost; tower_damage is a spell's reduced damage to princess and king towers (the game's crown tower damage); collision_radius in tiles (a building's footprint); mass is the push weight of a mobile unit, heavier pushes lighter (buildings and towers never move)",
   "cards": {
     "Knight": {
       "damage": 202,
@@ -77,12 +77,14 @@
     },
     "Fireball": {
       "damage": 688,
+      "tower_damage": 207,
       "radius": 2.5,
       "elisir": 4,
       "type": "spell"
     },
     "Arrows": {
       "damage": 366,
+      "tower_damage": 93,
       "radius": 3.5,
       "elisir": 3,
       "type": "spell"

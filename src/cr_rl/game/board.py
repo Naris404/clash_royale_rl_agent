@@ -280,17 +280,19 @@ class Board:
 
         radius = float(stats["radius"])
         damage = float(stats.get("damage", 0))
+        tower_damage = float(stats.get("tower_damage", damage))
         kx, ky = TOWER_LAYOUT[player]["King_Tower"]
         for unit in self._all_combatants():
             if unit.owner == player or not unit.alive:
                 continue
             if unit.distance_to_xy(x, y) <= radius:
-                unit.hp -= damage
+                dealt = tower_damage if unit.is_tower else damage
+                unit.hp -= dealt
                 if unit.hp <= 0:
                     unit.hp = 0
                     unit.alive = False
                 self.hit_events.append(
-                    HitEvent(player, kx, ky, unit.x, unit.y, damage, ranged=False)
+                    HitEvent(player, kx, ky, unit.x, unit.y, dealt, ranged=False)
                 )
 
         self.spell_effects.append(

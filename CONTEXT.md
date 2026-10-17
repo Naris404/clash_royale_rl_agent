@@ -40,6 +40,11 @@ A deploy-only zone on the enemy side that spells may target; masked off for
 troops and buildings.
 _Avoid_: target zone
 
+**Crown tower damage**:
+The reduced damage a spell deals to princess and king towers (`tower_damage` in the
+card data file); units and buildings like the Cannon take the full spell damage.
+_Avoid_: tower damage
+
 **Deploy time**:
 The delay after a card is placed before its unit can move or attack; the unit can
 already be targeted and damaged. Spells have none.

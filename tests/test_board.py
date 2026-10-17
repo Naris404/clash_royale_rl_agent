@@ -218,6 +218,21 @@ class TestSpells:
         assert ally.hp == ally.max_hp  # no friendly fire
         assert far_enemy.hp == far_enemy.max_hp  # outside the radius
 
+    @pytest.mark.parametrize("spell", ["Fireball", "Arrows"])
+    def test_spell_deals_reduced_crown_tower_damage_to_a_tower_only(self, spell):
+        board = new_board()
+        board.elixir[0] = 10.0
+        set_hand(board, 0, [spell, "Giant", "Cannon", "Musketeer"])
+        tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower" and t.x < ARENA_WIDTH / 2)
+        cannon = place_unit(board, "Cannon", 1, tower.x, tower.y)
+        knight = place_unit(board, "Knight", 1, tower.x, tower.y)
+
+        assert board.play_card_at(0, spell, tower.x, tower.y)
+
+        assert tower.hp == tower.max_hp - cards_dic[spell]["tower_damage"]
+        assert cannon.hp == cannon.max_hp - cards_dic[spell]["damage"]
+        assert knight.hp == knight.max_hp - cards_dic[spell]["damage"]
+
     def test_fireball_kills_low_hp_unit(self):
         board = new_board()
         board.elixir[0] = 10.0
