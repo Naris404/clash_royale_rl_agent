@@ -9,21 +9,29 @@
       "id": 26000003,
       "file": "Giant.png"
     },
-    "Cannon": {
-      "id": 27000000,
-      "file": "Cannon.png"
+    "Hog_Rider": {
+      "id": 26000021,
+      "file": "Hog_Rider.png"
     },
     "Musketeer": {
       "id": 26000014,
       "file": "Musketeer.png"
     },
-    "Hog_Rider": {
-      "id": 26000021,
-      "file": "Hog_Rider.png"
+    "Cannon": {
+      "id": 27000000,
+      "file": "Cannon.png"
     },
     "Fireball": {
       "id": 28000000,
       "file": "Fireball.png"
+    },
+    "Arrows": {
+      "id": 28000001,
+      "file": "Arrows.png"
+    },
+    "Baby_Dragon": {
+      "id": 26000015,
+      "file": "Baby_Dragon.png"
     }
   }
 }
