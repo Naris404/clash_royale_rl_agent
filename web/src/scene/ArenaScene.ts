@@ -22,6 +22,7 @@ interface TroopView {
   hpBg: Graphics;
   hpFg: Graphics;
   flash: Graphics;
+  deployText: Text;
   flashUntil: number;
   lastHp: number;
   lastX: number;
@@ -316,6 +317,12 @@ export class ArenaScene {
       if (troop.hp < view.lastHp - 1e-6) view.flashUntil = now + FLASH_MS;
       view.lastHp = troop.hp;
       this.updateFlash(view.flash, view.flashUntil, now);
+
+      // deploy countdown: dimmed token until the unit can move and attack
+      const deploying = troop.deploy_remaining > 0;
+      view.icon.alpha = deploying ? 0.45 : 1;
+      view.deployText.visible = deploying;
+      if (deploying) view.deployText.text = troop.deploy_remaining.toFixed(1);
     }
 
     // vanished units → death poof
@@ -371,7 +378,13 @@ export class ArenaScene {
     const flash = new Graphics();
     flash.circle(0, 0, TOKEN_RADIUS).fill({ color: 0xffffff, alpha: 0.7 });
     flash.visible = false;
-    root.addChild(ring, icon, flash, hpBg, hpFg);
+    const deployText = new Text({
+      text: "",
+      style: { fill: 0xffffff, fontSize: 12, fontWeight: "bold", stroke: { color: 0x0f172a, width: 3 } },
+    });
+    deployText.anchor.set(0.5);
+    deployText.visible = false;
+    root.addChild(ring, icon, flash, hpBg, hpFg, deployText);
     return {
       root,
       icon,
@@ -379,6 +392,7 @@ export class ArenaScene {
       hpBg,
       hpFg,
       flash,
+      deployText,
       flashUntil: 0,
       lastHp: troop.hp,
       lastX: troop.x,

@@ -309,6 +309,7 @@ class GameSession:
                     y=round(troop.y, 3),
                     hp=round(troop.hp, 1),
                     max_hp=float(troop.max_hp),
+                    deploy_remaining=troop.deploy_remaining,
                 )
             )
 

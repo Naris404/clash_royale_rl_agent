@@ -100,6 +100,18 @@ class TestGameSession:
         assert any(not h.ranged and h.owner == 0 for h in hits)  # knight → tower
         assert any(h.ranged and h.owner == 1 for h in hits)  # tower → knight
 
+    def test_snapshot_carries_deploy_countdown_of_a_placed_unit(self, inspector):
+        session = GameSession("s1", MODE_VS_BOT, inspector, seed=1)
+        card = next(c for c in session.board.get_hand(0) if cards_dic[c]["type"] != "spell")
+        session.board.elixir[0] = 10.0
+        session.handle_play(card, 9.0, 6.0)
+
+        troop = session.tick()[0].troops[0]
+        assert 0 < troop.deploy_remaining <= cards_dic[card]["deploy_time"]
+        for _ in range(15):
+            troop = session.tick()[0].troops[0]
+        assert troop.deploy_remaining == 0
+
     def test_coach_mode_emits_hint(self, inspector):
         session = GameSession("s2", MODE_COACH, inspector, seed=1)
         hints = []

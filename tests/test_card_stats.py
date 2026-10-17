@@ -40,3 +40,11 @@ def test_stats_are_at_tournament_standard():
     assert cards_dic["Musketeer"]["hp"] == 721
     assert cards_dic["Tower"]["hp"] == 3052
     assert cards_dic["King_Tower"]["hp"] == 4824
+
+
+def test_every_troop_and_building_has_a_deploy_time_and_spells_have_none():
+    for name in PLAYABLE_CARDS:
+        if cards_dic[name]["type"] == "spell":
+            assert "deploy_time" not in cards_dic[name], name
+        else:
+            assert cards_dic[name]["deploy_time"] > 0, name

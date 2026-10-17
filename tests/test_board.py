@@ -381,6 +381,87 @@ class TestTargetingAndCombat:
         assert board.winner == 0
 
 
+class TestDeployTime:
+    @pytest.mark.parametrize("card", ["Knight", "Giant", "Musketeer", "Hog_Rider"])
+    def test_unit_holds_still_until_its_deploy_time_ends(self, card):
+        board = new_board()
+        board.elixir[0] = 10.0
+        set_hand(board, 0, [card])
+        assert board.play_card(0, card, ZONE_NAMES.index("back-L"))
+        unit = board.troops[0]
+        start = (unit.x, unit.y)
+
+        _step_seconds(board, cards_dic[card]["deploy_time"])
+        assert (unit.x, unit.y) == start
+        _step_seconds(board, 0.5)
+        assert (unit.x, unit.y) != start
+
+    def test_unit_does_not_attack_before_its_deploy_time_ends(self):
+        board = new_board()
+        board.elixir[0] = 10.0
+        set_hand(board, 0, ["Hog_Rider"])
+        assert board.play_card(0, "Hog_Rider", ZONE_NAMES.index("bridge-L"))
+        hog = board.troops[0]
+        place_unit(board, "Cannon", 1, hog.x, hog.y + 0.5)
+
+        swings = 0
+        for _ in range(round(cards_dic["Hog_Rider"]["deploy_time"] / TICK_DT)):
+            board.step(0, action_p1=0)
+            swings += _hits_from(board, hog)
+        assert swings == 0
+        for _ in range(20):
+            board.step(0, action_p1=0)
+            swings += _hits_from(board, hog)
+        assert swings > 0
+
+    def test_unit_in_deploy_can_be_targeted_by_enemies(self):
+        board = new_board()
+        board.elixir[0] = 10.0
+        set_hand(board, 0, ["Knight"])
+        assert board.play_card(0, "Knight", ZONE_NAMES.index("bridge-L"))
+        knight = board.troops[0]
+        musketeer = place_unit(board, "Musketeer", 1, knight.x, knight.y + 4.0)
+
+        assert knight.is_deploying
+        assert board.find_nearest_target(musketeer) is knight
+
+    def test_unit_in_deploy_can_be_damaged(self):
+        board = new_board()
+        board.elixir = [10.0, 10.0]
+        set_hand(board, 0, ["Knight"])
+        set_hand(board, 1, ["Fireball"])
+        assert board.play_card(0, "Knight", ZONE_NAMES.index("bridge-L"))
+        knight = board.troops[0]
+
+        board.set_pending_play(1, ("Fireball", knight.x, knight.y))
+        board.step(0, action_p1=0)
+        assert knight.hp == knight.max_hp - cards_dic["Fireball"]["damage"]
+
+    def test_unit_in_deploy_can_be_killed(self):
+        board = new_board()
+        board.elixir = [10.0, 10.0]
+        set_hand(board, 0, ["Knight"])
+        set_hand(board, 1, ["Fireball"])
+        assert board.play_card(0, "Knight", ZONE_NAMES.index("bridge-L"))
+        knight = board.troops[0]
+        knight.hp = 100.0
+
+        board.set_pending_play(1, ("Fireball", knight.x, knight.y))
+        board.step(0, action_p1=0)
+        assert not knight.alive
+        assert knight not in board.troops
+
+    def test_spell_takes_effect_on_the_tick_it_is_cast(self):
+        board = new_board()
+        board.elixir[0] = 10.0
+        set_hand(board, 0, ["Fireball"])
+        giant = place_unit(board, "Giant", 1, 9.0, 20.0)
+
+        board.set_pending_play(0, ("Fireball", 9.0, 20.0))
+        board.step(0, action_p1=0)
+        assert giant.hp == giant.max_hp - cards_dic["Fireball"]["damage"]
+
+
 class TestHitEvents:
     @staticmethod
     def _first_hit_by(board: Board, attacker: Troop, max_steps: int = 40):

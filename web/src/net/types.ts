@@ -50,6 +50,7 @@ export interface TroopState {
   y: number;
   hp: number;
   max_hp: number;
+  deploy_remaining: number;
 }
 
 export interface SpellState {

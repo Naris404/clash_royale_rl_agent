@@ -40,7 +40,7 @@ class Troop:
         self.targets = list(self.stats.get("targets", []))
         self.hit_speed = self.stats.get("hit_speed", 0)
         self.first_hit_speed = self.stats.get("first_hit_speed", self.hit_speed)
-        self.deploy_time = self.stats.get("deploy_time", 0.0)
+        self.deploy_remaining = self.stats.get("deploy_time", 0.0)
         self.sight_range = self.stats.get("sight_range", DEFAULT_SIGHT_RANGE)
         self.elisir = self.stats.get("elisir", 0)
         self.life_span = self.stats.get("life_span", 0)
@@ -110,13 +110,18 @@ class Troop:
             return
         self.move_towards_point(target.x, target.y, dt)
 
-    def can_attack(self) -> bool:
-        return self.age >= self.deploy_time
+    @property
+    def is_deploying(self) -> bool:
+        return self.deploy_remaining > 0
+
+    def tick_deploy(self, dt: float) -> None:
+        # Rounded so ten 0.1 s ticks end a 1.0 s deploy exactly.
+        self.deploy_remaining = round(max(0.0, self.deploy_remaining - dt), 6)
 
     def hit(self, target: Troop, dt: float) -> float:
         """Attacks the target; returns the damage dealt (0 if no attack)."""
         self.update_cooldown(dt)
-        if not self.can_attack() or not self.is_in_range(target):
+        if not self.is_in_range(target):
             self._attack_winding = False
             return 0.0
 
