@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 from cr_rl.game.cards import (
     CARD_TO_ID,
     DEFAULT_SIGHT_RANGE,
+    MIN_MOVE_DISTANCE,
     PLAYABLE_CARDS,
     Troop,
     Tower,
@@ -463,9 +464,14 @@ class Board:
 
     @staticmethod
     def _river_between(y: float, dest_y: float) -> bool:
-        """Whether going from y to dest_y requires crossing the river (bank to bank)."""
+        """Whether going from y to dest_y requires crossing the river (bank to bank).
+
+        A unit within MIN_MOVE_DISTANCE of the far bank counts as across: it could not
+        step onto that bank anyway and would otherwise freeze there.
+        """
         low, high = min(y, dest_y), max(y, dest_y)
-        return low < RIVER_Y + BRIDGE_BANK_Y_OFFSET and high > RIVER_Y - BRIDGE_BANK_Y_OFFSET
+        near = BRIDGE_BANK_Y_OFFSET - MIN_MOVE_DISTANCE
+        return low < RIVER_Y + near and high > RIVER_Y - near
 
     def _path_waypoint(self, troop: Troop, dest_x: float, dest_y: float) -> tuple[float, float]:
         """Diagonal to the bridge bank, straight over the bridge, then diagonal to the target."""

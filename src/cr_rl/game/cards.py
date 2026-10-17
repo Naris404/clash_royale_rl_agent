@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 # Target detection range (as in CR — without it units "see" the whole map).
 DEFAULT_SIGHT_RANGE = 9.5
+MIN_MOVE_DISTANCE = 0.05  # closer than this to a waypoint counts as arrived
 
 # Combat stats live in one data file that records its source and card level.
 CARD_STATS_PATH = Path(__file__).with_name("card_stats.json")
@@ -94,7 +95,7 @@ class Troop:
         dx = x - self.x
         dy = y - self.y
         distance = sqrt(dx * dx + dy * dy)
-        if distance <= 0.05:
+        if distance <= MIN_MOVE_DISTANCE:
             return
 
         step = min(self.speed * dt, distance)
