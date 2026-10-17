@@ -38,7 +38,7 @@ Status: ✅ passed, 🔧 found a bug and fixed it, 👤 needs the user.
 | 12 | Overtime tiebreak by weakest tower, equal is a draw | `TestOvertime` only (a random bot match does not reach it) | ✅ unit tests / 👤 optional |
 | 13 | HUD: timer, phase label (Regulation, Double elixir, Overtime), crowns, sleeping-king icon, end modal with Rematch | Browser screenshots | ✅ |
 | 14 | Cycle: 4-card hand, next card shown, never repeats inside the hand | Playtest script (every snapshot) | ✅ |
-| 15 | Arrows and Fireball: reduced damage on towers (93 / 207), full damage on units and the Cannon | Playtest script (damage of every spell hit by target kind); `TestSpells` | ✅ (Fireball value: 👤) |
+| 15 | Arrows and Fireball: reduced damage on towers (93 / 159), full damage on units and the Cannon | Playtest script (damage of every spell hit by target kind); `TestSpells` | ✅ (Fireball value checked against the game by the owner) |
 | 16 | Baby Dragon: flies over the river, splash, hit by Musketeer and towers only | `tests/test_air_and_splash.py` | ✅ |
 | 17 | Ground-targeting troops attack enemy buildings; the Giant walks past troops | `TestTargetingAndCombat` | ✅ |
 | 18 | Simultaneous attack resolution (a tick's hits land together) | `TestTargetingAndCombat` | ✅ |
@@ -62,9 +62,6 @@ bank). The 11 discrete deploy zones, so the action layout, are unchanged.
 
 Things Claude cannot judge from the simulation or the browser:
 
-- **Fireball `tower_damage` 207** is from memory (`card_stats.json` says so). Arrows and
-  Baby Dragon were already checked against the game. Check the Fireball crown tower damage
-  at level 11 in the game and correct the file if it differs.
 - **Tower reach and bridge feel** (issue #20 comment). Measured: a princess tower at y = 8
   hits a unit whose edge is within 7.5 tiles, so it reaches the middle of the bridge
   (y ≈ 16) and never fires beyond its range. Whether that matches how the game feels at the
