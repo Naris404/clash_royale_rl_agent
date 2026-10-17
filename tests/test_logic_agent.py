@@ -19,7 +19,7 @@ def _decide_and_step(agent: LogicAgent, board: Board) -> list[str]:
 
 
 class TestLegality:
-    def test_every_decided_play_is_executed_where_chosen(self, caplog):
+    def test_every_decided_play_is_legal_and_executed(self, caplog):
         board = new_board()
         agent = LogicAgent()
         with caplog.at_level(logging.WARNING, logger="cr_rl.game.board"):

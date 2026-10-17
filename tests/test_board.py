@@ -21,6 +21,7 @@ from cr_rl.game.board import (
     OBS_DIM,
     OBS_GLOBAL_FEATURES,
     OBS_HAND_BASE,
+    OBS_TOWER_FEATURES,
     OBS_UNIT_BASE,
     RIVER_HALF_WIDTH,
     RIVER_Y,
@@ -309,7 +310,7 @@ class TestTargetingAndCombat:
         board = new_board()
         giant = place_unit(board, "Giant", 0, 3.0, 19.0)
         knight = place_unit(board, "Knight", 1, 3.0, 20.0)  # right in the Giant's way
-        enemy_tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower" and t.x < 9.0)
+        enemy_tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower" and t.x < ARENA_WIDTH / 2)
 
         for _ in range(200):
             board.step(0, action_p1=0)
@@ -444,7 +445,8 @@ class TestRewardsAndObservations:
     def test_observation_tower_hp_and_hand_onehot(self):
         board = new_board()
         obs = board.get_observation(0)
-        np.testing.assert_array_equal(obs[OBS_GLOBAL_FEATURES : OBS_GLOBAL_FEATURES + 6], 1.0)
+        towers = obs[OBS_GLOBAL_FEATURES : OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES]
+        np.testing.assert_array_equal(towers, 1.0)  # all towers at full HP
         for slot, card in enumerate(board.get_hand(0)):
             base = OBS_HAND_BASE + slot * NUM_PLAYABLE_CARDS
             assert obs[base + CARD_TO_ID[card]] == 1.0

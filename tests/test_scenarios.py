@@ -11,7 +11,7 @@ from typing import Callable
 
 import pytest
 
-from cr_rl.game.board import DEPLOY_ZONES, TICK_DT, Board
+from cr_rl.game.board import ARENA_WIDTH, DEPLOY_ZONES, TICK_DT, Board
 from cr_rl.game.cards import Troop
 from scenario import new_board, set_hand
 
@@ -40,7 +40,7 @@ def _run_until(board: Board, done: Callable[[], bool], seconds: float) -> None:
 def _princess(board: Board, owner: int, lane: str) -> Troop:
     return next(
         t for t in board.towers
-        if t.owner == owner and t.name == "Tower" and (t.x < 9.0) == (lane == "L")
+        if t.owner == owner and t.name == "Tower" and (t.x < ARENA_WIDTH / 2) == (lane == "L")
     )
 
 
@@ -115,13 +115,13 @@ def test_fireballed_musketeer_falls_to_one_tower_shot():
     tower = _princess(board, 0, "L")
     tower_shots = 0
 
-    def dead() -> bool:
+    def count_tower_shots_until_dead() -> bool:
         nonlocal tower_shots
         tower_shots += sum(
             1 for e in board.hit_events if (e.from_x, e.from_y) == (tower.x, tower.y)
         )
         return not musketeer.alive
 
-    _run_until(board, dead, seconds=20.0)
+    _run_until(board, count_tower_shots_until_dead, seconds=20.0)
 
     assert tower_shots == 1
