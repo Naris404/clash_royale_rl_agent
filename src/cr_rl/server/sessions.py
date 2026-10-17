@@ -19,14 +19,13 @@ from cr_rl.game.board import (
     BRIDGE_HALF_WIDTH,
     BRIDGE_LANE_X,
     DEPLOY_ZONES,
-    MATCH_TIME_LIMIT,
     RIVER_HALF_WIDTH,
     RIVER_Y,
     TICK_DT,
     TOWER_LAYOUT,
     Board,
 )
-from cr_rl.game.cards import PLAYABLE_CARDS, cards_dic
+from cr_rl.game.cards import DECK, cards_dic
 from cr_rl.coach.evaluator import GRADE_SCORE, CoachEngine, KeyMomentTracker
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.agents.logic import LogicAgent
@@ -78,9 +77,8 @@ def arena_config() -> dict:
             str(p): {k: list(v) for k, v in layout.items()} for p, layout in TOWER_LAYOUT.items()
         },
         "cards": {name: stats for name, stats in cards_dic.items()},
-        "playable_cards": list(PLAYABLE_CARDS),
+        "deck": list(DECK),
         "tick_dt": TICK_DT,
-        "time_limit": MATCH_TIME_LIMIT,
     }
 
 
@@ -361,19 +359,20 @@ class GameSession:
             )
             for hit in board.hit_events
         ]
-
-        queue = board.hand_queue[0]
         return SnapshotMsg(
             tick=self.tick_count,
             time=round(board.time, 2),
-            time_limit=MATCH_TIME_LIMIT,
+            phase=board.phase,
+            clock=round(board.clock, 2),
             elixir=[round(e, 2) for e in board.elixir],
+            king_active=[board.is_king_active(p) for p in (0, 1)],
             towers=towers,
             troops=troops,
             spells=spells,
             hits=hits,
             hand=board.get_hand(0),
-            next_card=queue[0] if queue else None,
+            next_card=board.get_next_card(0),
+            crowns=board.crowns,
             done=board.done,
             winner=board.winner,
         )
@@ -399,6 +398,7 @@ class GameSession:
             kind="match_end",
             detail={
                 "winner": self.board.winner,
+                "crowns": self.board.crowns,
                 "time": self.board.time,
                 "moves": len(self.move_log),
                 "mean_score": (sum(scores) / len(scores)) if scores else None,

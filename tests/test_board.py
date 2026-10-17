@@ -13,22 +13,24 @@ from cr_rl.game.board import (
     DEPLOY_ZONES,
     ELIXIR_PER_SECOND,
     HAND_SIZE,
-    MATCH_TIME_LIMIT,
     MAX_ELIXIR,
     NUM_ACTIONS,
-    NUM_PLAYABLE_CARDS,
+    DECK_SIZE,
     NUM_ZONES,
     OBS_DIM,
     OBS_GLOBAL_FEATURES,
     OBS_HAND_BASE,
+    OBS_NEXT_BASE,
     OBS_TOWER_FEATURES,
     OBS_UNIT_BASE,
+    OVERTIME_TIME,
+    REGULATION_TIME,
     RIVER_HALF_WIDTH,
     RIVER_Y,
     TICK_DT,
     Board,
 )
-from cr_rl.game.cards import CARD_TO_ID, PLAYABLE_CARDS, Troop, cards_dic
+from cr_rl.game.cards import CARD_TO_ID, DECK, Troop, cards_dic
 from scenario import new_board, place_unit, set_hand
 
 ZONE_NAMES = [z.name for z in DEPLOY_ZONES[0]]
@@ -43,27 +45,38 @@ def _hits_from(board: Board, unit: Troop) -> int:
     return sum(1 for e in board.hit_events if (e.from_x, e.from_y) == (unit.x, unit.y))
 
 
+DECK_CARDS = {"Knight", "Giant", "Hog_Rider", "Musketeer", "Cannon", "Fireball", "Arrows", "Baby_Dragon"}
+
+
 class TestHands:
-    def test_initial_hand_is_4_distinct_deck_cards(self):
+    def test_both_players_use_the_fixed_8_card_deck(self):
+        assert set(DECK) == DECK_CARDS and len(DECK) == DECK_SIZE == 8
         board = new_board()
         for player in (0, 1):
             hand = board.get_hand(player)
             assert len(hand) == HAND_SIZE
-            assert len(set(hand)) == HAND_SIZE
-            assert set(hand) <= set(PLAYABLE_CARDS)
+            assert set(hand) | {board.get_next_card(player)} <= DECK_CARDS
+            assert len(set(hand) | {board.get_next_card(player)}) == HAND_SIZE + 1
+
+    def test_next_card_is_the_first_queued_card(self):
+        board = new_board()
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])  # queue: Hog_Rider, Fireball, Arrows, Baby_Dragon
+        assert board.get_next_card(0) == "Hog_Rider"
 
     def test_played_card_returns_after_the_queued_cards(self):
         board = new_board()
-        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])  # queue: Hog_Rider, Fireball
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])  # queue: Hog_Rider, Fireball, Arrows, Baby_Dragon
 
-        def play(card: str) -> list[str]:
+        def play(card: str) -> tuple[list[str], str]:
             board.elixir[0] = 10.0
             assert board.play_card(0, card, 0)
-            return board.get_hand(0)
+            return board.get_hand(0), board.get_next_card(0)
 
-        assert play("Knight") == ["Giant", "Cannon", "Musketeer", "Hog_Rider"]
-        assert play("Giant") == ["Cannon", "Musketeer", "Hog_Rider", "Fireball"]
-        assert play("Cannon") == ["Musketeer", "Hog_Rider", "Fireball", "Knight"]
+        assert play("Knight") == (["Giant", "Cannon", "Musketeer", "Hog_Rider"], "Fireball")
+        assert play("Giant") == (["Cannon", "Musketeer", "Hog_Rider", "Fireball"], "Arrows")
+        assert play("Cannon") == (["Musketeer", "Hog_Rider", "Fireball", "Arrows"], "Baby_Dragon")
+        assert play("Musketeer") == (["Hog_Rider", "Fireball", "Arrows", "Baby_Dragon"], "Knight")
+        assert play("Hog_Rider") == (["Fireball", "Arrows", "Baby_Dragon", "Knight"], "Giant")
 
 
 class TestElixir:
@@ -154,7 +167,7 @@ class TestDeployZones:
             if z.name in SPELL_ZONES_P0:
                 assert z.card_types == frozenset({"spell"})
             else:
-                assert z.card_types == frozenset({"ground", "building"})
+                assert z.card_types == frozenset({"ground", "air", "building"})
 
     def test_num_actions_is_noop_plus_slots_times_zones(self):
         assert NUM_ACTIONS == 45 == 1 + HAND_SIZE * NUM_ZONES
@@ -263,18 +276,13 @@ class TestRiverAndBridges:
             if (RIVER_Y - RIVER_HALF_WIDTH) < y1 < (RIVER_Y + RIVER_HALF_WIDTH):
                 assert any(abs(x1 - bx) <= BRIDGE_HALF_WIDTH for bx in BRIDGE_LANE_X)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "A ground unit within 0.05 tiles short of the far bank still routes to that "
-            "bank, and moves under 0.05 tiles are skipped, so it freezes there."
-        ),
-    )
-    def test_unit_just_past_the_far_bank_keeps_walking(self):
+    @pytest.mark.parametrize("owner", [0, 1])
+    def test_unit_just_past_the_far_bank_keeps_walking(self, owner):
+        direction = 1.0 if owner == 0 else -1.0
         board = new_board()
-        knight = place_unit(board, "Knight", 0, 3.0, RIVER_Y + 1.48)
+        knight = place_unit(board, "Knight", owner, 3.0, RIVER_Y + direction * 1.48)
         _step_seconds(board, 1.0)
-        assert knight.y > RIVER_Y + 2.0
+        assert direction * (knight.y - RIVER_Y) > 2.0
 
     def test_hog_rider_jumps_river_in_straight_line(self):
         board = new_board()
@@ -295,6 +303,18 @@ class TestTargetingAndCombat:
         near = place_unit(board, "Knight", 1, knight.x + 3.0, knight.y)
         assert board.find_nearest_target(knight) is near
 
+    @pytest.mark.parametrize("p0_listed_first", [True, False])
+    def test_units_that_kill_each_other_in_one_tick_both_die(self, p0_listed_first):
+        board = new_board()
+        board.towers = [t for t in board.towers if t.name == "King_Tower"]  # only the duel decides
+        owners = (0, 1) if p0_listed_first else (1, 0)
+        knights = [place_unit(board, "Knight", o, 9.0, 14.0 + 0.5 * o, hp=1.0) for o in owners]
+
+        for _ in range(30):
+            board.step(0, 0)
+
+        assert not any(k.alive for k in knights)
+
     def test_tower_shoots_only_in_range(self):
         board = new_board()
         tower = next(
@@ -305,6 +325,12 @@ class TestTargetingAndCombat:
         assert board.find_tower_target(tower) is None
         enemy.place((tower.x, tower.y + 5.0))
         assert board.find_tower_target(tower) is enemy
+
+    def test_a_cannon_does_not_shoot_an_enemy_cannon_in_range(self):
+        board = new_board()
+        cannons = [place_unit(board, "Cannon", o, 9.0, 12.0 + 4.5 * o) for o in (0, 1)]
+        _step_seconds(board, 5.0)
+        assert all(c.hp == c.max_hp for c in cannons)
 
     def test_giant_walks_past_troops_to_hit_a_building(self):
         board = new_board()
@@ -320,13 +346,6 @@ class TestTargetingAndCombat:
         assert knight.hp == knight.max_hp
         assert [(e.x, e.y) for e in giant_hits] == [(enemy_tower.x, enemy_tower.y)]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Troops that target ground ignore buildings (only towers count), so a Knight "
-            "walks past an enemy Cannon; in the real game ground targeting includes buildings."
-        ),
-    )
     def test_knight_attacks_enemy_cannon_in_its_way(self):
         board = new_board()
         cannon = place_unit(board, "Cannon", 1, 9.0, 20.0)
@@ -369,15 +388,6 @@ class TestTargetingAndCombat:
         king.alive = False
         result = board.step(0, action_p1=0)
         assert result.terminated
-        assert board.winner == 0
-
-    def test_time_limit_truncates_and_picks_hp_leader(self):
-        board = new_board()
-        board.time = MATCH_TIME_LIMIT - TICK_DT
-        enemy_tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower")
-        enemy_tower.hp -= 500.0  # P1 has less total HP → P0 wins
-        result = board.step(0, action_p1=0)
-        assert result.truncated
         assert board.winner == 0
 
 
@@ -521,17 +531,30 @@ class TestRewardsAndObservations:
         assert obs.dtype == np.float32
         assert -1.0 <= obs.min() and obs.max() <= 1.0
         assert obs[0] == pytest.approx(board.elixir[0] / MAX_ELIXIR)
-        assert obs[2] == pytest.approx(board.time / MATCH_TIME_LIMIT)
+        assert obs[2] == pytest.approx(board.time / REGULATION_TIME)
 
-    def test_observation_tower_hp_and_hand_onehot(self):
+    def test_time_feature_saturates_at_one_in_overtime(self):
+        board = new_board()
+        board.time = REGULATION_TIME + 30.0
+        assert board.get_observation(0)[2] == 1.0
+
+    def test_observation_size_is_pinned(self):
+        # 3 global + 6 tower HP + 4 hand slots x 8 cards + 8 next card + 24 units x 5
+        assert OBS_DIM == 3 + 6 + 4 * 8 + 8 + 24 * 5 == 169
+        assert NUM_ACTIONS == 45
+
+    def test_observation_tower_hp_hand_and_next_card_onehot(self):
         board = new_board()
         obs = board.get_observation(0)
         towers = obs[OBS_GLOBAL_FEATURES : OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES]
         np.testing.assert_array_equal(towers, 1.0)  # all towers at full HP
         for slot, card in enumerate(board.get_hand(0)):
-            base = OBS_HAND_BASE + slot * NUM_PLAYABLE_CARDS
+            base = OBS_HAND_BASE + slot * DECK_SIZE
             assert obs[base + CARD_TO_ID[card]] == 1.0
-            assert obs[base : base + NUM_PLAYABLE_CARDS].sum() == 1.0
+            assert obs[base : base + DECK_SIZE].sum() == 1.0
+        next_onehot = obs[OBS_NEXT_BASE : OBS_NEXT_BASE + DECK_SIZE]
+        assert next_onehot[CARD_TO_ID[board.get_next_card(0)]] == 1.0
+        assert next_onehot.sum() == 1.0
 
     def test_action_mask_legality(self):
         board = new_board()
@@ -580,6 +603,131 @@ class TestMirroredObservation:
         assert obs1[base0 + 3] == pytest.approx((32.0 - 10.0) / 32.0)
 
 
+class TestKingTower:
+    """The king stays idle until it takes damage or one of its princess towers falls."""
+
+    @staticmethod
+    def _king(board: Board, owner: int = 1) -> Troop:
+        return next(t for t in board.towers if t.owner == owner and t.name == "King_Tower")
+
+    @staticmethod
+    def _board_with_knight_near_enemy_king(seed: int = 42, y: float = 26.0) -> tuple[Board, Troop]:
+        board = new_board(seed)
+        place_unit(board, "Knight", 0, 9.0, y)  # inside the king's range
+        return board, board.troops[0]
+
+    def test_idle_king_does_not_shoot_units_in_range(self):
+        board, _ = self._board_with_knight_near_enemy_king(y=23.5)  # too far to hit the king yet
+        king = self._king(board)
+        shots = 0
+        for _ in range(round(2.0 / TICK_DT)):  # the Knight is still walking toward the king
+            board.step(0, action_p1=0)
+            shots += _hits_from(board, king)
+        assert shots == 0
+        assert not board.is_king_active(1)
+
+    def test_king_shoots_back_at_a_musketeer_that_finished_a_princess_tower(self):
+        board = new_board()
+        king = self._king(board)
+        princess = next(t for t in board.towers if t.owner == 1 and t is not king and t.x < 9)
+        princess.hp = 1.0
+        musketeer = place_unit(board, "Musketeer", 0, princess.x, princess.y - 4.0)
+
+        king_shots = 0
+        for _ in range(round(8.0 / TICK_DT)):  # the princess falls, the Musketeer walks up and shoots the king
+            board.step(0, action_p1=0)
+            king_shots += _hits_from(board, king)
+
+        assert not princess.alive
+        assert king.hp < king.max_hp
+        assert king_shots > 0
+
+    def test_direct_damage_activates_king_which_then_shoots_back(self):
+        board, knight = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        _step_seconds(board, 6.0)  # the Knight reaches the king and starts hitting it
+
+        assert king.hp < king.max_hp
+        assert board.is_king_active(1)
+        assert knight.hp < knight.max_hp or not knight.alive
+        assert not board.is_king_active(0)  # activation is per player
+
+    def test_fireball_on_the_king_activates_it(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 30.0)
+        assert board.is_king_active(1)
+
+    def test_fireball_splash_clipping_the_king_activates_it(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 27.8)  # 2.2 tiles away, radius 2.5
+        assert board.is_king_active(1)
+
+    def test_fireball_missing_the_king_leaves_it_idle(self):
+        board = new_board()
+        set_hand(board, 0, ["Fireball"])
+        board.elixir[0] = 10.0
+        assert board.play_card_at(0, "Fireball", 9.0, 26.0)
+        assert not board.is_king_active(1)
+
+    def test_active_king_shoots_units_in_range(self):
+        board, knight = self._board_with_knight_near_enemy_king()
+        king = self._king(board)
+        king.hp -= 1.0  # any damage activates it
+        shots = 0
+        for _ in range(round(2.0 / TICK_DT)):
+            board.step(0, action_p1=0)
+            shots += _hits_from(board, king)
+        assert board.is_king_active(1)
+        assert shots > 0
+
+    @pytest.mark.parametrize("lane", ["L", "R"])
+    def test_destroying_a_princess_tower_activates_the_king(self, lane):
+        board = new_board()
+        princess = next(
+            t for t in board.towers
+            if t.owner == 1 and t.name == "Tower" and (t.x < ARENA_WIDTH / 2) == (lane == "L")
+        )
+        princess.hp = 1.0
+        place_unit(board, "Knight", 0, princess.x, princess.y - 1.0)
+        assert not board.is_king_active(1)
+
+        _step_seconds(board, 5.0)
+
+        assert not princess.alive
+        king = self._king(board)
+        assert king.hp == king.max_hp  # nothing touched the king itself
+        assert board.is_king_active(1)
+
+    def test_activation_is_permanent(self):
+        board = new_board()
+        self._king(board).hp -= 1.0
+        assert board.is_king_active(1)
+        _step_seconds(board, 10.0)
+        assert board.is_king_active(1)
+
+    def test_reset_makes_kings_idle_again(self):
+        board = new_board()
+        self._king(board).hp -= 1.0
+        board.reset(seed=42)
+        assert not board.is_king_active(0)
+        assert not board.is_king_active(1)
+
+    def test_same_seed_same_king_activation_time(self):
+        def activation_tick(seed: int) -> int:
+            board, _ = self._board_with_knight_near_enemy_king(seed)
+            for tick in range(200):
+                board.step(0, action_p1=0)
+                if board.is_king_active(1):
+                    return tick
+            pytest.fail("king never activated")
+
+        assert activation_tick(3) == activation_tick(3)
+
+
 class TestDeterminism:
     def test_same_seed_same_match(self):
         actions = [0, 1, 5, 0, 12, 3, 0, 0, 7, 2] * 5
@@ -614,3 +762,201 @@ class TestGymEnvIntegration:
         obs, reward, terminated, truncated, info = env.step(action)
         assert env.observation_space.contains(obs)
         assert isinstance(reward, float)
+
+
+def _tower(board: Board, owner: int, name: str, side: str | None = None) -> Troop:
+    return next(
+        t
+        for t in board.towers
+        if t.owner == owner and t.name == name and (side is None or (t.x < ARENA_WIDTH / 2) == (side == "L"))
+    )
+
+
+def _knight_destroys(board: Board, tower: Troop, *, attacker: int) -> None:
+    """Weaken `tower` to a sliver and let an enemy Knight standing next to it finish it."""
+    tower.hp = 1.0
+    place_unit(board, "Knight", attacker, tower.x, tower.y - 1.0 if attacker == 1 else tower.y + 1.0)
+    for _ in range(round(10.0 / TICK_DT)):
+        if not tower.alive or board.done:
+            break
+        board.step(0, action_p1=0)
+    assert not tower.alive
+
+
+class TestCrowns:
+    def test_match_starts_without_crowns(self):
+        assert new_board().crowns == [0, 0]
+
+    @pytest.mark.parametrize("attacker", [0, 1])
+    def test_destroying_a_princess_tower_scores_one_crown(self, attacker):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1 - attacker, "Tower", "L"), attacker=attacker)
+        expected = [0, 0]
+        expected[attacker] = 1
+        assert board.crowns == expected
+        assert not board.done
+
+    def test_both_princess_towers_score_two_crowns(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _knight_destroys(board, _tower(board, 1, "Tower", "R"), attacker=0)
+        assert board.crowns == [2, 0]
+
+    def test_destroying_the_king_scores_three_crowns_and_ends_the_match(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "King_Tower"), attacker=0)
+        assert board.crowns == [3, 0]
+        assert board.done
+        assert board.winner == 0
+
+    def test_king_win_does_not_wait_for_the_clock(self):
+        board = new_board()
+        king = _tower(board, 1, "King_Tower")
+        king.hp = 1.0
+        place_unit(board, "Knight", 0, king.x, king.y - 1.0)
+        results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
+        assert any(r.terminated for r in results)
+        assert board.time < REGULATION_TIME
+
+    def test_both_kings_falling_in_the_same_tick_is_a_draw(self):
+        board = new_board()
+        _tower(board, 0, "Tower", "L").hp = 100.0  # the tower HP tiebreak must not decide it
+        for owner, attacker in ((0, 1), (1, 0)):
+            king = _tower(board, owner, "King_Tower")
+            king.hp = 1.0
+            place_unit(board, "Knight", attacker, king.x, king.y - 1.0 if attacker == 1 else king.y + 1.0)
+        results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
+        assert any(r.terminated for r in results)
+        assert board.crowns == [3, 3]
+        assert board.winner is None
+
+    def test_more_crowns_at_time_limit_wins_despite_less_tower_hp(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _tower(board, 0, "King_Tower").hp = 1.0  # P0 is far behind on total HP
+        board.time = REGULATION_TIME - TICK_DT
+        result = board.step(0, action_p1=0)
+        assert result.truncated
+        assert board.winner == 0
+
+    def test_more_crowns_for_the_opponent_wins_it_the_match(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 0, "Tower", "R"), attacker=1)
+        board.time = REGULATION_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        assert board.winner == 1
+
+    def test_same_seed_gives_the_same_outcome(self):
+        outcomes = []
+        for _ in range(2):
+            board = new_board(seed=11)
+            while not board.done:
+                board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
+            outcomes.append((board.winner, board.crowns, board.time))
+        assert outcomes[0] == outcomes[1]
+
+
+class TestDoubleElixir:
+    def _elixir_gained(self, board: Board, start_time: float, seconds: float) -> float:
+        board.time = start_time
+        board.elixir = [0.0, 0.0]
+        _step_seconds(board, seconds)
+        return board.elixir[0]
+
+    def test_elixir_regenerates_at_the_normal_rate_early_in_regulation(self):
+        gained = self._elixir_gained(new_board(), 60.0, 5.0)
+        assert gained == pytest.approx(5.0 * ELIXIR_PER_SECOND)
+
+    def test_elixir_regenerates_twice_as_fast_in_the_last_minute_of_regulation(self):
+        board = new_board()
+        gained = self._elixir_gained(board, REGULATION_TIME - 60.0 + 1.0, 5.0)
+        assert board.phase == "double_elixir"
+        assert gained == pytest.approx(2 * 5.0 * ELIXIR_PER_SECOND)
+
+    def test_elixir_stays_at_double_rate_through_overtime_with_no_triple(self):
+        board = new_board()
+        gained = self._elixir_gained(board, REGULATION_TIME + 30.0, 5.0)
+        assert board.phase == "overtime"
+        assert gained == pytest.approx(2 * 5.0 * ELIXIR_PER_SECOND)
+
+
+class TestMatchPhases:
+    def test_phases_follow_the_clock(self):
+        board = new_board()
+        assert board.phase == "regulation"
+        board.time = REGULATION_TIME - 60.0 + 1.0
+        assert board.phase == "double_elixir"
+        board.time = REGULATION_TIME + 1.0
+        assert board.phase == "overtime"
+
+    def test_clock_counts_down_the_current_period(self):
+        board = new_board()
+        assert board.clock == pytest.approx(REGULATION_TIME)
+        board.time = REGULATION_TIME - 10.0
+        assert board.clock == pytest.approx(10.0)
+        board.time = REGULATION_TIME + 30.0
+        assert board.clock == pytest.approx(OVERTIME_TIME - 30.0)
+
+
+class TestOvertime:
+    def _tied_at_regulation_end(self) -> Board:
+        board = new_board()
+        board.time = REGULATION_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        return board
+
+    def test_tied_crowns_at_the_end_of_regulation_start_overtime(self):
+        board = self._tied_at_regulation_end()
+        assert not board.done
+        assert board.phase == "overtime"
+
+    def test_a_tie_with_crowns_each_also_goes_to_overtime(self):
+        board = new_board()
+        _knight_destroys(board, _tower(board, 1, "Tower", "L"), attacker=0)
+        _knight_destroys(board, _tower(board, 0, "Tower", "L"), attacker=1)
+        board.time = REGULATION_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        assert not board.done
+
+    @pytest.mark.parametrize("attacker", [0, 1])
+    def test_the_first_crown_in_overtime_wins_at_once(self, attacker):
+        board = self._tied_at_regulation_end()
+        _knight_destroys(board, _tower(board, 1 - attacker, "Tower", "R"), attacker=attacker)
+        assert board.done
+        assert board.winner == attacker
+        assert board.time < REGULATION_TIME + OVERTIME_TIME - 1.0
+
+    def test_overtime_without_a_crown_is_decided_by_the_weakest_tower(self):
+        board = self._tied_at_regulation_end()
+        _tower(board, 0, "Tower", "L").hp = 500.0
+        _tower(board, 1, "Tower", "R").hp = 900.0
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        result = board.step(0, action_p1=0)
+        assert result.truncated
+        assert board.winner == 1  # P0's weakest tower (500) is below P1's (900)
+
+    def test_a_damaged_king_tower_counts_as_the_weakest_tower(self):
+        board = self._tied_at_regulation_end()
+        _tower(board, 1, "King_Tower").hp = 100.0
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        assert board.winner == 0
+
+    def test_equal_weakest_towers_are_a_draw(self):
+        board = self._tied_at_regulation_end()
+        _tower(board, 0, "Tower", "L").hp = 700.0
+        _tower(board, 1, "Tower", "R").hp = 700.0
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        board.step(0, action_p1=0)
+        assert board.done
+        assert board.winner is None
+
+    def test_same_seed_gives_the_same_overtime_outcome(self):
+        outcomes = []
+        for _ in range(2):
+            board = new_board(seed=5)
+            board.time = REGULATION_TIME - TICK_DT
+            while not board.done:
+                board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
+            outcomes.append((board.winner, board.crowns, board.time))
+        assert outcomes[0] == outcomes[1]

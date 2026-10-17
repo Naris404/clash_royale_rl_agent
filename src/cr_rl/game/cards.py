@@ -10,20 +10,25 @@ if TYPE_CHECKING:
 
 # Target detection range (as in CR — without it units "see" the whole map).
 DEFAULT_SIGHT_RANGE = 9.5
+MELEE_RANGE = 2.0  # tiles; attackers up to this range are melee
+MIN_MOVE_DISTANCE = 0.05  # closer than this to a waypoint counts as arrived
 
 # Combat stats live in one data file that records its source and card level.
 CARD_STATS_PATH = Path(__file__).with_name("card_stats.json")
 cards_dic: dict[str, dict] = json.loads(CARD_STATS_PATH.read_text(encoding="utf-8"))["cards"]
 
-PLAYABLE_CARDS = (
+# The fixed mirror Deck both players use (ADR-0004); the order defines the card ids.
+DECK = (
     "Knight",
     "Giant",
-    "Cannon",
-    "Musketeer",
     "Hog_Rider",
+    "Musketeer",
+    "Cannon",
     "Fireball",
+    "Arrows",
+    "Baby_Dragon",
 )
-CARD_TO_ID = {name: i for i, name in enumerate(PLAYABLE_CARDS)}
+CARD_TO_ID = {name: i for i, name in enumerate(DECK)}
 
 
 class Troop:
@@ -46,7 +51,10 @@ class Troop:
         self.life_span = self.stats.get("life_span", 0)
         self.unit_type = self.stats.get("type", "ground")
         self.range = self.stats.get("range", 0)
+        self.splash_radius = self.stats.get("splash_radius", 0)
         self.speed = self.stats.get("speed", 0)
+        self.collision_radius = self.stats.get("collision_radius", 0.0)
+        self.mass = self.stats.get("mass", 0)
 
         self.x = 0.0
         self.y = 0.0
@@ -60,6 +68,10 @@ class Troop:
     def is_building(self) -> bool:
         return self.unit_type == "building" or self.is_tower
 
+    @property
+    def crosses_river_freely(self) -> bool:
+        return self.jumps_river or self.unit_type == "air"
+
     def place(self, position: tuple[float, float]) -> None:
         self.x, self.y = position
 
@@ -70,15 +82,19 @@ class Troop:
         return sqrt((self.x - x) ** 2 + (self.y - y) ** 2)
 
     def is_in_range(self, target: Troop) -> bool:
-        return self.distance_to(target) <= self.range
+        """Range reaches the target's edge. Ranged attackers aim at a building's centre instead.
+
+        A big body (a tower) then cannot be hit from further out than it can shoot back, while
+        melee still reaches a footprint it cannot overlap.
+        """
+        edge = 0.0 if target.is_building and self.range > MELEE_RANGE else target.collision_radius
+        return self.distance_to(target) - edge <= self.range
 
     def can_target(self, target: Troop) -> bool:
         if not target.alive or target.owner == self.owner:
             return False
-        if target.is_tower:
-            return "buildings" in self.targets or "ground" in self.targets
         if target.is_building:
-            return "buildings" in self.targets
+            return not self.is_building and ("buildings" in self.targets or "ground" in self.targets)
         if target.unit_type == "air":
             return "air" in self.targets
         return "ground" in self.targets
@@ -94,7 +110,7 @@ class Troop:
         dx = x - self.x
         dy = y - self.y
         distance = sqrt(dx * dx + dy * dy)
-        if distance <= 0.05:
+        if distance <= MIN_MOVE_DISTANCE:
             return
 
         step = min(self.speed * dt, distance)
@@ -134,10 +150,7 @@ class Troop:
         if self.cooldown > 0:
             return 0.0
 
-        target.hp -= self.damage
-        if target.hp <= 0:
-            target.hp = 0
-            target.alive = False
+        target.hp = max(0.0, target.hp - self.damage)  # the board marks deaths at end of tick
         self.cooldown = self.hit_speed
         return float(self.damage)
 

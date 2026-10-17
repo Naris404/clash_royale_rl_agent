@@ -6,7 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cr_rl.coach.inference import PolicyInspector
-from cr_rl.game.cards import PLAYABLE_CARDS, cards_dic
+from cr_rl.game.board import REGULATION_TIME
+from cr_rl.game.cards import DECK, cards_dic
 from cr_rl.server.app import create_app
 from cr_rl.server.protocol import parse_client_message
 from cr_rl.server.sessions import (
@@ -88,7 +89,12 @@ class TestGameSession:
         assert len(snapshot.towers) == 6
         assert {t.id for t in snapshot.towers} == {"p0_l", "p0_r", "p0_king", "p1_l", "p1_r", "p1_king"}
         assert len(snapshot.hand) == 4
+        assert snapshot.next_card == session.board.get_next_card(0)
+        assert snapshot.next_card not in snapshot.hand
         assert snapshot.hits == []
+        assert snapshot.king_active == [False, False]
+        assert snapshot.phase == "regulation"
+        assert snapshot.clock == pytest.approx(REGULATION_TIME - snapshot.time)
 
     def test_snapshot_carries_hits_of_last_tick(self, inspector):
         session = GameSession("s1", MODE_VS_BOT, inspector, seed=1)
@@ -135,7 +141,7 @@ class TestGameSession:
     def test_handle_play_rejects_card_not_in_hand(self, inspector):
         session = GameSession("s5", MODE_COACH, inspector, seed=1)
         hand = session.board.get_hand(0)
-        missing = next(c for c in PLAYABLE_CARDS if c not in hand)
+        missing = next(c for c in DECK if c not in hand)
         messages = session.handle_play(missing, 9.0, 6.0)
         assert messages[0].type == "error"
 
@@ -186,6 +192,8 @@ class TestGameSession:
         messages = session.tick()
         events = [m for m in messages if m.type == "event" and m.kind == "tower_down"]
         assert events and events[0].detail["tower"].startswith("p1_")
+        snapshot = next(m for m in messages if m.type == "snapshot")
+        assert snapshot.crowns == [1, 0]
 
     def test_match_end_event_has_summary(self, inspector):
         session = GameSession("s9", MODE_COACH, inspector, seed=1)
@@ -195,6 +203,7 @@ class TestGameSession:
         messages = session.tick()
         end = next(m for m in messages if m.type == "event" and m.kind == "match_end")
         assert end.detail["winner"] == 0
+        assert end.detail["crowns"] == [3, 0]
         assert "grade_counts" in end.detail
 
 
@@ -208,7 +217,7 @@ class TestWebSocket:
             assert hello["config"]["arena_width"] == 18.0
             zones = hello["config"]["deploy_zones"]["0"]
             assert len(zones) == 11
-            assert zones[6] == {"name": "pull-L", "x": 5.5, "y": 9.5, "card_types": ["building", "ground"]}
+            assert zones[6] == {"name": "pull-L", "x": 5.5, "y": 9.5, "card_types": ["air", "building", "ground"]}
             assert zones[10]["card_types"] == ["spell"]
 
             snapshot = ws.receive_json()

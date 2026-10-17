@@ -5,6 +5,8 @@ export const CARD_EMOJI: Record<string, string> = {
   Musketeer: "🔫",
   Hog_Rider: "🐗",
   Fireball: "🔥",
+  Arrows: "🏹",
+  Baby_Dragon: "🐲",
 };
 
 export const TOWER_EMOJI: Record<string, string> = {

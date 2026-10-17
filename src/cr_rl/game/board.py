@@ -4,6 +4,7 @@ import logging
 import random
 from collections import deque
 from dataclasses import dataclass, field, replace
+from math import sqrt
 from typing import Optional
 
 import numpy as np
@@ -13,7 +14,8 @@ logger = logging.getLogger(__name__)
 from cr_rl.game.cards import (
     CARD_TO_ID,
     DEFAULT_SIGHT_RANGE,
-    PLAYABLE_CARDS,
+    DECK,
+    MIN_MOVE_DISTANCE,
     Troop,
     Tower,
     cards_dic,
@@ -27,7 +29,9 @@ TICK_DT = 0.1
 MAX_ELIXIR = 10.0
 START_ELIXIR = 5.0
 ELIXIR_PER_SECOND = 1.0 / 2.8
-MATCH_TIME_LIMIT = 180.0
+REGULATION_TIME = 180.0  # 3:00; the leader on crowns wins, a tie goes to overtime
+DOUBLE_ELIXIR_TIME = 120.0  # elixir regenerates twice as fast from 2:00 on, through overtime
+OVERTIME_TIME = 120.0  # up to 2:00 of sudden death, then the tiebreak
 RIVER_Y = ARENA_LENGTH / 2
 RIVER_HALF_WIDTH = 1.2
 # Two bridges (left / right) — lane axis = lane center (left lane: columns 2–4, tower L at x≈3.5).
@@ -37,6 +41,7 @@ BRIDGE_HALF_WIDTH = 1.8
 # Waypoint on the river bank before / after a bridge, set back from the water.
 BRIDGE_BANK_Y_OFFSET = RIVER_HALF_WIDTH + 0.3
 RANGED_MIN_RANGE = 2.0  # range above melee → hit is shown as a projectile
+COLLISION_PASSES = 4  # relaxation passes per tick so chains of overlapping units settle
 
 # Towers (as in CR): princess ~6 tiles from the river, king at the back.
 # P0 = bottom (y grows upward), P1 = top.
@@ -53,7 +58,7 @@ TOWER_LAYOUT = {
     },
 }
 
-TROOP_CARD_TYPES = frozenset({"ground", "building"})
+TROOP_CARD_TYPES = frozenset({"ground", "air", "building"})
 SPELL_CARD_TYPES = frozenset({"spell"})
 
 
@@ -92,7 +97,7 @@ DEPLOY_ZONES: dict[int, tuple[DeployZone, ...]] = {
 NUM_ZONES = len(_P0_ZONES)
 
 HAND_SIZE = 4
-NUM_PLAYABLE_CARDS = len(PLAYABLE_CARDS)
+DECK_SIZE = len(DECK)
 NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (44 plays)
 MAX_UNITS_OBS = 24
 
@@ -100,10 +105,14 @@ MAX_UNITS_OBS = 24
 OBS_GLOBAL_FEATURES = 3  # P0 elixir, P1 elixir, time
 OBS_TOWER_FEATURES = 6  # HP of the 6 towers (layout: P0 L/R/King, P1 L/R/King)
 OBS_HAND_BASE = OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES
-OBS_HAND_FEATURES = HAND_SIZE * NUM_PLAYABLE_CARDS
-OBS_UNIT_BASE = OBS_HAND_BASE + OBS_HAND_FEATURES
+OBS_HAND_FEATURES = HAND_SIZE * DECK_SIZE
+OBS_NEXT_BASE = OBS_HAND_BASE + OBS_HAND_FEATURES  # one-hot of the visible next card
+OBS_UNIT_BASE = OBS_NEXT_BASE + DECK_SIZE
 OBS_UNIT_FEATURES = MAX_UNITS_OBS * 5
 OBS_DIM = OBS_UNIT_BASE + OBS_UNIT_FEATURES
+
+# Crowns a player holds once the enemy king tower is down (this ends the match at once).
+KING_CROWNS = 3
 
 # Reward scale for tower HP loss (one player's total max HP: 2× princess + king).
 MAX_TOWER_HP_PER_PLAYER = (
@@ -155,20 +164,12 @@ class Board:
 
     Akcja (int 0..44):
       0 — do nothing
-      1..44 — play a card (hand slot 0..3 × zone 0..10); only 4 cards in hand (cycle of 6)
+      1..44 — play a card (hand slot 0..3 × zone 0..10); 4 cards in hand, cycling the 8-card Deck
 
     Player 0 learns; player 1 is a random bot by default (a second model can be plugged in).
     """
 
-    def __init__(
-        self,
-        deck_p0: Optional[list[str]] = None,
-        deck_p1: Optional[list[str]] = None,
-        *,
-        seed: Optional[int] = None,
-    ):
-        self.deck_p0 = list(deck_p0 or PLAYABLE_CARDS)
-        self.deck_p1 = list(deck_p1 or PLAYABLE_CARDS)
+    def __init__(self, *, seed: Optional[int] = None):
         self._rng = random.Random(seed)
         self.np_rng = np.random.default_rng(seed)
 
@@ -218,13 +219,10 @@ class Board:
         self._init_hands()
         return self.get_observation(player=0)
 
-    def _full_deck(self, player: int) -> list[str]:
-        return self.deck_p0 if player == 0 else self.deck_p1
-
     def _init_hands(self) -> None:
-        """6 unique cards in the queue: 4 in hand; after a play the card returns to the end (no duplicates)."""
+        """Shuffled Deck: 4 cards in hand, the rest queued; a played card returns to the back of the queue."""
         for player in (0, 1):
-            cards = list(dict.fromkeys(self._full_deck(player)))
+            cards = list(DECK)
             self._rng.shuffle(cards)
             queue: deque[str] = deque(cards)
             self.hand[player] = [queue.popleft() for _ in range(HAND_SIZE)]
@@ -232,6 +230,10 @@ class Board:
 
     def get_hand(self, player: int) -> list[str]:
         return list(self.hand[player])
+
+    def get_next_card(self, player: int) -> str:
+        """The visible next card: the one drawn after the next play."""
+        return self.hand_queue[player][0]
 
     def card_in_hand(self, player: int, card_name: str) -> bool:
         return card_name in self.hand[player]
@@ -441,7 +443,8 @@ class Board:
         return 0
 
     def _regen_elixir(self) -> None:
-        gain = ELIXIR_PER_SECOND * TICK_DT
+        rate = ELIXIR_PER_SECOND * (2 if self.time >= DOUBLE_ELIXIR_TIME else 1)
+        gain = rate * TICK_DT
         for p in range(2):
             self.elixir[p] = min(MAX_ELIXIR, self.elixir[p] + gain)
 
@@ -463,13 +466,18 @@ class Board:
 
     @staticmethod
     def _river_between(y: float, dest_y: float) -> bool:
-        """Whether going from y to dest_y requires crossing the river (bank to bank)."""
+        """Whether going from y to dest_y requires crossing the river (bank to bank).
+
+        A unit within MIN_MOVE_DISTANCE of the far bank counts as across: it could not
+        step onto that bank anyway and would otherwise freeze there.
+        """
         low, high = min(y, dest_y), max(y, dest_y)
-        return low < RIVER_Y + BRIDGE_BANK_Y_OFFSET and high > RIVER_Y - BRIDGE_BANK_Y_OFFSET
+        near = BRIDGE_BANK_Y_OFFSET - MIN_MOVE_DISTANCE
+        return low < RIVER_Y + near and high > RIVER_Y - near
 
     def _path_waypoint(self, troop: Troop, dest_x: float, dest_y: float) -> tuple[float, float]:
         """Diagonal to the bridge bank, straight over the bridge, then diagonal to the target."""
-        if troop.jumps_river or troop.speed <= 0:
+        if troop.crosses_river_freely or troop.speed <= 0:
             return dest_x, dest_y
         if not self._river_between(troop.y, dest_y):
             return dest_x, dest_y
@@ -486,13 +494,15 @@ class Board:
     def get_move_waypoint(self, troop: Troop, target: Troop) -> tuple[float, float]:
         return self._path_waypoint(troop, target.x, target.y)
 
+    def _in_river_off_bridge(self, troop: Troop) -> bool:
+        """Whether a ground unit stands in the water away from any bridge lane."""
+        if troop.crosses_river_freely or troop.is_building:
+            return False
+        return self._in_river_water(troop.y) and not self._on_bridge_lane(troop)
+
     def _enforce_no_river_cut(self, troop: Troop) -> None:
-        """Pushes a unit back if it entered the river outside a bridge."""
-        if getattr(troop, "jumps_river", False):
-            return
-        if troop.is_building and troop.speed <= 0:
-            return
-        if not self._in_river_water(troop.y) or self._on_bridge_lane(troop):
+        """Puts a unit back on the bank of the nearest bridge if it entered the river outside one."""
+        if not self._in_river_off_bridge(troop):
             return
 
         bx = self._nearest_bridge_x(troop.x)
@@ -541,67 +551,125 @@ class Board:
                 best = enemy
         return best
 
+    def is_king_active(self, player: int) -> bool:
+        """A king tower wakes up once it has taken damage or a princess tower of its side fell.
+
+        Derived from tower state: HP never recovers and towers never return, so it is permanent.
+        """
+        own = [t for t in self.towers if t.owner == player]
+        king = next(t for t in own if t.name == "King_Tower")
+        return king.hp < king.max_hp or any(not t.alive for t in own)
+
     def _simulate_combat(self, dt: float) -> tuple[float, float]:
-        """Returns (damage dealt by P0, damage taken by P0)."""
+        """Returns (damage dealt by P0, damage taken by P0).
+
+        Every unit decides from the same start-of-tick state, all hits land, and only then
+        do units move and deaths take effect, so list order never decides a duel.
+        """
         dealt_p0 = 0.0
         taken_p0 = 0.0
 
+        attackers: list[tuple[Troop, Troop]] = []
+        movers: list[tuple[Troop, Optional[tuple[float, float]]]] = []
+        idlers: list[Troop] = []
+
         for troop in list(self.troops):
-            if not troop.alive:
-                continue
-            if not troop.tick_age(dt):
+            if not troop.alive or not troop.tick_age(dt):
                 continue
             if troop.is_deploying:
                 troop.tick_deploy(dt)
                 continue
-
             target = self.find_nearest_target(troop)
-            if target is None:
-                if troop.speed > 0 and not troop.is_building:
-                    wx, wy = self.get_push_waypoint(troop)
-                    troop.move_towards_point(wx, wy, dt)
-                    self._enforce_no_river_cut(troop)
-                troop.update_cooldown(dt)
-                continue
-
-            if troop.is_in_range(target):
-                dmg = troop.hit(target, dt)
-            elif not troop.is_building or troop.speed > 0:
-                wx, wy = self.get_move_waypoint(troop, target)
-                troop.move_towards_point(wx, wy, dt)
-                self._enforce_no_river_cut(troop)
-                troop.update_cooldown(dt)
-                dmg = 0.0
+            if target is not None and troop.is_in_range(target):
+                attackers.append((troop, target))
+            elif target is not None and (not troop.is_building or troop.speed > 0):
+                movers.append((troop, self.get_move_waypoint(troop, target)))
+            elif target is None and troop.speed > 0 and not troop.is_building:
+                movers.append((troop, self.get_push_waypoint(troop)))
             else:
-                troop.update_cooldown(dt)
-                dmg = 0.0
-
-            if dmg <= 0:
-                continue
-            self._record_hit(troop, target, dmg)
-            if troop.owner == 0:
-                dealt_p0 += dmg
-            elif target.owner == 0:
-                taken_p0 += dmg
+                idlers.append(troop)
 
         for tower in self.towers:
             if not tower.alive:
                 continue
+            if tower.name == "King_Tower" and not self.is_king_active(tower.owner):
+                idlers.append(tower)
+                continue
             target = self.find_tower_target(tower)
             if target is None:
-                tower.update_cooldown(dt)
-                dmg = 0.0
+                idlers.append(tower)
             else:
-                dmg = tower.hit(target, dt)
+                attackers.append((tower, target))
+
+        for attacker, target in attackers:
+            dmg = attacker.hit(target, dt)
             if dmg <= 0:
                 continue
-            self._record_hit(tower, target, dmg)
-            if tower.owner == 0:
+            self._apply_splash(attacker, target, dmg)
+            self._record_hit(attacker, target, dmg)
+            if attacker.owner == 0:
                 dealt_p0 += dmg
             elif target.owner == 0:
                 taken_p0 += dmg
 
+        for troop, waypoint in movers:
+            troop.move_towards_point(*waypoint, dt)
+            self._enforce_no_river_cut(troop)
+            troop.update_cooldown(dt)
+        for unit in idlers:
+            unit.update_cooldown(dt)
+
+        for unit in self._all_combatants():
+            if unit.hp <= 0:
+                unit.alive = False
+
+        self._resolve_collisions()
         return dealt_p0, taken_p0
+
+    def _resolve_collisions(self) -> None:
+        bodies = self._all_combatants()
+        for _ in range(COLLISION_PASSES):
+            for i, a in enumerate(bodies):
+                for b in bodies[i + 1:]:
+                    if (a.unit_type == "air") == (b.unit_type == "air"):
+                        self._separate(a, b)
+
+    def _separate(self, a: Troop, b: Troop) -> None:
+        dx, dy = b.x - a.x, b.y - a.y
+        dist = sqrt(dx * dx + dy * dy)
+        overlap = a.collision_radius + b.collision_radius - dist
+        if overlap <= 0:
+            return
+        nx, ny = (dx / dist, dy / dist) if dist > 1e-9 else (1.0, 0.0)
+        # Heavier units give way less; a body without mass (building, tower) never moves.
+        give_a = 1 / a.mass if a.mass > 0 else 0.0
+        give_b = 1 / b.mass if b.mass > 0 else 0.0
+        total = give_a + give_b
+        if total == 0:
+            return
+        self._shove(a, -nx * overlap * give_a / total, -ny * overlap * give_a / total)
+        self._shove(b, nx * overlap * give_b / total, ny * overlap * give_b / total)
+
+    def _shove(self, unit: Troop, dx: float, dy: float) -> None:
+        """Moves a unit by a push, keeping it in the arena and out of the river off a bridge."""
+        if unit.mass <= 0:
+            return
+        r = unit.collision_radius
+        old = unit.x, unit.y
+        unit.x = min(max(unit.x + dx, r), ARENA_WIDTH - r)
+        unit.y = min(max(unit.y + dy, r), ARENA_LENGTH - r)
+        if self._in_river_off_bridge(unit):
+            unit.x, unit.y = old
+
+    def _apply_splash(self, attacker: Troop, target: Troop, damage: float) -> None:
+        """Splash attackers also hit every other enemy the attacker can target near the target."""
+        if attacker.splash_radius <= 0:
+            return
+        for other in self._all_combatants():
+            if other is target or not attacker.can_target(other):
+                continue
+            if other.distance_to(target) <= attacker.splash_radius:
+                other.hp = max(0.0, other.hp - damage)
 
     def _record_hit(self, attacker: Troop, target: Troop, damage: float) -> None:
         self.hit_events.append(
@@ -633,34 +701,56 @@ class Board:
         enemy_loss_p1 = before[0] - after[0]
         return enemy_loss_p0, enemy_loss_p1
 
+    @property
+    def crowns(self) -> list[int]:
+        """Crowns per player: 1 per enemy princess tower destroyed, 3 once the enemy king is down."""
+        crowns = [0, 0]
+        for tower in self.towers:
+            if tower.alive:
+                continue
+            crowns[1 - tower.owner] += KING_CROWNS if tower.name == "King_Tower" else 1
+        return [min(c, KING_CROWNS) for c in crowns]  # a king kill plus princess towers still caps at 3
+
+    @property
+    def phase(self) -> str:
+        """Match phase: "regulation", "double_elixir" (last minute of regulation) or "overtime"."""
+        if self.time >= REGULATION_TIME:
+            return "overtime"
+        return "double_elixir" if self.time >= DOUBLE_ELIXIR_TIME else "regulation"
+
+    @property
+    def clock(self) -> float:
+        """Seconds left in the current period: regulation, or overtime once it has started."""
+        end = REGULATION_TIME + OVERTIME_TIME if self.phase == "overtime" else REGULATION_TIME
+        return max(0.0, end - self.time)
+
     def _check_end(self) -> tuple[bool, bool]:
-        kings = {0: None, 1: None}
-        for t in self.towers:
-            if t.name == "King_Tower":
-                kings[t.owner] = t
-
-        if kings[0] and not kings[0].alive:
-            self.winner = 1
-            self.done = True
+        crowns = self.crowns
+        if max(crowns) >= KING_CROWNS:
+            self._end_match(crowns)
             return True, False
-        if kings[1] and not kings[1].alive:
-            self.winner = 0
-            self.done = True
-            return True, False
-
-        if self.time >= MATCH_TIME_LIMIT:
-            hp0 = self._tower_hp_snapshot()[0]
-            hp1 = self._tower_hp_snapshot()[1]
-            if hp0 > hp1:
-                self.winner = 0
-            elif hp1 > hp0:
-                self.winner = 1
-            else:
-                self.winner = None
-            self.done = True
+        if self.time < REGULATION_TIME:
+            return False, False
+        if crowns[0] != crowns[1]:
+            # End of regulation, or the first crown of overtime (sudden death).
+            self._end_match(crowns)
             return False, True
-
+        if self.time >= REGULATION_TIME + OVERTIME_TIME:
+            self._end_match(crowns)
+            return False, True
         return False, False
+
+    def _end_match(self, crowns: list[int]) -> None:
+        """More crowns wins; equal crowns fall to the tiebreak (weakest tower), then a draw."""
+        self.done = True
+        score = crowns
+        if crowns[0] == crowns[1] and crowns[0] < KING_CROWNS:  # both kings down is a draw
+            score = self._weakest_tower_hp()
+        if score[0] != score[1]:
+            self.winner = 0 if score[0] > score[1] else 1
+
+    def _weakest_tower_hp(self) -> list[float]:
+        return [min(t.hp for t in self.towers if t.owner == p and t.alive) for p in (0, 1)]
 
     def get_observation(self, player: int) -> np.ndarray:
         """State vector from `player`'s perspective.
@@ -673,7 +763,7 @@ class Board:
         enemy = 1 - player
         obs[0] = self.elixir[player] / MAX_ELIXIR
         obs[1] = self.elixir[enemy] / MAX_ELIXIR
-        obs[2] = min(1.0, self.time / MATCH_TIME_LIMIT)
+        obs[2] = min(1.0, self.time / REGULATION_TIME)
 
         towers = [t for t in self.towers if t.owner == player]
         towers += [t for t in self.towers if t.owner == enemy]
@@ -683,9 +773,8 @@ class Board:
             idx += 1
 
         for slot, card_name in enumerate(self.get_hand(player)):
-            card_id = CARD_TO_ID.get(card_name)
-            if card_id is not None:
-                obs[OBS_HAND_BASE + slot * NUM_PLAYABLE_CARDS + card_id] = 1.0
+            obs[OBS_HAND_BASE + slot * DECK_SIZE + CARD_TO_ID[card_name]] = 1.0
+        obs[OBS_NEXT_BASE + CARD_TO_ID[self.get_next_card(player)]] = 1.0
 
         enemy_kx, enemy_ky = TOWER_LAYOUT[enemy]["King_Tower"]
         alive_troops = [t for t in self.troops if t.alive]
@@ -694,7 +783,7 @@ class Board:
         for slot, troop in enumerate(alive_troops[:MAX_UNITS_OBS]):
             base = OBS_UNIT_BASE + slot * 5
             obs[base] = 1.0 if troop.owner == player else -1.0
-            obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, NUM_PLAYABLE_CARDS - 1)
+            obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, DECK_SIZE - 1)
             if player == 0:
                 ux, uy = troop.x, troop.y
             else:

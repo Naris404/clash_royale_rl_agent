@@ -506,6 +506,22 @@ button {
   border-radius: 10px;
 }
 
+.hud-phase-double_elixir {
+  color: var(--accent);
+}
+
+.hud-phase-overtime {
+  color: var(--bad);
+}
+
+.hud-crowns {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  background: var(--panel);
+  padding: 6px 14px;
+  border-radius: 10px;
+}
+
 .hud-controls {
   display: flex;
   gap: 8px;

@@ -10,9 +10,8 @@ export interface ArenaConfig {
   deploy_zones: Record<string, DeployZone[]>;
   tower_layout: Record<string, Record<string, number[]>>;
   cards: Record<string, CardStats>;
-  playable_cards: string[];
+  deck: string[];
   tick_dt: number;
-  time_limit: number;
 }
 
 export interface DeployZone {
@@ -76,18 +75,23 @@ export interface HitState {
   ranged: boolean;
 }
 
+export type MatchPhase = "regulation" | "double_elixir" | "overtime";
+
 export interface Snapshot {
   type: "snapshot";
   tick: number;
   time: number;
-  time_limit: number;
+  phase: MatchPhase;
+  clock: number; // seconds left in the current period
   elixir: number[];
+  king_active: boolean[];
   towers: TowerState[];
   troops: TroopState[];
   spells: SpellState[];
   hits: HitState[];
   hand: string[];
-  next_card?: string | null;
+  next_card: string;
+  crowns: number[];
   done: boolean;
   winner?: number | null;
 }
@@ -145,6 +149,7 @@ export interface MoveLogEntry {
 
 export interface MatchEndDetail {
   winner?: number | null;
+  crowns: number[];
   time: number;
   moves: number;
   mean_score?: number | null;

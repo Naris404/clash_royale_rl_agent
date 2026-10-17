@@ -112,4 +112,4 @@ class TestIntegration:
             if result.terminated or result.truncated:
                 break
         assert board.done
-        assert steps <= 1801  # limit 180 s / 0.1 s + margin
+        assert steps <= 3001  # regulation + overtime (300 s / 0.1 s) + margin

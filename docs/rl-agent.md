@@ -13,14 +13,13 @@ mirror deck).
 
 | | |
 |---|---|
-| Documented layout | 153-dim observation, 45 actions (11 deploy zones) |
-| Simulation | pre-env-v1: 6-card deck, no crowns, total-tower-HP win rule at the time limit |
+| Documented layout | 169-dim observation, 45 actions (11 deploy zones) |
+| Simulation | env-v1 in progress: 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak |
 | Trained model for this layout | none yet; the **v2 model** is trained only after env-v1 is tagged (ADR-0003) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
-The env-v1 mechanics (Deck of 8, crowns, overtime, deploy time, air and splash) will
-change the observation and the end-of-match rule. Those changes land here together
-with the code.
+The remaining env-v1 mechanics (overtime) will change the end-of-match rule. Those
+changes land here together with the code.
 
 ## Agent at a glance
 
@@ -29,7 +28,7 @@ with the code.
 - **Training opponent:** the rule-based bot (`LogicAgent`); the curriculum
   experiment starts against the random bot (`RandomAgent`).
 - **Decision rate:** one action per simulation tick, 10 Hz (`TICK_DT = 0.1` s).
-- **Episode:** one match, at most 1801 steps (180 s).
+- **Episode:** one match, at most 3001 steps (180 s regulation + 120 s overtime).
 
 Code: `src/cr_rl/game/board.py` (observation, actions, mask, reward),
 `src/cr_rl/env/gym_env.py` (Gymnasium wrapper), `src/cr_rl/training/train.py`
@@ -38,7 +37,7 @@ Code: `src/cr_rl/game/board.py` (observation, actions, mask, reward),
 ## Environment interface
 
 `ClashRoyaleEnv` wraps `Board` as a Gymnasium environment with
-`observation_space = Box(-1, 1, (153,), float32)` and `action_space = Discrete(45)`,
+`observation_space = Box(-1, 1, (169,), float32)` and `action_space = Discrete(45)`,
 and exposes `action_masks()` for MaskablePPO.
 
 One `step(action)`:
@@ -46,54 +45,63 @@ One `step(action)`:
 1. The opponent picks its action for player 1 (the rule-based bot submits its play
    through `set_pending_play` and returns noop).
 2. Player 0's action is applied, then player 1's.
-3. Elixir regenerates for both players (start 5, max 10, +1 per 2.8 s).
+3. Elixir regenerates for both players (start 5, max 10, +1 per 2.8 s; twice as fast from 2:00 through overtime).
 4. Combat runs for one tick; the reward is computed from the tower-HP change.
 5. Dead units are removed and the clock advances by 0.1 s.
-6. End check: **terminated** when a king tower is destroyed (its owner loses);
-   **truncated** at the 180 s time limit, where the player with more total tower HP
-   wins and equal HP is a draw. 1800 ticks of 0.1 s accumulate to just under 180.0 in
-   floating point, so a full-length match lasts 1801 steps.
+6. End check: **terminated** when a king tower is destroyed (3 crowns for its
+   destroyer). Otherwise nothing happens before 180 s; then **truncated** as soon as the
+   crowns differ (end of regulation, or the first crown of the up-to-120 s overtime), so the
+   player with more crowns wins (a princess tower is 1 crown). Tied crowns at 180 s start
+   overtime; if it ends without a crown, the player whose weakest standing tower has less
+   HP loses and equal weakest towers are a draw. 1800 ticks of 0.1 s accumulate to just
+   under 180.0 in floating point, so a regulation match lasts 1801 steps.
 
 When the match ends, `info["winner"]` holds the winner (0 or 1) or `None` for a draw;
 it is `None` on every earlier step.
 
 ## Observation
 
-A flat `float32` vector of `OBS_DIM = 153` features, built by
+A flat `float32` vector of `OBS_DIM = 169` features, built by
 `Board.get_observation(player)`. Segment offsets are named constants in `board.py`
-(`OBS_GLOBAL_FEATURES`, `OBS_TOWER_FEATURES`, `OBS_HAND_BASE`, `OBS_UNIT_BASE`, …).
+(`OBS_GLOBAL_FEATURES`, `OBS_TOWER_FEATURES`, `OBS_HAND_BASE`, `OBS_NEXT_BASE`, `OBS_UNIT_BASE`, …).
 No `VecNormalize` is applied; every feature is already scaled to [-1, 1].
 
 | Indices | Count | Feature | Encoding |
 |---|---|---|---|
 | 0 | 1 | Own elixir | `elixir / 10` |
 | 1 | 1 | Enemy elixir | `elixir / 10` (visible, unlike the real game) |
-| 2 | 1 | Match time | `min(1, time / 180)` |
+| 2 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime) |
 | 3–5 | 3 | Own towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
 | 6–8 | 3 | Enemy towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
-| 9–32 | 24 | Hand: 4 slots × 6 cards | one-hot per slot |
-| 33–152 | 120 | Units: 24 slots × 5 features | see below |
+| 9–40 | 32 | Hand: 4 slots × 8 cards | one-hot per slot |
+| 41–48 | 8 | Next card | one-hot over the 8 Deck cards |
+| 49–168 | 120 | Units: 24 slots × 5 features | see below |
 
-**Hand.** Slot `s` occupies indices `9 + 6·s … 14 + 6·s`; the hot index is the
-card ID in deck order: Knight 0, Giant 1, Cannon 2, Musketeer 3, Hog Rider 4,
-Fireball 5. The hand is always full (4 cards). Slots are positional: playing the card
-in slot `s` shifts slots `s+1…3` down by one and the drawn card lands in slot 3. The
-next card and the queue are not observed; the enemy hand is hidden.
+**Hand.** Slot `s` occupies indices `9 + 8·s … 16 + 8·s`; the hot index is the
+card ID in Deck order: Knight 0, Giant 1, Hog Rider 2, Musketeer 3, Cannon 4,
+Fireball 5, Arrows 6, Baby Dragon 7. The hand is always full (4 cards). Slots are
+positional: playing the card in slot `s` shifts slots `s+1…3` down by one and the
+drawn card lands in slot 3.
+
+**Next card.** Indices `41 … 48` hold the one-hot of the visible next card, the card
+drawn after the next play (the Cycle's queue head). The rest of the queue and the
+enemy hand are not observed; the queue follows from the Cycle since each played card
+goes to its back.
 
 **Units.** Every living troop and building on the board (both players, towers
 excluded), sorted by distance to the observer's **enemy** king tower, nearest first,
-truncated to 24. Slot `k` occupies indices `33 + 5·k … 37 + 5·k`:
+truncated to 24. Slot `k` occupies indices `49 + 5·k … 53 + 5·k`:
 
 | Offset | Feature | Encoding |
 |---|---|---|
 | +0 | Owner | +1 own, −1 enemy, 0 empty slot |
-| +1 | Card | `card_id / 5` (Knight 0.0, Giant 0.2, Cannon 0.4, Musketeer 0.6, Hog Rider 0.8) |
+| +1 | Card | `card_id / 7` (Knight 0.0, Giant 1/7, Hog Rider 2/7, Musketeer 3/7, Cannon 4/7, Baby Dragon 1.0) |
 | +2 | x position | `x / 18` |
 | +3 | y position | `y / 32` |
 | +4 | Health | `hp / max_hp` |
 
-Unit attack cooldown, deploy state, remaining Cannon lifetime and spell effects are
-not observed.
+Unit attack cooldown, deploy state, remaining Cannon lifetime, whether a unit flies and
+spell effects are not observed (a flying unit is identified by its card).
 
 **Player 1 view.** For `player = 1` the vector is built from player 1's perspective,
 so a policy trained as player 0 can drive player 1: own elixir first, own towers
@@ -137,8 +145,8 @@ enemy Hog Rider leaving the left bridge than the princess tower is.
 `Board.valid_action_mask(player)` returns a 45-element boolean mask. Noop is always
 legal; play `(s, z)` is legal when the player can afford the card in slot `s` and
 zone `z` accepts that card type (troop/building zones 0–7, spell zones 8–10). With
-the current deck a troop or building has 8 legal zones and Fireball has 3, so at most
-33 of the 45 actions are legal at once.
+the Deck a troop or building (Baby Dragon included) has 8 legal zones and each of
+Fireball and Arrows has 3, so at most 33 of the 45 actions are legal at once.
 
 The mask is applied during training (the env is wrapped in `ActionMasker`), during
 evaluation and in-game inference (`model.predict(..., action_masks=mask)`).
@@ -173,8 +181,8 @@ orthogonal initialization (SB3 defaults).
 
 ```mermaid
 flowchart LR
-    obs["Observation<br/>153"] --> p1["Linear 153→256<br/>Tanh"]
-    obs --> v1["Linear 153→256<br/>Tanh"]
+    obs["Observation<br/>169"] --> p1["Linear 169→256<br/>Tanh"]
+    obs --> v1["Linear 169→256<br/>Tanh"]
     subgraph policy["Policy network (actor)"]
         p1 --> p2["Linear 256→256<br/>Tanh"] --> logits["Linear 256→45<br/>action logits"]
     end
@@ -187,11 +195,11 @@ flowchart LR
 
 | Part | Parameters |
 |---|---|
-| Policy MLP (153→256→256) | 105,216 |
-| Value MLP (153→256→256) | 105,216 |
+| Policy MLP (169→256→256) | 109,312 |
+| Value MLP (169→256→256) | 109,312 |
 | Action head (256→45) | 11,565 |
 | Value head (256→1) | 257 |
-| **Total** | **222,254** |
+| **Total** | **230,446** |
 
 A flat MLP fits the problem size: the observation is small and fixed-length, and the
 network is small enough to train on a laptop CPU (ADR-0002 keeps it for v2).
@@ -286,8 +294,8 @@ Differences from the current game and layout:
 - The mask filtered by elixir only: every zone was legal for any affordable card.
 - Units walked L-shaped paths to the bridges; diagonal bridge-bank pathing came later
   (ADR-0001), which changed the dynamics the v1 model was trained on.
-- The player 0 observation (153 features, same layout) and the reward were the same
-  as today; the player 1 view was not mirrored yet.
+- The player 0 observation (153 features: the 6-card layout without a next card) and
+  the reward were the same as then; the player 1 view was not mirrored yet.
 
 Evaluation recorded in [`docs/thesis/ocena.ipynb`](thesis/ocena.ipynb): 30 matches as
 player 0 vs the rule-based bot, seeds 0–29, deterministic policy.
@@ -341,8 +349,8 @@ Facts about the current code that the v2 work should address:
   `ppo_cr_best.zip` is therefore unreliable.
 - **Sparse, HP-only reward.** No signal for trades, elixir efficiency or winning
   itself; see [Reward](#reward).
-- **Partial observation.** No next card or queue, no unit cooldown or deploy state,
-  and opponent elixir is visible.
+- **Partial observation.** No queue beyond the next card, no unit cooldown or deploy
+  state, and opponent elixir is visible.
 
 ## Change log
 
@@ -350,3 +358,5 @@ Facts about the current code that the v2 work should address:
 |---|---|
 | 2026-10-17 | First version: documents the 45-action / 11-zone layout and records the v1 model as a historical result. |
 | 2026-10-17 | Card stats moved to `card_stats.json` at tournament standard (level 11); tower HP, and so `MAX_TOWER_HP_PER_PLAYER`, changed from 15880 to 10928. |
+| 2026-10-17 | Deck of 8 (Knight, Giant, Hog Rider, Musketeer, Cannon, Fireball, Arrows, Baby Dragon) with air units and splash (#19): `OBS_DIM` 153 → 169 (hand one-hot 4×8, new next-card one-hot, card IDs in Deck order), action space unchanged at 45. v1 and 153-dim checkpoints are ignored at load. |
+| 2026-10-17 | The win rule counts crowns instead of comparing total tower HP at the time limit; the reward is unchanged. |

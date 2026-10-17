@@ -18,13 +18,13 @@ from cr_rl.game.board import (
     ARENA_LENGTH,
     ARENA_WIDTH,
     BRIDGE_LANE_X,
-    MATCH_TIME_LIMIT,
+    REGULATION_TIME,
     RIVER_Y,
     TOWER_LAYOUT,
     Board,
 )
 
-from cr_rl.game.cards import PLAYABLE_CARDS, Troop, cards_dic
+from cr_rl.game.cards import Troop, cards_dic
 
 # --- meta constants (elixir thresholds + rule score scale) ---
 
@@ -91,7 +91,6 @@ class LogicAgent:
   Uses board.set_pending_play() — any position on own half.
     """
 
-    deck: list[str] = field(default_factory=lambda: list(PLAYABLE_CARDS))
     _combo_queue: deque[tuple[str, float, float]] = field(default_factory=deque)
     last_decision: str = ""
 
@@ -478,7 +477,7 @@ def _build_context(board: Board, player: int) -> BattleContext:  # one-off snaps
         tower_threat=_enemy_attacking_my_tower(board, player),
         under_threat=_enemies_in_threat_zone(board, player),
         quiet=_is_quiet_board(board, player),
-        late_game=board.time >= MATCH_TIME_LIMIT * 0.55,
+        late_game=board.time >= REGULATION_TIME * 0.55,
         own_cannon_alive=any(
             t.name == "Cannon" and t.alive and t.owner == player for t in mine
         ),
