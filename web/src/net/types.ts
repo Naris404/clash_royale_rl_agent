@@ -88,6 +88,7 @@ export interface Snapshot {
   hits: HitState[];
   hand: string[];
   next_card?: string | null;
+  crowns: number[];
   done: boolean;
   winner?: number | null;
 }
@@ -145,6 +146,7 @@ export interface MoveLogEntry {
 
 export interface MatchEndDetail {
   winner?: number | null;
+  crowns: number[];
   time: number;
   moves: number;
   mean_score?: number | null;

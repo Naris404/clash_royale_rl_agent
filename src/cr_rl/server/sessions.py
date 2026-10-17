@@ -374,6 +374,7 @@ class GameSession:
             hits=hits,
             hand=board.get_hand(0),
             next_card=queue[0] if queue else None,
+            crowns=board.crowns,
             done=board.done,
             winner=board.winner,
         )
@@ -399,6 +400,7 @@ class GameSession:
             kind="match_end",
             detail={
                 "winner": self.board.winner,
+                "crowns": self.board.crowns,
                 "time": self.board.time,
                 "moves": len(self.move_log),
                 "mean_score": (sum(scores) / len(scores)) if scores else None,

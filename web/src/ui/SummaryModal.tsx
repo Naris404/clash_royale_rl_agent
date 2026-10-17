@@ -22,6 +22,9 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
         <h2>{title}</h2>
         <div className="summary-stats">
           <div>
+            {strings.crowns}: <strong>{detail.crowns[0]} – {detail.crowns[1]}</strong>
+          </div>
+          <div>
             {strings.moves}: <strong>{detail.moves}</strong>
           </div>
           {detail.mean_score != null && (

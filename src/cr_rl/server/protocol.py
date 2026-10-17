@@ -113,6 +113,7 @@ class SnapshotMsg(BaseModel):
     hits: list[HitState] = Field(default_factory=list)
     hand: list[str]
     next_card: Optional[str]
+    crowns: list[int]
     done: bool
     winner: Optional[int]
 
