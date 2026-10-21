@@ -45,6 +45,12 @@ COLLISION_PASSES = 4  # relaxation passes per tick so chains of overlapping unit
 
 # Units and spells may be placed up to this far from the back edge (behind the king tower).
 BACK_EDGE_MARGIN = 0.5
+DEPLOY_X_MARGIN = 1.0  # units and spells stay this far from the side walls
+
+# Pocket after an enemy princess tower falls (measured in the real game): 4 tiles deep from the
+# enemy bank, as wide as one lane half. Humans only: agents keep the 11 deploy zones (ADR-0006).
+POCKET_DEPTH = 4.0
+POCKET_WIDTH = ARENA_WIDTH / 2
 
 # Towers (as in CR): princess ~6 tiles from the river, king 4×4 with one free tile behind it.
 # P0 = bottom (y grows upward), P1 = top.
@@ -256,15 +262,35 @@ class Board:
     ) -> None:
         self._pending_play[player] = play
 
+    def pocket_zones(self, player: int) -> list[tuple[float, float, float, float]]:
+        """Enemy-side rectangles (x_min, x_max, y_min, y_max) opened by the enemy princess towers `player` destroyed."""
+        direction = 1.0 if player == 0 else -1.0
+        near = RIVER_Y + direction * RIVER_HALF_WIDTH  # the enemy bank, not the water
+        far = near + direction * POCKET_DEPTH
+        zones = []
+        for tower in self.towers:
+            if tower.owner == player or tower.name != "Tower" or tower.alive:
+                continue
+            lane_min = 0.0 if tower.x < ARENA_WIDTH / 2 else ARENA_WIDTH - POCKET_WIDTH
+            x_min = max(lane_min, DEPLOY_X_MARGIN)
+            x_max = min(lane_min + POCKET_WIDTH, ARENA_WIDTH - DEPLOY_X_MARGIN)
+            zones.append((x_min, x_max, min(near, far), max(near, far)))
+        return zones
+
     def _in_deploy_zone(self, player: int, x: float, y: float) -> bool:
-        if not (1.0 <= x <= ARENA_WIDTH - 1.0):
+        if not (DEPLOY_X_MARGIN <= x <= ARENA_WIDTH - DEPLOY_X_MARGIN):
             return False
         if player == 0:
             return BACK_EDGE_MARGIN <= y <= RIVER_Y - RIVER_HALF_WIDTH  # up to the water's edge, never in it
         return RIVER_Y + RIVER_HALF_WIDTH <= y <= ARENA_LENGTH - BACK_EDGE_MARGIN
 
+    def _in_pocket(self, player: int, x: float, y: float) -> bool:
+        return any(
+            x_min <= x <= x_max and y_min <= y <= y_max for x_min, x_max, y_min, y_max in self.pocket_zones(player)
+        )
+
     def _in_spell_zone(self, player: int, x: float, y: float) -> bool:
-        if not (1.0 <= x <= ARENA_WIDTH - 1.0):
+        if not (DEPLOY_X_MARGIN <= x <= ARENA_WIDTH - DEPLOY_X_MARGIN):
             return False
         return BACK_EDGE_MARGIN <= y <= ARENA_LENGTH - BACK_EDGE_MARGIN
 
@@ -330,8 +356,9 @@ class Board:
         stats = cards_dic.get(card_name)
         if not stats or self.elixir[player] < stats["elisir"]:
             return False
-        zone_check = self._in_spell_zone if self._is_spell(card_name) else self._in_deploy_zone
-        return zone_check(player, x, y)
+        if self._is_spell(card_name):
+            return self._in_spell_zone(player, x, y)
+        return self._in_deploy_zone(player, x, y) or self._in_pocket(player, x, y)
 
     def play_card_at(self, player: int, card_name: str, x: float, y: float) -> bool:
         if not self.can_play_card_at(player, card_name, x, y):

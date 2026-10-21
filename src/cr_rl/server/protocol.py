@@ -101,6 +101,15 @@ class HitState(BaseModel):
     ranged: bool
 
 
+class PocketState(BaseModel):
+    """Extra legal deploy rectangle for the human (an enemy princess tower fell)."""
+
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+
+
 class SnapshotMsg(BaseModel):
     type: Literal["snapshot"] = "snapshot"
     tick: int
@@ -113,6 +122,7 @@ class SnapshotMsg(BaseModel):
     troops: list[TroopState]
     spells: list[SpellState]
     hits: list[HitState] = Field(default_factory=list)
+    pockets: list[PocketState] = Field(default_factory=list)  # the human's extra deploy areas
     hand: list[str]
     next_card: str
     crowns: list[int]

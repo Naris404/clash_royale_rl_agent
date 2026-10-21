@@ -76,6 +76,13 @@ export interface HitState {
   ranged: boolean;
 }
 
+export interface PocketState {
+  x_min: number;
+  x_max: number;
+  y_min: number;
+  y_max: number;
+}
+
 export type MatchPhase = "regulation" | "double_elixir" | "overtime";
 
 export interface Snapshot {
@@ -90,6 +97,7 @@ export interface Snapshot {
   troops: TroopState[];
   spells: SpellState[];
   hits: HitState[];
+  pockets: PocketState[]; // extra legal deploy areas for the human (a fallen enemy princess tower)
   hand: string[];
   next_card: string;
   crowns: number[];

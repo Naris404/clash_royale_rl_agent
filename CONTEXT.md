@@ -13,7 +13,8 @@ _Avoid_: arena (that is the rendered view), game state
 
 **Deploy zone**:
 A named region where a card may be played. Humans place at continuous coordinates;
-agents and the coach reason in discrete zones.
+agents and the coach reason in discrete zones. After an enemy princess tower falls, the
+destroyer (humans only, ADR-0006) can also deploy in a 4×9 **pocket** on that side.
 _Avoid_: drop zone, placement area, slot
 
 **Deck**:

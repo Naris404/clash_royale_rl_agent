@@ -39,6 +39,7 @@ from cr_rl.server.protocol import (
     HelloMsg,
     HintMsg,
     KeyMomentMsg,
+    PocketState,
     ServerMessage,
     HitState,
     SnapshotMsg,
@@ -389,6 +390,10 @@ class GameSession:
             troops=troops,
             spells=spells,
             hits=hits,
+            pockets=[
+                PocketState(x_min=x0, x_max=x1, y_min=y0, y_max=y1)
+                for x0, x1, y0, y1 in board.pocket_zones(0)
+            ],
             hand=board.get_hand(0),
             next_card=board.get_next_card(0),
             crowns=board.crowns,
