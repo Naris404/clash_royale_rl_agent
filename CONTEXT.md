@@ -36,7 +36,8 @@ planted there instead of a tower (one per lane, near the center).
 _Avoid_: bait zone
 
 **Spell zone**:
-A deploy-only zone on the enemy side that spells may target; masked off for
+A deploy zone that only spells may target: fixed on an enemy tower, or a push zone
+that aims at the best enemy cluster in one lane wherever it stands. Masked off for
 troops and buildings.
 _Avoid_: target zone
 
@@ -123,9 +124,22 @@ rule-based bot). A historical result only; it cannot run in env-v1.
 _Avoid_: old model, legacy model, baseline
 
 **v2 model**:
-The rewritten RL agent, trained only on env-v1 and evaluated against the rule-based
+The rewritten RL agent, trained only on env-v1.1 and evaluated against the rule-based
 and random bots.
 _Avoid_: new model
+
+## Training
+
+**Training opponent**:
+A bot or frozen policy the agent plays against during training or evaluation.
+_Avoid_: opponent (that is who the human plays in a Session), sparring partner
+
+**Decision point**:
+A tick at which the agent is asked for an action: at least one card play is legal
+and no noop hold is running. Choosing noop starts a short hold (0.3 s by default)
+before the agent is asked again. Training and the live RL opponent use the same
+schedule.
+_Avoid_: step, frame, agent tick
 
 ## Environment lifecycle
 
@@ -133,6 +147,11 @@ _Avoid_: new model
 The environment version frozen after the user's playtest sign-off; mechanics may
 change before it and are frozen after it (see docs/adr/0003).
 _Avoid_: final game, mechanics freeze
+
+**env-v1.1**:
+env-v1 reopened once, before any v2 training, for arena geometry fixes, then frozen
+again after a new playtest sign-off (see docs/adr/0005).
+_Avoid_: env-v2, patched env
 
 **Playtest sign-off**:
 The user's explicit statement, after playing in the web client, that a mechanic or
