@@ -37,7 +37,7 @@ RIVER_HALF_WIDTH = 1.2
 # Two bridges (left / right), lined up with the princess towers so the arena is mirror-symmetric.
 BRIDGE_LANE_X = (3.5, 14.5)
 BRIDGES = [(BRIDGE_LANE_X[0], RIVER_Y), (BRIDGE_LANE_X[1], RIVER_Y)]
-BRIDGE_HALF_WIDTH = 1.8
+BRIDGE_HALF_WIDTH = 1.0  # bridges are 2 tiles wide
 # Waypoint on the river bank before / after a bridge, set back from the water.
 BRIDGE_BANK_Y_OFFSET = RIVER_HALF_WIDTH + 0.3
 RANGED_MIN_RANGE = 2.0  # range above melee → hit is shown as a projectile

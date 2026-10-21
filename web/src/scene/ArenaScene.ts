@@ -175,14 +175,6 @@ export class ArenaScene {
       bg.roundRect(cx - half * l.tile, riverTop - 0.15 * l.tile, 2 * half * l.tile, riverH + 0.3 * l.tile, 4).fill(0x8b5a2b);
     }
 
-    // drop zones (discrete RL actions) — subtle markers
-    for (const zones of Object.values(config.deploy_zones)) {
-      for (const zone of zones) {
-        const [sx, sy] = this.toScreen(zone.x, zone.y, l);
-        bg.circle(sx, sy, 0.18 * l.tile).fill({ color: 0xffffff, alpha: 0.25 });
-      }
-    }
-
     // arena frame
     bg.rect(l.ox, l.oy, aw * l.tile, al * l.tile).stroke({ color: 0x1c4420, width: 3 });
 
@@ -592,8 +584,6 @@ export class ArenaScene {
     const al = config.arena_length;
     const margin = config.back_edge_margin;
 
-    const cardType = config.cards[card]?.type ?? "";
-    const zones = (config.deploy_zones["0"] ?? []).filter((z) => z.card_types.includes(cardType));
     const zoneColor = isSpell ? 0xf97316 : 0x22c55e;
     if (isSpell) {
       this.deployOverlay
@@ -606,10 +596,6 @@ export class ArenaScene {
       this.deployOverlay
         .rect(l.ox + l.tile, l.oy + topY * l.tile, (aw - 2) * l.tile, (bottomY - topY) * l.tile)
         .fill({ color: zoneColor, alpha: 0.14 });
-    }
-    for (const zone of zones) {
-      const [sx, sy] = this.toScreen(zone.x, zone.y, l);
-      this.deployOverlay.circle(sx, sy, 0.9 * l.tile).stroke({ color: zoneColor, width: 2, alpha: 0.7 });
     }
     this.deployOverlay.visible = true;
 
