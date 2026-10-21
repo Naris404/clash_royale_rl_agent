@@ -135,11 +135,15 @@ class Troop:
         # Rounded so ten 0.1 s ticks end a 1.0 s deploy exactly.
         self.deploy_remaining = round(max(0.0, self.deploy_remaining - dt), 6)
 
+    def stop_attacking(self) -> None:
+        """Drops the wind-up, so the next target entering range starts a fresh first-hit delay."""
+        self._attack_winding = False
+
     def hit(self, target: Troop, dt: float) -> float:
         """Attacks the target; returns the damage dealt (0 if no attack)."""
         self.update_cooldown(dt)
         if not self.is_in_range(target):
-            self._attack_winding = False
+            self.stop_attacking()
             return 0.0
 
         if not self._attack_winding:
