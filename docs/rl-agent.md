@@ -27,11 +27,14 @@ The observation and action layout above is the env-v1 contract: it is pinned by
 - **Learner:** player 0 (bottom half of the arena). The opponent plays player 1.
 - **Training opponent:** the rule-based bot (`LogicAgent`); the curriculum
   experiment starts against the random bot (`RandomAgent`).
-- **Decision rate:** one action per simulation tick, 10 Hz (`TICK_DT = 0.1` s).
-- **Episode:** one match, at most 3001 steps (180 s regulation + 120 s overtime).
+- **Decision rate:** the agent is asked only at **Decision points** (see
+  [Decision points](#decision-points)); the simulation runs at 10 Hz (`TICK_DT = 0.1` s).
+- **Episode:** one match, at most 3001 simulation ticks (180 s regulation + 120 s overtime),
+  fewer agent steps.
 
 Code: `src/cr_rl/game/board.py` (observation, actions, mask, reward),
-`src/cr_rl/env/gym_env.py` (Gymnasium wrapper), `src/cr_rl/training/train.py`
+`src/cr_rl/env/gym_env.py` (Gymnasium wrapper), `src/cr_rl/game/decisions.py`
+(decision schedule), `src/cr_rl/training/train.py`
 (training and evaluation), `src/cr_rl/agents/rl.py` (inference).
 
 ## Environment interface
@@ -40,11 +43,12 @@ Code: `src/cr_rl/game/board.py` (observation, actions, mask, reward),
 `observation_space = Box(-1, 1, (169,), float32)` and `action_space = Discrete(45)`,
 and exposes `action_masks()` for MaskablePPO.
 
-One `step(action)`:
+One `step(action)` registers the action with the decision schedule and then simulates
+ticks until the next Decision point or the end of the match. Every tick:
 
 1. The opponent picks its action for player 1 (the rule-based bot submits its play
-   through `set_pending_play` and returns noop).
-2. Player 0's action is applied, then player 1's.
+   through `set_pending_play` and returns noop). The opponent acts on every tick.
+2. Player 0's action is applied (noop on the skipped ticks), then player 1's.
 3. Elixir regenerates for both players (start 5, max 10, +1 per 2.8 s; twice as fast from 2:00 through overtime).
 4. Combat runs for one tick; the reward is computed from the tower-HP change.
 5. Dead units are removed and the clock advances by 0.1 s.
@@ -54,7 +58,29 @@ One `step(action)`:
    player with more crowns wins (a princess tower is 1 crown). Tied crowns at 180 s start
    overtime; if it ends without a crown, the player whose weakest standing tower has less
    HP loses and equal weakest towers are a draw. 1800 ticks of 0.1 s accumulate to just
-   under 180.0 in floating point, so a regulation match lasts 1801 steps.
+   under 180.0 in floating point, so a regulation match lasts 1801 ticks.
+
+The returned reward is the sum of the rewards of all simulated ticks, so the return of a
+match equals the per-tick total. `reset()` also advances to the first Decision point.
+
+### Decision points
+
+The agent is asked for an action only at a **Decision point**: a tick where at least one
+card play is legal and no noop hold is running. Ticks where only noop is legal advance
+without asking. Choosing noop starts a hold of `k = 3` ticks (0.3 s, `NOOP_HOLD_TICKS`)
+before the agent is asked again; `ClashRoyaleEnv(hold_ticks=...)` configures `k`, and
+`k = 1` asks on every tick where a play is legal. Choosing a card play starts no hold.
+The env therefore never returns a state where only noop is legal, except the terminal one.
+
+`DecisionSchedule` (`src/cr_rl/game/decisions.py`) is the single component behind this
+schedule. The env uses it for player 0 and the Session uses it for the RL opponent
+(player 1), so the live policy plays at the timing it was trained with; the rule-based
+bot is not gated. There is no switch to turn the schedule off. Coach Hints and move grades
+are computed from the Board at any tick and are unaffected.
+
+Because one step now spans several ticks, `gamma` and `n_steps` below count agent steps,
+not ticks; the figures in their rationale were derived for one step per tick and are
+revisited with the v2 training run.
 
 When the match ends, `info["winner"]` holds the winner (0 or 1) or `None` for a draw;
 it is `None` on every earlier step.
@@ -283,7 +309,8 @@ No sweep or curriculum results are committed yet.
 
 ### Evaluation
 
-`evaluate_model()` (`cr-rl-evaluate`, `cr-rl-train --eval-only`) plays N matches as
+`evaluate_model()` (`cr-rl-evaluate`, `cr-rl-train --eval-only`; the reported match length is
+in agent steps) plays N matches as
 player 0 vs the rule-based bot with the deterministic policy and seeds
 `seed, seed + 1, …, seed + N − 1`, and reports wins, losses, draws, win rate, mean
 return and mean match length.
@@ -379,3 +406,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-17 | The win rule counts crowns instead of comparing total tower HP at the time limit; the reward is unchanged. |
 | 2026-10-17 | env-v1 playtest ([checklist](playtest-env-v1.md)): troops and buildings can no longer be placed in the river water (the deploy region ends at the bank, `RIVER_Y ∓ 1.2`); the 11 deploy zones, the 45 actions and the 169-dim observation are unchanged and pinned by `tests/test_env_layout.py`. |
 | 2026-10-21 | env-v1.1 arena geometry (ADR-0005, #35): king towers move to y = 3.0 / 29.0, deploy and spell areas reach y = 0.5 / 31.5, bridge lanes move to x = 3.5 / 14.5; the spell-king zone follows the king to (9.0, 29.0). Zone count, actions and observation are unchanged. |
+| 2026-10-21 | Decision points (#36, ADR-0002): the agent is asked only when a card play is legal and no noop hold runs; noop holds 3 ticks (configurable); skipped-tick rewards are summed into the step; the Session RL opponent follows the same schedule. Observation and action layout unchanged. |

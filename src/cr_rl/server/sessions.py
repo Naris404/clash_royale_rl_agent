@@ -27,6 +27,7 @@ from cr_rl.game.board import (
     Board,
 )
 from cr_rl.game.cards import DECK, cards_dic
+from cr_rl.game.decisions import DecisionSchedule
 from cr_rl.coach.evaluator import GRADE_SCORE, CoachEngine, KeyMomentTracker
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.agents.logic import LogicAgent
@@ -109,6 +110,8 @@ class GameSession:
             CoachEngine(inspector, lang=lang) if mode == MODE_COACH else None
         )
         self.opponent = self._make_opponent(inspector)
+        # The RL opponent is asked only at Decision points, as in training.
+        self._opponent_schedule = DecisionSchedule() if isinstance(self.opponent, RLAgent) else None
 
         self.paused = False
         self.speed = 1.0
@@ -195,6 +198,16 @@ class GameSession:
             self.board.set_pending_play(0, (card, x, y))
             return messages
 
+    def _opponent_action(self) -> int:
+        schedule = self._opponent_schedule
+        if schedule is None:
+            return self.opponent.choose_action(self.board, player=1)
+        if not schedule.is_decision_point(self.board, 1):
+            return 0
+        action = self.opponent.choose_action(self.board, player=1)
+        schedule.record(action)
+        return action
+
     def set_paused(self, paused: bool) -> None:
         with self._lock:
             self.paused = paused
@@ -213,6 +226,8 @@ class GameSession:
             self.move_log.clear()
             self._key_moments.reset()
             self.opponent.reset()
+            if self._opponent_schedule is not None:
+                self._opponent_schedule.reset()
             self._tower_id_map = self._build_tower_id_map()
             self._alive_towers = self._tower_ids_alive()
 
@@ -223,8 +238,10 @@ class GameSession:
         with self._lock:
             self.tick_count += 1
 
-            action_p1 = self.opponent.choose_action(self.board, player=1)
+            action_p1 = self._opponent_action()
             result = self.board.step(0, action_p1=action_p1)
+            if self._opponent_schedule is not None:
+                self._opponent_schedule.advance()
 
             messages: list[ServerMessage] = [self.build_snapshot()]
 
