@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from math import sqrt
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from cr_rl.game.board import Board
@@ -63,6 +63,7 @@ class Troop:
         self.alive = True
         self.jumps_river = bool(self.stats.get("jumps_river", False))
         self._attack_winding = False
+        self.locked_target: Optional[Troop] = None
 
     @property
     def is_building(self) -> bool:

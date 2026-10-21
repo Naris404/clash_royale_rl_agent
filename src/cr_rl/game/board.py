@@ -5,7 +5,7 @@ import random
 from collections import deque
 from dataclasses import dataclass, field, replace
 from math import sqrt
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -517,6 +517,15 @@ class Board:
         else:
             troop.y = RIVER_Y + RIVER_HALF_WIDTH + 0.2
 
+    def _current_target(self, unit: Troop, find_new: Callable[[Troop], Optional[Troop]]) -> Optional[Troop]:
+        """Keeps attacking the locked target until it dies or leaves range, then picks a new one."""
+        locked = unit.locked_target
+        if locked is not None and unit.can_target(locked) and unit.is_in_range(locked):
+            return locked
+        target = find_new(unit)
+        unit.locked_target = target if target is not None and unit.is_in_range(target) else None
+        return target
+
     def find_nearest_target(self, troop: Troop) -> Optional[Troop]:
         """Target only within sight range (~9.5 tiles in CR) — no cross-lane aggro from the other side."""
         best: Optional[Troop] = None
@@ -584,7 +593,7 @@ class Board:
             if troop.is_deploying:
                 troop.tick_deploy(dt)
                 continue
-            target = self.find_nearest_target(troop)
+            target = self._current_target(troop, self.find_nearest_target)
             if target is not None and troop.is_in_range(target):
                 attackers.append((troop, target))
             elif target is not None and (not troop.is_building or troop.speed > 0):
@@ -600,7 +609,7 @@ class Board:
             if tower.name == "King_Tower" and not self.is_king_active(tower.owner):
                 idlers.append(tower)
                 continue
-            target = self.find_tower_target(tower)
+            target = self._current_target(tower, self.find_tower_target)
             if target is None:
                 idlers.append(tower)
             else:

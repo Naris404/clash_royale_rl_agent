@@ -183,6 +183,15 @@ follows the enemy king tower.
 The pull-zone placement is derived in ADR-0002: a Cannon at pull-L is closer to an
 enemy Hog Rider leaving the left bridge than the princess tower is.
 
+### Targeting
+
+Pinned by `tests/test_target_lock.py`. A troop or tower that is attacking a target keeps it
+until the target dies or leaves its range; a closer enemy appearing does not switch its
+aim. A unit with no target, or one that just lost its target, picks the closest valid
+enemy within sight range (towers: within range), ties going to the earlier unit on the
+board. A unit still walking toward its target re-picks the closest each tick, so the lock
+only forms once it is in range. The King tower activation rules are unchanged.
+
 ### Action masking
 
 `Board.valid_action_mask(player)` returns a 45-element boolean mask. Noop is always
@@ -407,3 +416,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-17 | env-v1 playtest ([checklist](playtest-env-v1.md)): troops and buildings can no longer be placed in the river water (the deploy region ends at the bank, `RIVER_Y ∓ 1.2`); the 11 deploy zones, the 45 actions and the 169-dim observation are unchanged and pinned by `tests/test_env_layout.py`. |
 | 2026-10-21 | env-v1.1 arena geometry (ADR-0005, #35): king towers move to y = 3.0 / 29.0, deploy and spell areas reach y = 0.5 / 31.5, bridge lanes move to x = 3.5 / 14.5; the spell-king zone follows the king to (9.0, 29.0). Zone count, actions and observation are unchanged. |
 | 2026-10-21 | Decision points (#36, ADR-0002): the agent is asked only when a card play is legal and no noop hold runs; noop holds 3 ticks (configurable); skipped-tick rewards are summed into the step; the Session RL opponent follows the same schedule. Observation and action layout unchanged. |
+| 2026-10-21 | Target locking (#48): troops and towers keep their target until it dies or leaves range instead of re-picking the closest every tick. Observation and action layout unchanged. |
