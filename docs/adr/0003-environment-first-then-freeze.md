@@ -1,6 +1,6 @@
 # Environment first, frozen at env-v1, then RL
 
-Status: accepted (2026-10-08). Supersedes ADR-0001.
+Status: accepted (2026-10-08). Supersedes ADR-0001. Amended by ADR-0005 (env-v1.1).
 
 The thesis is the RL agent, and the environment it trains in is part of the thesis
 work, so the environment is finished before any RL v2 training. Mechanics may change
