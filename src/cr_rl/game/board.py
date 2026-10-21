@@ -34,8 +34,8 @@ DOUBLE_ELIXIR_TIME = 120.0  # elixir regenerates twice as fast from 2:00 on, thr
 OVERTIME_TIME = 120.0  # up to 2:00 of sudden death, then the tiebreak
 RIVER_Y = ARENA_LENGTH / 2
 RIVER_HALF_WIDTH = 1.2
-# Two bridges (left / right) — lane axis = lane center (left lane: columns 2–4, tower L at x≈3.5).
-BRIDGE_LANE_X = (3.0, 14.0)
+# Two bridges (left / right), lined up with the princess towers so the arena is mirror-symmetric.
+BRIDGE_LANE_X = (3.5, 14.5)
 BRIDGES = [(BRIDGE_LANE_X[0], RIVER_Y), (BRIDGE_LANE_X[1], RIVER_Y)]
 BRIDGE_HALF_WIDTH = 1.8
 # Waypoint on the river bank before / after a bridge, set back from the water.
@@ -43,18 +43,21 @@ BRIDGE_BANK_Y_OFFSET = RIVER_HALF_WIDTH + 0.3
 RANGED_MIN_RANGE = 2.0  # range above melee → hit is shown as a projectile
 COLLISION_PASSES = 4  # relaxation passes per tick so chains of overlapping units settle
 
-# Towers (as in CR): princess ~6 tiles from the river, king at the back.
+# Units and spells may be placed up to this far from the back edge (behind the king tower).
+BACK_EDGE_MARGIN = 0.5
+
+# Towers (as in CR): princess ~6 tiles from the river, king 4×4 with one free tile behind it.
 # P0 = bottom (y grows upward), P1 = top.
 TOWER_LAYOUT = {
     0: {
         "Tower_L": (3.5, 8.0),
         "Tower_R": (14.5, 8.0),
-        "King_Tower": (9.0, 2.0),
+        "King_Tower": (9.0, 3.0),
     },
     1: {
         "Tower_L": (3.5, 24.0),
         "Tower_R": (14.5, 24.0),
-        "King_Tower": (9.0, 30.0),
+        "King_Tower": (9.0, 29.0),
     },
 }
 
@@ -88,7 +91,7 @@ _P0_ZONES = (
     DeployZone("pull-R", 12.5, 9.5, TROOP_CARD_TYPES),
     DeployZone("spell-tower-L", 3.5, 24.0, SPELL_CARD_TYPES),
     DeployZone("spell-tower-R", 14.5, 24.0, SPELL_CARD_TYPES),
-    DeployZone("spell-king", 9.0, 30.0, SPELL_CARD_TYPES),
+    DeployZone("spell-king", 9.0, 29.0, SPELL_CARD_TYPES),
 )
 DEPLOY_ZONES: dict[int, tuple[DeployZone, ...]] = {
     0: _P0_ZONES,
@@ -257,13 +260,13 @@ class Board:
         if not (1.0 <= x <= ARENA_WIDTH - 1.0):
             return False
         if player == 0:
-            return 2.0 <= y <= RIVER_Y - RIVER_HALF_WIDTH  # up to the water's edge, never in it
-        return RIVER_Y + RIVER_HALF_WIDTH <= y <= ARENA_LENGTH - 2.0
+            return BACK_EDGE_MARGIN <= y <= RIVER_Y - RIVER_HALF_WIDTH  # up to the water's edge, never in it
+        return RIVER_Y + RIVER_HALF_WIDTH <= y <= ARENA_LENGTH - BACK_EDGE_MARGIN
 
     def _in_spell_zone(self, player: int, x: float, y: float) -> bool:
         if not (1.0 <= x <= ARENA_WIDTH - 1.0):
             return False
-        return 2.0 <= y <= ARENA_LENGTH - 2.0
+        return BACK_EDGE_MARGIN <= y <= ARENA_LENGTH - BACK_EDGE_MARGIN
 
     @staticmethod
     def _is_spell(card_name: str) -> bool:

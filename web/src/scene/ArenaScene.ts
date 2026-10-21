@@ -590,18 +590,19 @@ export class ArenaScene {
     const isSpell = config.cards[card]?.type === "spell";
     const aw = config.arena_width;
     const al = config.arena_length;
+    const margin = config.back_edge_margin;
 
     const cardType = config.cards[card]?.type ?? "";
     const zones = (config.deploy_zones["0"] ?? []).filter((z) => z.card_types.includes(cardType));
     const zoneColor = isSpell ? 0xf97316 : 0x22c55e;
     if (isSpell) {
       this.deployOverlay
-        .rect(l.ox + l.tile, l.oy + 2 * l.tile, (aw - 2) * l.tile, (al - 4) * l.tile)
+        .rect(l.ox + l.tile, l.oy + margin * l.tile, (aw - 2) * l.tile, (al - 2 * margin) * l.tile)
         .fill({ color: zoneColor, alpha: 0.12 });
     } else {
-      // player's half (P0): y from 2 to the river bank → screen from the top
+      // player's half (P0): from the back edge to the river bank → screen from the top
       const topY = al - (config.river_y - config.river_half_width);
-      const bottomY = al - 2;
+      const bottomY = al - margin;
       this.deployOverlay
         .rect(l.ox + l.tile, l.oy + topY * l.tile, (aw - 2) * l.tile, (bottomY - topY) * l.tile)
         .fill({ color: zoneColor, alpha: 0.14 });

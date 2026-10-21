@@ -144,7 +144,7 @@ TROOP_ZONES_P0 = {
 SPELL_ZONES_P0 = {
     "spell-tower-L": (3.5, 24.0),
     "spell-tower-R": (14.5, 24.0),
-    "spell-king": (9.0, 30.0),
+    "spell-king": (9.0, 29.0),
 }
 
 

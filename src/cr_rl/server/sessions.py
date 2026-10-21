@@ -16,6 +16,7 @@ from typing import Optional
 from cr_rl.game.board import (
     ARENA_LENGTH,
     ARENA_WIDTH,
+    BACK_EDGE_MARGIN,
     BRIDGE_HALF_WIDTH,
     BRIDGE_LANE_X,
     DEPLOY_ZONES,
@@ -66,6 +67,7 @@ def arena_config() -> dict:
         "river_half_width": RIVER_HALF_WIDTH,
         "bridge_lane_x": list(BRIDGE_LANE_X),
         "bridge_half_width": BRIDGE_HALF_WIDTH,
+        "back_edge_margin": BACK_EDGE_MARGIN,
         "deploy_zones": {
             str(p): [
                 {"name": z.name, "x": z.x, "y": z.y, "card_types": sorted(z.card_types)}
