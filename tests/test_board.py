@@ -988,3 +988,66 @@ class TestOvertime:
                 board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
             outcomes.append((board.winner, board.crowns, board.time))
         assert outcomes[0] == outcomes[1]
+
+
+class TestTowerFirstHitDelay:
+    """A tower winds up when a target enters range and fires only after its first-hit delay."""
+
+    SLACK_TICKS = 3  # the wind-up takes a tick to start and another for the cooldown to run out
+
+    @staticmethod
+    def _dummy_just_in_range(board: Board, tower: Troop, *, inside: float = 0.05) -> Troop:
+        """A motionless enemy Knight straight ahead of the tower, `inside` tiles within its range."""
+        dummy = place_unit(board, "Knight", 1 - tower.owner, tower.x, tower.y)
+        dummy.speed = 0
+        dummy.y += tower.range + dummy.collision_radius - inside
+        return dummy
+
+    @staticmethod
+    def _tower_hit_times(board: Board, tower: Troop, seconds: float) -> list[float]:
+        times = []
+        for step in range(1, round(seconds / TICK_DT) + 1):
+            board.step(0, action_p1=0)
+            times.extend(step * TICK_DT for _ in range(_hits_from(board, tower)))
+        return times
+
+    @pytest.mark.parametrize(("name", "delay"), [("Tower", 0.8), ("King_Tower", 1.0)])
+    def test_tower_does_not_hit_before_its_first_hit_delay(self, name, delay):
+        board = new_board()
+        tower = _tower(board, 0, name, "L" if name == "Tower" else None)
+        tower.hp -= 1.0  # wakes an idle king
+        dummy = self._dummy_just_in_range(board, tower)
+
+        times = self._tower_hit_times(board, tower, 3.0)
+
+        assert times, "the tower never fired"
+        assert times[0] > delay
+        assert times[0] <= delay + self.SLACK_TICKS * TICK_DT
+        assert dummy.hp < dummy.max_hp
+
+    def test_tower_resumes_its_wind_up_after_the_target_leaves_range(self):
+        board = new_board()
+        tower = _tower(board, 0, "Tower", "L")
+        dummy = self._dummy_just_in_range(board, tower)
+        _step_seconds(board, 0.5)  # winding up
+        dummy.y += 1.0  # steps out of range
+        _step_seconds(board, 1.0)
+        assert dummy.hp == dummy.max_hp
+        dummy.y -= 1.0  # and back in
+
+        times = self._tower_hit_times(board, tower, 3.0)
+
+        assert 0.8 < times[0] <= 0.8 + self.SLACK_TICKS * TICK_DT
+
+    def test_new_target_after_a_kill_is_hit_one_hit_speed_later(self):
+        board = new_board()
+        tower = _tower(board, 0, "Tower", "L")
+        first = self._dummy_just_in_range(board, tower, inside=1.3)  # the nearer one
+        second = self._dummy_just_in_range(board, tower)  # both stand on the bridge lane
+        first.hp = 1.0
+
+        times = self._tower_hit_times(board, tower, 3.0)
+
+        assert not first.alive
+        assert len(times) >= 2
+        assert 0.8 <= times[1] - times[0] <= 0.8 + 2 * TICK_DT  # no second wind-up

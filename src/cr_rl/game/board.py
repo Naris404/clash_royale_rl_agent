@@ -611,6 +611,7 @@ class Board:
                 continue
             target = self._current_target(tower, self.find_tower_target)
             if target is None:
+                tower.stop_attacking()  # the next target starts a fresh first-hit delay
                 idlers.append(tower)
             else:
                 attackers.append((tower, target))

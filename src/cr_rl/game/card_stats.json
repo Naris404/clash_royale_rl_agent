@@ -1,5 +1,5 @@
 {
-  "source": "https://clashroyale.fandom.com/wiki/Cards (per-card pages: Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball, Arrows, Baby_Dragon, Princess_Towers, King's_Tower), retrieved 2026-10-17; Arrows, Baby_Dragon and Fireball (radius 2.5, area damage 688, crown tower damage 159) checked against the game by the project owner",
+  "source": "https://clashroyale.fandom.com/wiki/Cards (per-card pages: Knight, Giant, Cannon, Musketeer, Hog_Rider, Fireball, Arrows, Baby_Dragon, Princess_Towers, King's_Tower), retrieved 2026-10-17; Arrows, Baby_Dragon and Fireball (radius 2.5, area damage 688, crown tower damage 159) checked against the game by the project owner; the Tower and King_Tower first_hit_speed values (0.8 and 1.0) are the project owner's provisional choice, equal to the hit speeds, pending an in-game measurement (#49)",
   "card_level": 11,
   "units": "hp and damage at card_level; range, radius and splash_radius in tiles; speed in tiles per second (wiki speed / 60); times in seconds; elisir is the elixir cost; tower_damage is a spell's reduced damage to princess and king towers (the game's crown tower damage); collision_radius in tiles (a building's footprint); mass is the push weight of a mobile unit, heavier pushes lighter (buildings and towers never move)",
   "cards": {
@@ -111,6 +111,7 @@
       "targets": ["ground", "air"],
       "range": 7.5,
       "hit_speed": 0.8,
+      "first_hit_speed": 0.8,
       "speed": 0,
       "elisir": 0,
       "life_span": 0,
@@ -123,6 +124,7 @@
       "targets": ["ground", "air"],
       "range": 7.0,
       "hit_speed": 1.0,
+      "first_hit_speed": 1.0,
       "speed": 0,
       "elisir": 0,
       "life_span": 0,
