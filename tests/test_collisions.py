@@ -73,7 +73,7 @@ def test_unit_walks_around_its_own_tower_instead_of_through_it():
     tower = next(t for t in board.towers if (t.owner, t.x) == (0, 3.5) and t.y == 8.0)
     closest = float("inf")
 
-    for _ in range(150):
+    for _ in range(200):
         board.step(0, action_p1=0)
         closest = min(closest, _gap(giant, tower))
 

@@ -1,4 +1,4 @@
-"""The env-v1 observation and action contract.
+"""The env-v1.1 observation and action contract.
 
 A trained model is only valid for the exact layout it was trained on, so every index and
 encoding here is pinned. Changing any of it means a new environment version (ADR-0003):

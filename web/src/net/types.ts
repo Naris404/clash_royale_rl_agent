@@ -7,6 +7,7 @@ export interface ArenaConfig {
   river_half_width: number;
   bridge_lane_x: number[];
   bridge_half_width: number;
+  back_edge_margin: number;
   deploy_zones: Record<string, DeployZone[]>;
   tower_layout: Record<string, Record<string, number[]>>;
   cards: Record<string, CardStats>;

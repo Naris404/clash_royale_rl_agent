@@ -7,15 +7,15 @@ this file in the same PR (see [Change log](#change-log)).
 
 Vocabulary follows [`CONTEXT.md`](../CONTEXT.md). Decisions: ADR-0002 (RL v2
 architecture), ADR-0003 (environment first, frozen at **env-v1**), ADR-0004 (fixed
-mirror deck).
+mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 
 ## Status
 
 | | |
 |---|---|
 | Documented layout | 169-dim observation, 45 actions (11 deploy zones) |
-| Simulation | env-v1: 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested ([checklist](playtest-env-v1.md)); frozen at the `env-v1` tag after the user's sign-off |
-| Trained model for this layout | none yet; the **v2 model** is trained only after env-v1 is tagged (ADR-0003) |
+| Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested ([checklist](playtest-env-v1.md)); frozen again after a new playtest sign-off |
+| Trained model for this layout | none yet; the **v2 model** is trained only on env-v1.1, after its sign-off (ADR-0005) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
 The observation and action layout above is the env-v1 contract: it is pinned by
@@ -135,7 +135,24 @@ the y coordinate is mirrored (`y → 32 − y`):
 | 7 | pull-R | (12.5, 9.5) | troops, buildings | |
 | 8 | spell-tower-L | (3.5, 24.0) | spells | **spell zone** on the left enemy princess tower |
 | 9 | spell-tower-R | (14.5, 24.0) | spells | right enemy princess tower |
-| 10 | spell-king | (9.0, 30.0) | spells | enemy king tower |
+| 10 | spell-king | (9.0, 29.0) | spells | enemy king tower |
+
+### Arena geometry (env-v1.1)
+
+Pinned by `tests/test_arena_geometry.py` (ADR-0005):
+
+- King towers are 4×4 (collision radius 2.0) at y = 3.0 (player 0) and y = 29.0
+  (player 1), leaving one free tile behind them; their activation and targeting are
+  unchanged.
+- Troops and buildings may be deployed from `BACK_EDGE_MARGIN` = 0.5 tiles off the back
+  edge to the river bank (player 0: y ≥ 0.5, player 1: y ≤ 31.5), so behind the king;
+  spells reach the same 0.5 … 31.5 span. Humans and agents share these bounds.
+- Bridge lanes are at x = 3.5 and 14.5, in line with the princess towers, so the arena is
+  mirror-symmetric about x = 9. A troop behind its king walks to the lane on its side of
+  the centre line.
+
+The deploy-zone coordinates in the table are unchanged apart from spell-king, which
+follows the enemy king tower.
 
 The pull-zone placement is derived in ADR-0002: a Cannon at pull-L is closer to an
 enemy Hog Rider leaving the left bridge than the princess tower is.
@@ -361,3 +378,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-17 | Deck of 8 (Knight, Giant, Hog Rider, Musketeer, Cannon, Fireball, Arrows, Baby Dragon) with air units and splash (#19): `OBS_DIM` 153 → 169 (hand one-hot 4×8, new next-card one-hot, card IDs in Deck order), action space unchanged at 45. v1 and 153-dim checkpoints are ignored at load. |
 | 2026-10-17 | The win rule counts crowns instead of comparing total tower HP at the time limit; the reward is unchanged. |
 | 2026-10-17 | env-v1 playtest ([checklist](playtest-env-v1.md)): troops and buildings can no longer be placed in the river water (the deploy region ends at the bank, `RIVER_Y ∓ 1.2`); the 11 deploy zones, the 45 actions and the 169-dim observation are unchanged and pinned by `tests/test_env_layout.py`. |
+| 2026-10-21 | env-v1.1 arena geometry (ADR-0005, #35): king towers move to y = 3.0 / 29.0, deploy and spell areas reach y = 0.5 / 31.5, bridge lanes move to x = 3.5 / 14.5; the spell-king zone follows the king to (9.0, 29.0). Zone count, actions and observation are unchanged. |

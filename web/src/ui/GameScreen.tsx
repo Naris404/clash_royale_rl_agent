@@ -21,8 +21,9 @@ interface Props {
 function isValidPlacement(config: ArenaConfig, card: string, x: number, y: number): boolean {
   const isSpell = config.cards[card]?.type === "spell";
   if (x < 1 || x > config.arena_width - 1) return false;
-  if (isSpell) return y >= 2 && y <= config.arena_length - 2;
-  return y >= 2 && y <= config.river_y - config.river_half_width; // P0's bank, never the water
+  const margin = config.back_edge_margin;
+  if (isSpell) return y >= margin && y <= config.arena_length - margin;
+  return y >= margin && y <= config.river_y - config.river_half_width; // P0's bank, never the water
 }
 
 export function GameScreen({ store, socket, lang, strings, onExit }: Props) {

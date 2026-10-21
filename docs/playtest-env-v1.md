@@ -5,6 +5,10 @@ the web client through Playwright; items it cannot judge are listed under
 [Needs the user](#needs-the-user). A **Playtest sign-off** (see `CONTEXT.md`) is still the
 user's explicit statement, so the freeze waits for it.
 
+This checklist predates the arena geometry of env-v1.1 (ADR-0005): the king towers, back
+edge and bridge lanes described in the items below have since moved, see
+[`rl-agent.md`](rl-agent.md#arena-geometry-env-v11).
+
 ## How it was run
 
 ```

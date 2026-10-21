@@ -17,6 +17,7 @@ from typing import Callable, Optional
 from cr_rl.game.board import (
     ARENA_LENGTH,
     ARENA_WIDTH,
+    BACK_EDGE_MARGIN,
     BRIDGE_LANE_X,
     REGULATION_TIME,
     RIVER_HALF_WIDTH,
@@ -168,12 +169,12 @@ class LogicAgent:
         card, x, y = play
         x = max(1.0, min(ARENA_WIDTH - 1.0, x))
         if card == "Fireball":
-            y = max(2.0, min(ARENA_LENGTH - 2.0, y))
+            y = max(BACK_EDGE_MARGIN, min(ARENA_LENGTH - BACK_EDGE_MARGIN, y))
             return card, x, y
         if player == 0:
-            y = max(2.0, min(RIVER_Y - RIVER_HALF_WIDTH, y))
+            y = max(BACK_EDGE_MARGIN, min(RIVER_Y - RIVER_HALF_WIDTH, y))
         else:
-            y = max(RIVER_Y + RIVER_HALF_WIDTH, min(ARENA_LENGTH - 2.0, y))
+            y = max(RIVER_Y + RIVER_HALF_WIDTH, min(ARENA_LENGTH - BACK_EDGE_MARGIN, y))
         return card, x, y
 
     def _add_if_legal(
@@ -778,7 +779,7 @@ def _knight_on_unit(
                 return "Knight", x, y
     x = max(1.0, min(ARENA_WIDTH - 1.0, enemy.x))
     if player == 0:
-        y = max(2.0, min(RIVER_Y - RIVER_HALF_WIDTH, enemy.y))
+        y = max(BACK_EDGE_MARGIN, min(RIVER_Y - RIVER_HALF_WIDTH, enemy.y))
     else:
-        y = max(RIVER_Y + RIVER_HALF_WIDTH, min(ARENA_LENGTH - 2.0, enemy.y))
+        y = max(RIVER_Y + RIVER_HALF_WIDTH, min(ARENA_LENGTH - BACK_EDGE_MARGIN, enemy.y))
     return "Knight", x, y
