@@ -596,6 +596,12 @@ export class ArenaScene {
       this.deployOverlay
         .rect(l.ox + l.tile, l.oy + topY * l.tile, (aw - 2) * l.tile, (bottomY - topY) * l.tile)
         .fill({ color: zoneColor, alpha: 0.14 });
+      // pockets opened by a fallen enemy princess tower (server data, screen y is flipped)
+      for (const p of this.store.currSnap?.pockets ?? []) {
+        this.deployOverlay
+          .rect(l.ox + p.x_min * l.tile, l.oy + (al - p.y_max) * l.tile, (p.x_max - p.x_min) * l.tile, (p.y_max - p.y_min) * l.tile)
+          .fill({ color: zoneColor, alpha: 0.14 });
+      }
     }
     this.deployOverlay.visible = true;
 

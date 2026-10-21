@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { GameSocket } from "../net/client";
 import type { GameStore } from "../game/store";
 import type { Lang, Strings } from "../i18n";
-import type { ArenaConfig } from "../net/types";
+import type { ArenaConfig, PocketState } from "../net/types";
 import { ArenaView } from "../scene/ArenaView";
 import { CoachPanel } from "./CoachPanel";
 import { HandView } from "./HandView";
@@ -18,12 +18,13 @@ interface Props {
   onExit: () => void;
 }
 
-function isValidPlacement(config: ArenaConfig, card: string, x: number, y: number): boolean {
+function isValidPlacement(config: ArenaConfig, pockets: PocketState[], card: string, x: number, y: number): boolean {
   const isSpell = config.cards[card]?.type === "spell";
   if (x < 1 || x > config.arena_width - 1) return false;
   const margin = config.back_edge_margin;
   if (isSpell) return y >= margin && y <= config.arena_length - margin;
-  return y >= margin && y <= config.river_y - config.river_half_width; // P0's bank, never the water
+  if (y >= margin && y <= config.river_y - config.river_half_width) return true; // P0's bank, never the water
+  return pockets.some((p) => x >= p.x_min && x <= p.x_max && y >= p.y_min && y <= p.y_max);
 }
 
 export function GameScreen({ store, socket, lang, strings, onExit }: Props) {
@@ -42,7 +43,7 @@ export function GameScreen({ store, socket, lang, strings, onExit }: Props) {
     const liveConfig = store.config;
     const liveSnap = store.currSnap;
     if (!card || !liveConfig || liveSnap?.done) return;
-    if (!isValidPlacement(liveConfig, card, x, y)) return;
+    if (!isValidPlacement(liveConfig, liveSnap?.pockets ?? [], card, x, y)) return;
     socket.play(card, x, y);
     store.selectCard(null);
   };

@@ -172,7 +172,13 @@ Pinned by `tests/test_arena_geometry.py` (ADR-0005):
   unchanged.
 - Troops and buildings may be deployed from `BACK_EDGE_MARGIN` = 0.5 tiles off the back
   edge to the river bank (player 0: y ≥ 0.5, player 1: y ≤ 31.5), so behind the king;
-  spells reach the same 0.5 … 31.5 span. Humans and agents share these bounds.
+  spells reach the same 0.5 … 31.5 span. Humans and agents share these bounds, except for
+  the pocket below.
+- Pocket (ADR-0006, `tests/test_pocket_zone.py`): once an enemy princess tower is down, its
+  destroyer may also deploy troops and buildings on the enemy side of that lane, 4 tiles
+  deep from the bank and 9 wide. The server sends the rectangles in each snapshot
+  (`pockets`). **Humans only**: the action mask and the 11 zones are unchanged, so agents
+  never play there.
 - Bridge lanes are at x = 3.5 and 14.5, in line with the princess towers, so the arena is
   mirror-symmetric about x = 9. A troop behind its king walks to the lane on its side of
   the centre line.
@@ -388,6 +394,9 @@ random bots under the protocol above.
 
 Facts about the current code that the v2 work should address:
 
+- **No pocket for agents.** After an enemy princess tower falls, humans can deploy in a
+  4 × 9 pocket on that side (ADR-0006); agents and the rule-based bot cannot, because the
+  action layout has no zone there.
 - **Player 1 lane mismatch.** The player 1 observation rotates unit positions by 180°
   (left and right swap), but player 1's deploy zones mirror only y (left stays left)
   and the tower features keep the left/right order. A policy trained as player 0 and
@@ -417,3 +426,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-21 | env-v1.1 arena geometry (ADR-0005, #35): king towers move to y = 3.0 / 29.0, deploy and spell areas reach y = 0.5 / 31.5, bridge lanes move to x = 3.5 / 14.5; the spell-king zone follows the king to (9.0, 29.0). Zone count, actions and observation are unchanged. |
 | 2026-10-21 | Decision points (#36, ADR-0002): the agent is asked only when a card play is legal and no noop hold runs; noop holds 3 ticks (configurable); skipped-tick rewards are summed into the step; the Session RL opponent follows the same schedule. Observation and action layout unchanged. |
 | 2026-10-21 | Target locking (#48): troops and towers keep their target until it dies or leaves range instead of re-picking the closest every tick. Observation and action layout unchanged. |
+| 2026-10-21 | Pocket deploy zone (#50, ADR-0006): a fallen enemy princess tower opens a 4 × 9 pocket for its destroyer, humans only; the snapshot carries `pockets`. Action mask, zones and observation are unchanged. |
