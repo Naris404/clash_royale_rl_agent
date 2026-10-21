@@ -5,9 +5,9 @@ the web client through Playwright; items it cannot judge are listed under
 [Needs the user](#needs-the-user). A **Playtest sign-off** (see `CONTEXT.md`) is still the
 user's explicit statement, so the freeze waits for it.
 
-This checklist predates the arena geometry of env-v1.1 (ADR-0005): the king towers, back
-edge and bridge lanes described in the items below have since moved, see
-[`rl-agent.md`](rl-agent.md#arena-geometry-env-v11).
+The checklist below is the env-v1 playtest. Its arena geometry (king towers, back edge and
+bridge lanes) has since moved, see [`rl-agent.md`](rl-agent.md#arena-geometry-env-v11); the
+env-v1.1 sign-off is recorded in [env-v1.1 sign-off](#env-v11-sign-off).
 
 ## How it was run
 
@@ -76,3 +76,21 @@ Things Claude cannot judge from the simulation or the browser:
 - The Musketeer that kills a princess tower and walks up to the king is covered by
   `TestKingTower`, but a random bot match did not produce it live. Play it once if you
   want to see it.
+
+## env-v1.1 sign-off
+
+Issue #37, ADR-0005. On 2026-10-21 the user played env-v1.1 in the web client against the
+rule-based bot (served from commit `af689b3` with `web/dist` rebuilt) and gave a
+**Playtest sign-off**: env-v1.1 is good. The environment is frozen again and tagged
+`env-v1.1`.
+
+What was checked:
+
+- Arena geometry of ADR-0005: king towers with a free tile behind them, deploying behind
+  the king, moved bridges (#35).
+- Targets stay locked until they die or leave range (#48).
+- Tower first-hit delay with a fresh wind-up per target (#49).
+- Pocket deploy zone after a princess tower falls, humans only (#50, ADR-0006).
+- Before the playtest: `python -m pytest` (256 passed) and `npm run build --prefix web`.
+
+Not covered, as in env-v1: Match vs AI needs a model trained on env-v1.1 (the v2 model).
