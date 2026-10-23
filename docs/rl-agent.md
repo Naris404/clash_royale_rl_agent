@@ -400,6 +400,10 @@ No sweep results are committed yet.
 
 ### Evaluation
 
+Every evaluation plays its matches through `play_matches()` (`cr_rl/training/matches.py`): a policy as player 0
+against any Training opponent on an explicit seed list, returning each match's seed, winner, return and
+length in decision steps. `wilson_interval()` gives the 95% Wilson interval of a win count.
+
 `evaluate_model()` (`cr-rl-evaluate`, `cr-rl-train --eval-only`; the reported match length is
 in agent steps) plays N matches as
 player 0 vs the rule-based bot with the deterministic policy and seeds

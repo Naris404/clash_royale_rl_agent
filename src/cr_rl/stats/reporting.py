@@ -20,7 +20,9 @@ from typing import Any
 
 import numpy as np
 
+from cr_rl.agents.rl import RLAgent
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
+from cr_rl.training.matches import play_matches, summarize_matches
 from cr_rl.training.train import DEFAULT_BEST_PATH, DEFAULT_MODEL_DIR, evaluate_model
 
 try:
@@ -264,52 +266,25 @@ def evaluate_logic_vs_random(episodes: int, seed: int = 0) -> ModelEvalResult:
     )
 
 
-def evaluate_random_baseline(episodes: int, seed: int) -> ModelEvalResult:
-    from cr_rl.agents.rl import RLAgent
-
-    from cr_rl.env.gym_env import ClashRoyaleEnv
-
-    env = ClashRoyaleEnv(seed=seed)
-    agent = RLAgent(seed=seed, model_path=None, play_chance=0.5)
-
-    wins = losses = draws = 0
-    rewards: list[float] = []
-    lengths: list[int] = []
-
-    for episode in range(episodes):
-        env.reset(seed=seed + episode)
-        done = False
-        total_reward = 0.0
-        steps = 0
-        while not done:
-            action = agent.choose_action(env.board, player=0)
-            _obs, reward, terminated, truncated, info = env.step(action)
-            total_reward += float(reward)
-            steps += 1
-            done = terminated or truncated
-        rewards.append(total_reward)
-        lengths.append(steps)
-        winner = info.get("winner")
-        if winner == 0:
-            wins += 1
-        elif winner == 1:
-            losses += 1
-        else:
-            draws += 1
-
-    env.close()
+def _eval_result(label: str, path: str, stats: dict[str, float]) -> ModelEvalResult:
     return ModelEvalResult(
-        label="Random agent (baseline)",
-        path="(no model)",
+        label=label,
+        path=path,
         exists=True,
-        episodes=episodes,
-        wins=wins,
-        losses=losses,
-        draws=draws,
-        win_rate=wins / max(1, episodes),
-        mean_reward=float(np.mean(rewards)),
-        mean_length=float(np.mean(lengths)),
+        episodes=int(stats["episodes"]),
+        wins=int(stats["wins"]),
+        losses=int(stats["losses"]),
+        draws=int(stats["draws"]),
+        win_rate=float(stats["win_rate"]),
+        mean_reward=float(stats["mean_reward"]),
+        mean_length=float(stats["mean_length"]),
     )
+
+
+def evaluate_random_baseline(episodes: int, seed: int) -> ModelEvalResult:
+    agent = RLAgent(seed=seed, model_path=None, play_chance=0.5)
+    results = play_matches(agent, "logic", range(seed, seed + episodes))
+    return _eval_result("Random agent (baseline)", "(no model)", summarize_matches(results))
 
 
 def evaluate_saved_model(
@@ -332,18 +307,7 @@ def evaluate_saved_model(
             error=str(error),
         )
 
-    return ModelEvalResult(
-        label=label,
-        path=str(path),
-        exists=True,
-        episodes=int(stats["episodes"]),
-        wins=int(stats["wins"]),
-        losses=int(stats["losses"]),
-        draws=int(stats["draws"]),
-        win_rate=float(stats["win_rate"]),
-        mean_reward=float(stats["mean_reward"]),
-        mean_length=float(stats["mean_length"]),
-    )
+    return _eval_result(label, str(path), stats)
 
 
 def print_training_curves(series: list[ScalarSeries]) -> None:
