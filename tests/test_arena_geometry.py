@@ -7,6 +7,7 @@ import pytest
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.game.board import (
     ARENA_LENGTH,
+    DEPLOY_ZONES,
     ARENA_WIDTH,
     BRIDGE_LANE_X,
     RIVER_Y,
@@ -58,6 +59,21 @@ def test_spells_reach_the_full_arena_length(spell):
         assert board.can_play_card_at(player, spell, 9.0, 0.5)
         assert board.can_play_card_at(player, spell, 9.0, ARENA_LENGTH - 0.5)
         assert not board.can_play_card_at(player, spell, 9.0, ARENA_LENGTH - 0.4)
+
+
+@pytest.mark.parametrize("player", [0, 1])
+@pytest.mark.parametrize("card", ["Knight", "Giant", "Hog_Rider", "Musketeer", "Cannon"])
+def test_no_deploy_zone_starts_a_unit_inside_a_tower(player, card):
+    board = new_board()
+    for zone in DEPLOY_ZONES[player]:
+        if not zone.allows(cards_dic[card]["type"]):
+            continue
+        _hand_with(board, player, card)
+        assert board.play_card_at(player, card, zone.x, zone.y)
+        unit = board.troops[-1]
+        for tower in board.towers:
+            gap = unit.distance_to(tower) - unit.collision_radius - tower.collision_radius
+            assert gap >= 0.0, (zone.name, tower.name)
 
 
 def _lone_unit_trace(card: str, x: float, y: float, seconds: float) -> list[tuple[float, float]]:

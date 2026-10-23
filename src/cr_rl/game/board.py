@@ -68,6 +68,7 @@ TOWER_LAYOUT = {
 }
 
 TROOP_CARD_TYPES = frozenset({"ground", "air", "building"})
+TROOP_ONLY_CARD_TYPES = frozenset({"ground", "air"})
 SPELL_CARD_TYPES = frozenset({"spell"})
 
 
@@ -84,17 +85,18 @@ class DeployZone:
         return card_type in self.card_types
 
 
-# P0 layout (ADR-0002). Pull zones sit near the center so a building planted there is
-# closer to an enemy building-targeter at the bridge exit than the princess tower is.
+# P0 layout (ADR-0002). Back zones sit behind the king tower (troops only: a building there would
+# be wasted). Pull zones sit near the center so a building planted there is closer to an enemy
+# building-targeter at the bridge exit than the princess tower is, with the same margin per lane.
 _P0_ZONES = (
-    DeployZone("back-L", 3.0, 4.5, TROOP_CARD_TYPES),
-    DeployZone("back-R", 14.0, 4.5, TROOP_CARD_TYPES),
-    DeployZone("mid-L", 3.0, 9.0, TROOP_CARD_TYPES),
-    DeployZone("mid-R", 14.0, 9.0, TROOP_CARD_TYPES),
-    DeployZone("bridge-L", 3.0, 14.0, TROOP_CARD_TYPES),
-    DeployZone("bridge-R", 14.0, 14.0, TROOP_CARD_TYPES),
-    DeployZone("pull-L", 5.5, 9.5, TROOP_CARD_TYPES),
-    DeployZone("pull-R", 12.5, 9.5, TROOP_CARD_TYPES),
+    DeployZone("back-L", 7.5, 0.5, TROOP_ONLY_CARD_TYPES),
+    DeployZone("back-R", 10.5, 0.5, TROOP_ONLY_CARD_TYPES),
+    DeployZone("mid-L", 3.5, 10.5, TROOP_CARD_TYPES),
+    DeployZone("mid-R", 14.5, 10.5, TROOP_CARD_TYPES),
+    DeployZone("bridge-L", 3.5, 14.0, TROOP_CARD_TYPES),
+    DeployZone("bridge-R", 14.5, 14.0, TROOP_CARD_TYPES),
+    DeployZone("pull-L", 8.0, 11.0, TROOP_CARD_TYPES),
+    DeployZone("pull-R", 10.0, 11.0, TROOP_CARD_TYPES),
     DeployZone("spell-tower-L", 3.5, 24.0, SPELL_CARD_TYPES),
     DeployZone("spell-tower-R", 14.5, 24.0, SPELL_CARD_TYPES),
     DeployZone("spell-king", 9.0, 29.0, SPELL_CARD_TYPES),
@@ -798,8 +800,8 @@ class Board:
         """State vector from `player`'s perspective.
 
         For player=1 the view is mirrored: own towers at the start of the segment,
-        unit positions rotated by 180° (x' = W - x, y' = L - y) — so that a
-        model trained as P0 can also play as P1.
+        unit positions mirrored in y only (y' = L - y, x unchanged), the same way as the
+        deploy zones, so a model trained as P0 can also play as P1 and left stays left.
         """
         obs = np.zeros(OBS_DIM, dtype=np.float32)
         enemy = 1 - player
@@ -826,11 +828,8 @@ class Board:
             base = OBS_UNIT_BASE + slot * 5
             obs[base] = 1.0 if troop.owner == player else -1.0
             obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, DECK_SIZE - 1)
-            if player == 0:
-                ux, uy = troop.x, troop.y
-            else:
-                ux, uy = ARENA_WIDTH - troop.x, ARENA_LENGTH - troop.y
-            obs[base + 2] = ux / ARENA_WIDTH
+            uy = troop.y if player == 0 else ARENA_LENGTH - troop.y
+            obs[base + 2] = troop.x / ARENA_WIDTH
             obs[base + 3] = uy / ARENA_LENGTH
             obs[base + 4] = troop.hp / troop.max_hp if troop.max_hp else 0.0
 

@@ -69,7 +69,7 @@ class TestHands:
 
         def play(card: str) -> tuple[list[str], str]:
             board.elixir[0] = 10.0
-            assert board.play_card(0, card, 0)
+            assert board.play_card(0, card, 2)
             return board.get_hand(0), board.get_next_card(0)
 
         assert play("Knight") == (["Giant", "Cannon", "Musketeer", "Hog_Rider"], "Fireball")
@@ -131,15 +131,18 @@ class TestPlayLegality:
         assert board.action_to_card_zone(45, 0) == (None, None)  # out of range
 
 
+BACK_ZONES_P0 = {
+    "back-L": (7.5, 0.5),
+    "back-R": (10.5, 0.5),
+}
 TROOP_ZONES_P0 = {
-    "back-L": (3.0, 4.5),
-    "back-R": (14.0, 4.5),
-    "mid-L": (3.0, 9.0),
-    "mid-R": (14.0, 9.0),
-    "bridge-L": (3.0, 14.0),
-    "bridge-R": (14.0, 14.0),
-    "pull-L": (5.5, 9.5),
-    "pull-R": (12.5, 9.5),
+    **BACK_ZONES_P0,
+    "mid-L": (3.5, 10.5),
+    "mid-R": (14.5, 10.5),
+    "bridge-L": (3.5, 14.0),
+    "bridge-R": (14.5, 14.0),
+    "pull-L": (8.0, 11.0),
+    "pull-R": (10.0, 11.0),
 }
 SPELL_ZONES_P0 = {
     "spell-tower-L": (3.5, 24.0),
@@ -151,6 +154,10 @@ SPELL_ZONES_P0 = {
 class TestDeployZones:
     def test_eleven_zones_per_side_with_pinned_coordinates(self):
         assert NUM_ZONES == 11
+        assert ZONE_NAMES == [
+            "back-L", "back-R", "mid-L", "mid-R", "bridge-L", "bridge-R",
+            "pull-L", "pull-R", "spell-tower-L", "spell-tower-R", "spell-king",
+        ]  # indices are part of the action layout
         zones = {z.name: z for z in DEPLOY_ZONES[0]}
         assert len(DEPLOY_ZONES[0]) == len(DEPLOY_ZONES[1]) == 11
         for name, (x, y) in {**TROOP_ZONES_P0, **SPELL_ZONES_P0}.items():
@@ -166,6 +173,8 @@ class TestDeployZones:
         for z in DEPLOY_ZONES[0]:
             if z.name in SPELL_ZONES_P0:
                 assert z.card_types == frozenset({"spell"})
+            elif z.name in BACK_ZONES_P0:
+                assert z.card_types == frozenset({"ground", "air"})  # no buildings behind the king
             else:
                 assert z.card_types == frozenset({"ground", "air", "building"})
 
@@ -186,6 +195,17 @@ class TestDeployZones:
         assert NUM_ACTIONS == 45 == 1 + HAND_SIZE * NUM_ZONES
 
     @pytest.mark.parametrize("player", [0, 1])
+    def test_back_zones_refuse_buildings_but_take_troops(self, player):
+        board = new_board()
+        board.elixir[player] = 10.0
+        set_hand(board, player, ["Knight", "Baby_Dragon", "Cannon"])
+        for name in BACK_ZONES_P0:
+            zone = ZONE_NAMES.index(name)
+            assert board.zone_allows(player, "Knight", zone)
+            assert board.zone_allows(player, "Baby_Dragon", zone)
+            assert not board.zone_allows(player, "Cannon", zone)
+
+    @pytest.mark.parametrize("player", [0, 1])
     def test_troop_zones_are_legal_placements(self, player):
         board = new_board()
         board.elixir[player] = 10.0
@@ -199,7 +219,7 @@ class TestDeployZones:
         board.elixir[0] = 10.0
         set_hand(board, 0, ["Cannon", "Giant", "Knight", "Musketeer"])
         assert board.play_card(0, "Cannon", ZONE_NAMES.index("pull-R"))
-        assert (board.troops[0].x, board.troops[0].y) == (12.5, 9.5)
+        assert (board.troops[0].x, board.troops[0].y) == (10.0, 11.0)
 
     def test_spell_cast_at_spell_zone_and_rejected_on_troop_zone(self):
         board = new_board()
@@ -397,13 +417,13 @@ class TestTargetingAndCombat:
             board.step(0, action_p1=0)
             shots += _hits_from(board, cannon)
         assert shots > 0
-        assert (cannon.x, cannon.y) == (5.5, 9.5)
+        assert (cannon.x, cannon.y) == (8.0, 11.0)
 
     def test_cannon_expires_after_30_seconds(self):
         board = new_board()
         board.elixir[0] = 10.0
         set_hand(board, 0, ["Cannon", "Giant", "Knight", "Musketeer"])
-        assert board.play_card(0, "Cannon", ZONE_NAMES.index("back-L"))
+        assert board.play_card(0, "Cannon", ZONE_NAMES.index("mid-L"))
         _step_seconds(board, 29.5)
         assert [t.name for t in board.troops] == ["Cannon"]
         _step_seconds(board, 1.0)
@@ -594,7 +614,7 @@ class TestRewardsAndObservations:
         assert mask[0]
         assert mask[1:9].all() and not mask[9:12].any()  # Knight: 8 troop zones, 3 spell zones off
         assert not mask[12:23].any()  # Giant (5) — too expensive
-        assert mask[23:31].all() and not mask[31:34].any()  # Cannon (3)
+        assert not mask[23:25].any() and mask[25:31].all() and not mask[31:34].any()  # Cannon (3): no back zones
         assert not mask[34:45].any()  # Musketeer (4) — too expensive
 
     def test_action_mask_spell_only_on_spell_zones(self):
@@ -603,7 +623,7 @@ class TestRewardsAndObservations:
         board.elixir[0] = 4.0
         mask = board.valid_action_mask(0)
         assert not mask[1:9].any() and mask[9:12].all()  # Fireball only on the 3 spell zones
-        assert mask.sum() == 1 + 3 + 0 + 8 + 8  # noop + Fireball + Giant + Cannon + Musketeer
+        assert mask.sum() == 1 + 3 + 0 + 6 + 8  # noop + Fireball + Giant + Cannon (no back zones) + Musketeer
 
 
 class TestMirroredObservation:
@@ -622,13 +642,25 @@ class TestMirroredObservation:
         np.testing.assert_array_equal(obs1[seg : seg + 3], obs0[seg + 3 : seg + 6])
         np.testing.assert_array_equal(obs1[seg + 3 : seg + 6], obs0[seg : seg + 3])
 
-        # unit: owner sign flipped, coordinates rotated by 180°
+        # unit: owner sign flipped, y mirrored, x unchanged (left stays left for both players)
         base0 = OBS_UNIT_BASE
         assert obs0[base0] == 1.0 and obs1[base0] == -1.0  # own vs enemy
         assert obs0[base0 + 2] == pytest.approx(4.0 / 18.0)
         assert obs0[base0 + 3] == pytest.approx(10.0 / 32.0)
-        assert obs1[base0 + 2] == pytest.approx((18.0 - 4.0) / 18.0)
+        assert obs1[base0 + 2] == pytest.approx(4.0 / 18.0)
         assert obs1[base0 + 3] == pytest.approx((32.0 - 10.0) / 32.0)
+
+    @pytest.mark.parametrize("zone", [z for z in ZONE_NAMES if z not in SPELL_ZONES_P0])
+    def test_a_unit_deployed_at_a_zone_appears_in_the_same_place_in_both_players_views(self, zone):
+        views = []
+        for player in (0, 1):
+            board = new_board()
+            board.elixir[player] = 10.0
+            set_hand(board, player, ["Knight"])
+            assert board.play_card(player, "Knight", ZONE_NAMES.index(zone))
+            unit = board.get_observation(player)[OBS_UNIT_BASE : OBS_UNIT_BASE + 5]
+            views.append(unit)
+        np.testing.assert_allclose(views[0], views[1])
 
 
 class TestKingTower:

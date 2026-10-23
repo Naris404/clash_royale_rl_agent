@@ -217,7 +217,7 @@ class TestWebSocket:
             assert hello["config"]["arena_width"] == 18.0
             zones = hello["config"]["deploy_zones"]["0"]
             assert len(zones) == 11
-            assert zones[6] == {"name": "pull-L", "x": 5.5, "y": 9.5, "card_types": ["air", "building", "ground"]}
+            assert zones[6] == {"name": "pull-L", "x": 8.0, "y": 11.0, "card_types": ["air", "building", "ground"]}
             assert zones[10]["card_types"] == ["spell"]
 
             snapshot = ws.receive_json()

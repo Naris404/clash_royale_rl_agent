@@ -14,8 +14,8 @@ from cr_rl.game.board import DEPLOY_ZONES, RIVER_Y, Board
 # Keyed by DeployZone.name so the labels cannot drift from the zone layout.
 ZONE_NAMES = {
     "pl": {
-        "back-L": "tył, lewa aleja",
-        "back-R": "tył, prawa aleja",
+        "back-L": "za królem, lewa strona",
+        "back-R": "za królem, prawa strona",
         "mid-L": "środek, lewa aleja",
         "mid-R": "środek, prawa aleja",
         "bridge-L": "lewy most",
@@ -27,8 +27,8 @@ ZONE_NAMES = {
         "spell-king": "król wroga",
     },
     "en": {
-        "back-L": "back, left lane",
-        "back-R": "back, right lane",
+        "back-L": "behind the king, left",
+        "back-R": "behind the king, right",
         "mid-L": "mid, left lane",
         "mid-R": "mid, right lane",
         "bridge-L": "left bridge",
