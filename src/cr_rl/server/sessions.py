@@ -259,6 +259,7 @@ class GameSession:
                         hint=suggestion.hint,
                         top=suggestion.top,
                         source=suggestion.source,
+                        aim=suggestion.aim,
                     )
                 )
                 moment = self._key_moments.update(self.board.time, suggestion.value)

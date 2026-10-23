@@ -25,6 +25,8 @@ ZONE_NAMES = {
         "spell-tower-L": "lewa wieża wroga",
         "spell-tower-R": "prawa wieża wroga",
         "spell-king": "król wroga",
+        "spell-push-L": "wrogi push, lewa aleja",
+        "spell-push-R": "wrogi push, prawa aleja",
     },
     "en": {
         "back-L": "behind the king, left",
@@ -38,6 +40,8 @@ ZONE_NAMES = {
         "spell-tower-L": "enemy left tower",
         "spell-tower-R": "enemy right tower",
         "spell-king": "enemy king",
+        "spell-push-L": "the enemy push, left lane",
+        "spell-push-R": "the enemy push, right lane",
     },
 }
 

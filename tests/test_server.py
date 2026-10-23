@@ -216,7 +216,7 @@ class TestWebSocket:
             assert hello["coach_enabled"] is True
             assert hello["config"]["arena_width"] == 18.0
             zones = hello["config"]["deploy_zones"]["0"]
-            assert len(zones) == 11
+            assert len(zones) == 13
             assert zones[6] == {"name": "pull-L", "x": 8.0, "y": 11.0, "card_types": ["air", "building", "ground"]}
             assert zones[10]["card_types"] == ["spell"]
 

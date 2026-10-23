@@ -35,7 +35,7 @@ def test_segment_offsets_and_sizes():
     assert (OBS_HAND_BASE, OBS_NEXT_BASE, OBS_UNIT_BASE) == (9, 41, 49)
     assert (HAND_SIZE, MAX_UNITS_OBS, OBS_DIM) == (4, 24, 169)
     assert OBS_UNIT_BASE + MAX_UNITS_OBS * UNIT_FEATURES == OBS_DIM
-    assert (NUM_ZONES, NUM_ACTIONS) == (11, 45)
+    assert (NUM_ZONES, NUM_ACTIONS) == (13, 53)
 
 
 def test_card_ids_follow_deck_order():

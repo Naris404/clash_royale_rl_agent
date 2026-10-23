@@ -141,6 +141,7 @@ class HintMsg(BaseModel):
     hint: str
     top: list[dict] = Field(default_factory=list)
     source: str
+    aim: Optional[tuple[float, float]] = None  # where the suggested move lands (moves with a push zone)
 
 
 class FeedbackMsg(BaseModel):

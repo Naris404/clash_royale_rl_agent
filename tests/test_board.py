@@ -126,9 +126,9 @@ class TestPlayLegality:
         assert board.action_to_card_zone(0, 0) == (None, None)
         assert board.action_to_card_zone(1, 0) == ("Knight", 0)
         assert board.action_to_card_zone(2, 0) == ("Knight", 1)
-        assert board.action_to_card_zone(12, 0) == ("Giant", 0)
-        assert board.action_to_card_zone(44, 0) == ("Musketeer", 10)
-        assert board.action_to_card_zone(45, 0) == (None, None)  # out of range
+        assert board.action_to_card_zone(14, 0) == ("Giant", 0)
+        assert board.action_to_card_zone(52, 0) == ("Musketeer", 12)
+        assert board.action_to_card_zone(53, 0) == (None, None)  # out of range
 
 
 BACK_ZONES_P0 = {
@@ -148,18 +148,21 @@ SPELL_ZONES_P0 = {
     "spell-tower-L": (3.5, 24.0),
     "spell-tower-R": (14.5, 24.0),
     "spell-king": (9.0, 29.0),
+    # Push zones aim at the enemy cluster (tests/test_push_zones.py); these are only their nominal spots.
+    "spell-push-L": (3.5, 24.0),
+    "spell-push-R": (14.5, 24.0),
 }
 
 
 class TestDeployZones:
-    def test_eleven_zones_per_side_with_pinned_coordinates(self):
-        assert NUM_ZONES == 11
+    def test_thirteen_zones_per_side_with_pinned_coordinates(self):
+        assert NUM_ZONES == 13
         assert ZONE_NAMES == [
             "back-L", "back-R", "mid-L", "mid-R", "bridge-L", "bridge-R",
-            "pull-L", "pull-R", "spell-tower-L", "spell-tower-R", "spell-king",
+            "pull-L", "pull-R", "spell-tower-L", "spell-tower-R", "spell-king", "spell-push-L", "spell-push-R",
         ]  # indices are part of the action layout
         zones = {z.name: z for z in DEPLOY_ZONES[0]}
-        assert len(DEPLOY_ZONES[0]) == len(DEPLOY_ZONES[1]) == 11
+        assert len(DEPLOY_ZONES[0]) == len(DEPLOY_ZONES[1]) == 13
         for name, (x, y) in {**TROOP_ZONES_P0, **SPELL_ZONES_P0}.items():
             assert (zones[name].x, zones[name].y) == (x, y)
 
@@ -192,7 +195,7 @@ class TestDeployZones:
             assert board.can_play_card_at(player, card, x, bank - direction * 0.1)
 
     def test_num_actions_is_noop_plus_slots_times_zones(self):
-        assert NUM_ACTIONS == 45 == 1 + HAND_SIZE * NUM_ZONES
+        assert NUM_ACTIONS == 53 == 1 + HAND_SIZE * NUM_ZONES
 
     @pytest.mark.parametrize("player", [0, 1])
     def test_back_zones_refuse_buildings_but_take_troops(self, player):
@@ -576,7 +579,7 @@ class TestObservations:
     def test_observation_size_is_pinned(self):
         # 3 global + 6 tower HP + 4 hand slots x 8 cards + 8 next card + 24 units x 5
         assert OBS_DIM == 3 + 6 + 4 * 8 + 8 + 24 * 5 == 169
-        assert NUM_ACTIONS == 45
+        assert NUM_ACTIONS == 53
 
     def test_observation_tower_hp_hand_and_next_card_onehot(self):
         board = new_board()
@@ -599,17 +602,18 @@ class TestObservations:
         assert mask.shape == (NUM_ACTIONS,)
         assert mask.dtype == np.bool_
         assert mask[0]
-        assert mask[1:9].all() and not mask[9:12].any()  # Knight: 8 troop zones, 3 spell zones off
-        assert not mask[12:23].any()  # Giant (5) — too expensive
-        assert not mask[23:25].any() and mask[25:31].all() and not mask[31:34].any()  # Cannon (3): no back zones
-        assert not mask[34:45].any()  # Musketeer (4) — too expensive
+        assert mask[1:9].all() and not mask[9:14].any()  # Knight: 8 troop zones, 5 spell zones off
+        assert not mask[14:27].any()  # Giant (5) — too expensive
+        assert not mask[27:29].any() and mask[29:35].all() and not mask[35:40].any()  # Cannon (3): no back zones
+        assert not mask[40:53].any()  # Musketeer (4) — too expensive
 
     def test_action_mask_spell_only_on_spell_zones(self):
         board = new_board()
         set_hand(board, 0, ["Fireball", "Giant", "Cannon", "Musketeer"])
         board.elixir[0] = 4.0
         mask = board.valid_action_mask(0)
-        assert not mask[1:9].any() and mask[9:12].all()  # Fireball only on the 3 spell zones
+        # Fireball only on the 3 fixed spell zones; the push zones stay masked while no enemy stands in a lane
+        assert not mask[1:9].any() and mask[9:12].all() and not mask[12:14].any()
         assert mask.sum() == 1 + 3 + 0 + 6 + 8  # noop + Fireball + Giant + Cannon (no back zones) + Musketeer
 
 
