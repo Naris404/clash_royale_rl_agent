@@ -562,7 +562,8 @@ export class ArenaScene {
       this.hintRing.visible = false;
       return;
     }
-    const [sx, sy] = this.toScreen(zone.x, zone.y, l);
+    const [aimX, aimY] = hint.aim ?? [zone.x, zone.y];
+    const [sx, sy] = this.toScreen(aimX, aimY, l);
     const pulse = 1 + 0.15 * Math.sin(now / 220);
     this.hintRing.clear();
     this.hintRing.circle(sx, sy, 1.1 * l.tile * pulse).stroke({ color: 0xfacc15, width: 3, alpha: 0.9 });

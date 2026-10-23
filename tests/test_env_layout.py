@@ -10,7 +10,7 @@ from scenario import new_board, set_hand
 
 
 def test_action_layout():
-    assert (NUM_ZONES, NUM_ACTIONS) == (11, 45)
+    assert (NUM_ZONES, NUM_ACTIONS) == (13, 53)
 
 
 def test_card_ids_follow_deck_order():

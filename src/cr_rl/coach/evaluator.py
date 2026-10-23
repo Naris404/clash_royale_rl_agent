@@ -13,7 +13,7 @@ from typing import Optional
 
 import numpy as np
 
-from cr_rl.game.board import DEPLOY_ZONES, NUM_ZONES, Board
+from cr_rl.game.board import NUM_ZONES, Board
 from cr_rl.game.cards import cards_dic
 from cr_rl.coach.explainer import build_reason, format_hint
 from cr_rl.coach.inference import PolicyEstimate, PolicyInspector
@@ -43,12 +43,16 @@ INACCURACY_DELTA_V = -0.005
 KEY_MOMENT_DELTA_V = 0.01
 
 
-def nearest_zone(player: int, card: str, x: float, y: float) -> int:
-    """Maps any drop position to the nearest discrete RL action zone."""
-    zones = DEPLOY_ZONES[player]
-    card_type = cards_dic.get(card, {}).get("type")
-    allowed = [i for i, zone in enumerate(zones) if zone.allows(card_type)]
-    return min(allowed, key=lambda i: (zones[i].x - x) ** 2 + (zones[i].y - y) ** 2)
+def nearest_zone(board: Board, player: int, card: str, x: float, y: float) -> int:
+    """Maps any drop position to the nearest discrete RL action zone that is legal for the card.
+
+    A push zone is measured to its current aim point, so it competes only while it is legal.
+    """
+    aims = {i: board.zone_aim(player, card, i) for i in range(NUM_ZONES)}
+    return min(
+        (i for i, aim in aims.items() if aim is not None),
+        key=lambda i: (aims[i][0] - x) ** 2 + (aims[i][1] - y) ** 2,
+    )
 
 
 def encode_action(board: Board, player: int, card: str, zone_idx: int) -> Optional[int]:
@@ -73,6 +77,12 @@ def decode_action(board: Board, player: int, action: int) -> tuple[Optional[str]
     return hand[slot], slot, zone_idx
 
 
+def _aim(board: Board, player: int, card: Optional[str], zone_idx: Optional[int]) -> Optional[tuple[float, float]]:
+    if card is None or zone_idx is None:
+        return None
+    return board.zone_aim(player, card, zone_idx)
+
+
 @dataclass
 class Suggestion:
     card: Optional[str]
@@ -84,6 +94,7 @@ class Suggestion:
     hint: str
     top: list[dict] = field(default_factory=list)
     source: str = "rl"  # "rl" | "heuristic"
+    aim: Optional[tuple[float, float]] = None  # where the move lands now (a push zone's target moves)
 
 
 @dataclass
@@ -187,6 +198,7 @@ class CoachEngine:
             hint=format_hint(card, zone_idx, prob, lang=self.lang),
             top=top,
             source="rl",
+            aim=_aim(board, player, card, zone_idx),
         )
 
     def _suggestion_from_heuristic(self, board: Board, player: int) -> Suggestion:
@@ -201,7 +213,7 @@ class CoachEngine:
                 source="heuristic",
             )
         card, x, y = play
-        zone_idx = nearest_zone(player, card, x, y)
+        zone_idx = nearest_zone(board, player, card, x, y)
         hand = board.get_hand(player)
         slot = hand.index(card) if card in hand else None
         return Suggestion(
@@ -213,13 +225,14 @@ class CoachEngine:
             reason=self._fallback.last_decision or build_reason(board, player, card, lang=self.lang),
             hint=format_hint(card, zone_idx, None, lang=self.lang),
             source="heuristic",
+            aim=_aim(board, player, card, zone_idx),
         )
 
     # --- play grading ---
 
     def grade_move(self, board: Board, card: str, x: float, y: float, player: int = 0) -> MoveGrade:
         """Grades a player's play; MUST be called BEFORE the move is applied to the board."""
-        zone_idx = nearest_zone(player, card, x, y)
+        zone_idx = nearest_zone(board, player, card, x, y)
 
         if not self.inspector.available:
             return self._grade_with_heuristic(board, card, zone_idx, player)
@@ -260,7 +273,7 @@ class CoachEngine:
             best_card, best_zone = None, None
         else:
             best_card = play[0]
-            best_zone = nearest_zone(player, play[0], play[1], play[2])
+            best_zone = nearest_zone(board, player, play[0], play[1], play[2])
             if card == best_card and zone_idx == best_zone:
                 grade = GRADE_BEST
             elif card == best_card:

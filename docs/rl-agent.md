@@ -13,7 +13,7 @@ mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 
 | | |
 |---|---|
-| Documented layout | 278-dim observation (version 2), 45 actions (11 deploy zones) |
+| Documented layout | 278-dim observation (version 2), 53 actions (13 deploy zones) |
 | Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested and signed off ([checklist](playtest-env-v1.md#env-v11-sign-off)); frozen, tagged `env-v1.1` |
 | Trained model for this layout | none yet; the **v2 model** is trained only on env-v1.1, after its sign-off (ADR-0005) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
@@ -41,7 +41,7 @@ Code: `src/cr_rl/game/board.py` (observation, actions, mask), `src/cr_rl/game/re
 ## Environment interface
 
 `ClashRoyaleEnv` wraps `Board` as a Gymnasium environment with
-`observation_space = Box(-1, 1, (278,), float32)` and `action_space = Discrete(45)`,
+`observation_space = Box(-1, 1, (278,), float32)` and `action_space = Discrete(53)`,
 and exposes `action_masks()` for MaskablePPO.
 
 One `step(action)` registers the action with the decision schedule and then simulates
@@ -149,16 +149,16 @@ unit deployed at a zone appears in the same lane and depth of its owner's view
 
 ## Actions
 
-`NUM_ACTIONS = 45 = 1 + 4 hand slots × 11 deploy zones`.
+`NUM_ACTIONS = 53 = 1 + 4 hand slots × 13 deploy zones`.
 
 | Action | Meaning |
 |---|---|
 | 0 | noop (always legal) |
-| 1–44 | play the card in hand slot `s` at zone `z`, where `s, z = divmod(action − 1, 11)` |
+| 1–52 | play the card in hand slot `s` at zone `z`, where `s, z = divmod(action − 1, 13)` |
 
-So actions 1–11 are slot 0 at zones 0–10, actions 12–22 are slot 1, and so on. For
-the agent each **deploy zone** is a single fixed placement point (ADR-0002); humans
-in the web client place at continuous coordinates. Player 0 coordinates; for player 1
+So actions 1–13 are slot 0 at zones 0–12, actions 14–26 are slot 1, and so on. For
+the agent each **deploy zone** is a placement point (ADR-0002), fixed except for the two
+push zones; humans in the web client place at continuous coordinates. Player 0 coordinates; for player 1
 the y coordinate is mirrored (`y → 32 − y`):
 
 | Zone | Name | (x, y) | Accepts | Purpose |
@@ -174,6 +174,18 @@ the y coordinate is mirrored (`y → 32 − y`):
 | 8 | spell-tower-L | (3.5, 24.0) | spells | **spell zone** on the left enemy princess tower |
 | 9 | spell-tower-R | (14.5, 24.0) | spells | right enemy princess tower |
 | 10 | spell-king | (9.0, 29.0) | spells | enemy king tower |
+| 11 | spell-push-L | state-dependent | spells | **push zone**: the best enemy cluster in the left lane, wherever it stands |
+| 12 | spell-push-R | state-dependent | spells | the same in the right lane |
+
+The push zones are the only zones whose target moves and whose legality depends on the
+board (`tests/test_push_zones.py`). On the tick of the play a push zone aims at the
+position of an enemy unit or building in its lane (lane by x against the centre line
+x = 9, the same lane for both players) that scores highest. A candidate's score is
+Σ min(spell damage, current HP) over every enemy unit and building inside the spell's
+radius, plus min(Crown tower damage, HP) for each enemy princess tower inside it. Ties
+go to the unit placed earliest, and the aim is clamped into the spell area. A push zone
+is legal only while its lane holds at least one enemy unit or building: towers alone do
+not unmask it, so finishing a tower stays on zones 8–10. Push zones accept spells only.
 
 ### Arena geometry (env-v1.1)
 
@@ -189,18 +201,17 @@ Pinned by `tests/test_arena_geometry.py` (ADR-0005):
 - Pocket (ADR-0006, `tests/test_pocket_zone.py`): once an enemy princess tower is down, its
   destroyer may also deploy troops and buildings on the enemy side of that lane, 4 tiles
   deep from the bank and 9 wide. The server sends the rectangles in each snapshot
-  (`pockets`). **Humans only**: the action mask and the 11 zones are unchanged, so agents
+  (`pockets`). **Humans only**: the action mask and the 13 zones are unchanged, so agents
   never play there.
 - Bridge lanes are at x = 3.5 and 14.5, in line with the princess towers, so the arena is
   mirror-symmetric about x = 9. A troop behind its king walks to the lane on its side of
   the centre line.
 
-The zones are the ADR-0002 layout on these geometry constants: indices 0–10 are pinned
+The zones are the ADR-0002 layout on these geometry constants: indices 0–12 are pinned
 by `tests/test_board.py` (`TestDeployZones`). "Troops" are ground and air units; the back
 zones refuse buildings because a Cannon behind the king would be wasted. No zone starts
 a unit inside a tower, a Giant in a back zone included
-(`tests/test_arena_geometry.py`). Spell-king follows the enemy king tower. The push
-Spell zones 11 and 12 of ADR-0002 are not in the layout yet.
+(`tests/test_arena_geometry.py`). Spell-king follows the enemy king tower.
 
 The pull-zone placement is derived in ADR-0002: a Cannon at pull-L is closer to an
 enemy Hog Rider leaving the left bridge than the princess tower is, and the pull zones
@@ -218,11 +229,12 @@ only forms once it is in range. The King tower activation rules are unchanged.
 
 ### Action masking
 
-`Board.valid_action_mask(player)` returns a 45-element boolean mask. Noop is always
+`Board.valid_action_mask(player)` returns a 53-element boolean mask. Noop is always
 legal; play `(s, z)` is legal when the player can afford the card in slot `s` and
 zone `z` accepts that card type (troops: zones 0–7, buildings: zones 2–7, spells: zones
-8–10). With the Deck a troop (Baby Dragon included) has 8 legal zones, the Cannon 6 and
-each of Fireball and Arrows 3, so at most 33 of the 45 actions are legal at once.
+8–12) and, for a push zone, its lane holds an enemy unit or building. With the Deck a
+troop (Baby Dragon included) has 8 legal zones, the Cannon 6 and each of Fireball and
+Arrows 3, or 5 with enemies in both lanes, so at most 33 of the 53 actions are legal at once.
 
 The mask is applied during training (the env is wrapped in `ActionMasker`), during
 evaluation and in-game inference (`model.predict(..., action_masks=mask)`).
@@ -278,12 +290,12 @@ flowchart LR
     obs["Observation<br/>278"] --> p1["Linear 278→256<br/>Tanh"]
     obs --> v1["Linear 278→256<br/>Tanh"]
     subgraph policy["Policy network (actor)"]
-        p1 --> p2["Linear 256→256<br/>Tanh"] --> logits["Linear 256→45<br/>action logits"]
+        p1 --> p2["Linear 256→256<br/>Tanh"] --> logits["Linear 256→53<br/>action logits"]
     end
     subgraph value["Value network (critic)"]
         v1 --> v2["Linear 256→256<br/>Tanh"] --> val["Linear 256→1<br/>V(s)"]
     end
-    mask["Action mask<br/>45"] --> dist
+    mask["Action mask<br/>53"] --> dist
     logits --> dist["Masked categorical<br/>π(a | s)"]
 ```
 
@@ -291,9 +303,9 @@ flowchart LR
 |---|---|
 | Policy MLP (278→256→256) | 137,216 |
 | Value MLP (278→256→256) | 137,216 |
-| Action head (256→45) | 11,565 |
+| Action head (256→53) | 13,621 |
 | Value head (256→1) | 257 |
-| **Total** | **286,254** |
+| **Total** | **288,310** |
 
 A flat MLP fits the problem size: the observation is small and fixed-length, and the
 network is small enough to train on a laptop CPU (ADR-0002 keeps it for v2).
@@ -459,4 +471,5 @@ Facts about the current code that the v2 work should address:
 | 2026-10-21 | Pocket deploy zone (#50, ADR-0006): a fallen enemy princess tower opens a 4 × 9 pocket for its destroyer, humans only; the snapshot carries `pockets`. Action mask, zones and observation are unchanged. |
 | 2026-10-23 | Zone layout v2 and the P1 lane fix (#38, ADR-0002): zones 0–10 keep their indices on the new coordinates (back zones behind the king, troops only; mid at the princess towers; centred pull zones). The player 1 observation mirrors only y (x unchanged), fixing the lane mismatch. 45 actions and 169 dims unchanged, but a model trained on the old zones or the 180° view is not valid. |
 | 2026-10-23 | Outcome reward with potential shaping (#41, ADR-0002): win/loss/draw plus Crown and tower-HP shaping per decision step, all weights configurable; the tower-HP-only per-tick reward is removed and `StepResult` no longer carries a reward. Observation and action layout unchanged. |
+| 2026-10-23 | Push Spell zones (#39, ADR-0002): zones 11 and 12 (spell-push-L / -R) aim a spell at the best enemy cluster in a lane and are legal only while that lane holds an enemy unit or building. `NUM_ZONES` 11 → 13, `NUM_ACTIONS` 45 → 53, `divmod(action − 1, 13)`; the observation is unchanged. A model trained on the 45-action layout is not valid. |
 | 2026-10-23 | Observation v2 (#40, ADR-0002): `OBS_DIM` 169 → 278. The 24 distance-sorted unit slots are replaced by a permutation-invariant grid (2 owners × 2 lanes × 8 depth bins × 6 unit cards, summed HP / max HP capped at 1); an elixir-advantage feature and the opponent's last 4 plays (from the Board's per-player play history) are added. Actions are unchanged. v1 and 169-dim checkpoints are ignored at load. |

@@ -188,6 +188,8 @@ export function zoneLabel(zone: number | null | undefined, lang: Lang): string {
     "lewa wieża wroga",
     "prawa wieża wroga",
     "król wroga",
+    "wrogi push, lewa aleja",
+    "wrogi push, prawa aleja",
   ];
   const en = [
     "behind the king, left",
@@ -201,6 +203,8 @@ export function zoneLabel(zone: number | null | undefined, lang: Lang): string {
     "enemy left tower",
     "enemy right tower",
     "enemy king",
+    "the enemy push, left lane",
+    "the enemy push, right lane",
   ];
   if (zone == null || zone < 0 || zone >= en.length) return "";
   return lang === "pl" ? pl[zone] : en[zone];

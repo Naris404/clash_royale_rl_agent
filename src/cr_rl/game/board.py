@@ -48,7 +48,7 @@ BACK_EDGE_MARGIN = 0.5
 DEPLOY_X_MARGIN = 1.0  # units and spells stay this far from the side walls
 
 # Pocket after an enemy princess tower falls (measured in the real game): 4 tiles deep from the
-# enemy bank, as wide as one lane half. Humans only: agents keep the 11 deploy zones (ADR-0006).
+# enemy bank, as wide as one lane half. Humans only: agents keep the 13 deploy zones (ADR-0006).
 POCKET_DEPTH = 4.0
 POCKET_WIDTH = ARENA_WIDTH / 2
 
@@ -80,6 +80,9 @@ class DeployZone:
     x: float
     y: float
     card_types: frozenset[str]
+    # Push zones only: the lane (0 = left, 1 = right) whose best enemy cluster the spell aims at.
+    # Their x, y are nominal (the lane's enemy tower); the real aim depends on the board.
+    push_lane: Optional[int] = None
 
     def allows(self, card_type: str) -> bool:
         return card_type in self.card_types
@@ -100,6 +103,8 @@ _P0_ZONES = (
     DeployZone("spell-tower-L", 3.5, 24.0, SPELL_CARD_TYPES),
     DeployZone("spell-tower-R", 14.5, 24.0, SPELL_CARD_TYPES),
     DeployZone("spell-king", 9.0, 29.0, SPELL_CARD_TYPES),
+    DeployZone("spell-push-L", 3.5, 24.0, SPELL_CARD_TYPES, push_lane=0),
+    DeployZone("spell-push-R", 14.5, 24.0, SPELL_CARD_TYPES, push_lane=1),
 )
 DEPLOY_ZONES: dict[int, tuple[DeployZone, ...]] = {
     0: _P0_ZONES,
@@ -109,7 +114,7 @@ NUM_ZONES = len(_P0_ZONES)
 
 HAND_SIZE = 4
 DECK_SIZE = len(DECK)
-NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (44 plays)
+NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (52 plays)
 
 # Observation layout v2 (ADR-0002). Every segment offset is pinned by tests/test_observation.py.
 UNIT_CARDS = tuple(c for c in DECK if cards_dic[c]["type"] != "spell")  # spells have no grid cells
@@ -181,9 +186,9 @@ class Board:
     """
     Simplified Clash Royale environment for RL.
 
-    Akcja (int 0..44):
+    Action (int 0..52):
       0 — do nothing
-      1..44 — play a card (hand slot 0..3 × zone 0..10); 4 cards in hand, cycling the 8-card Deck
+      1..52 — play a card (hand slot 0..3 × zone 0..12); 4 cards in hand, cycling the 8-card Deck
 
     Player 0 learns; player 1 is a random bot by default (a second model can be plugged in).
     """
@@ -399,18 +404,61 @@ class Board:
             return None, None
         return hand[slot], zone_idx
 
+    def _lane_enemies(self, player: int, lane: int) -> list[Troop]:
+        """Enemy units and buildings in a lane (0 = left, 1 = right) by x, in placement order."""
+        return [
+            t for t in self.troops
+            if t.alive and t.owner != player and int(t.x >= ARENA_WIDTH / 2) == lane
+        ]
+
     def zone_allows(self, player: int, card_name: str, zone_idx: int) -> bool:
-        """Whether a card of this type can be played in the zone (ignoring elixir and hand)."""
+        """Whether the card can be played in the zone now (ignoring elixir and hand).
+
+        The card type must fit, and a push zone needs an enemy unit or building in its lane.
+        """
         if not 0 <= zone_idx < NUM_ZONES:
             return False
-        card_type = cards_dic.get(card_name, {}).get("type")
-        return DEPLOY_ZONES[player][zone_idx].allows(card_type)
+        zone = DEPLOY_ZONES[player][zone_idx]
+        if not zone.allows(cards_dic.get(card_name, {}).get("type")):
+            return False
+        return zone.push_lane is None or bool(self._lane_enemies(player, zone.push_lane))
+
+    def zone_aim(self, player: int, card_name: str, zone_idx: int) -> Optional[tuple[float, float]]:
+        """Where playing the card in the zone lands now; None when the zone is not legal for it."""
+        if not self.zone_allows(player, card_name, zone_idx):
+            return None
+        zone = DEPLOY_ZONES[player][zone_idx]
+        if zone.push_lane is None:
+            return zone.x, zone.y
+        return self._push_aim(player, card_name, zone.push_lane)
+
+    def _push_aim(self, player: int, spell_name: str, lane: int) -> tuple[float, float]:
+        """The enemy position in the lane where the spell does the most damage.
+
+        Ties go to the earliest-placed unit. The aim is kept inside the spell area, so a
+        unit hugging a wall still gets hit.
+        """
+        stats = cards_dic[spell_name]
+        radius = float(stats["radius"])
+        damage = float(stats["damage"])
+        tower_damage = float(stats.get("tower_damage", damage))
+        victims = [(t, damage) for t in self.troops if t.alive and t.owner != player]
+        victims += [(t, tower_damage) for t in self.towers if t.alive and t.owner != player and t.name == "Tower"]
+
+        best_aim, best_score = (0.0, 0.0), -1.0
+        for candidate in self._lane_enemies(player, lane):
+            aim = (
+                min(max(candidate.x, DEPLOY_X_MARGIN), ARENA_WIDTH - DEPLOY_X_MARGIN),
+                min(max(candidate.y, BACK_EDGE_MARGIN), ARENA_LENGTH - BACK_EDGE_MARGIN),
+            )
+            score = sum(min(dmg, t.hp) for t, dmg in victims if t.distance_to_xy(*aim) <= radius)
+            if score > best_score:
+                best_aim, best_score = aim, score
+        return best_aim
 
     def play_card(self, player: int, card_name: str, zone_idx: int) -> bool:
-        if not self.zone_allows(player, card_name, zone_idx):
-            return False
-        zone = DEPLOY_ZONES[player][zone_idx]
-        return self.play_card_at(player, card_name, zone.x, zone.y)
+        aim = self.zone_aim(player, card_name, zone_idx)
+        return aim is not None and self.play_card_at(player, card_name, *aim)
 
     def step(
         self,

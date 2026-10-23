@@ -22,7 +22,7 @@ import numpy as np
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.coach.evaluator import CoachEngine, decode_action
 from cr_rl.coach.inference import PolicyInspector
-from cr_rl.game.board import DEPLOY_ZONES, MAX_TOWER_HP_PER_PLAYER, Board
+from cr_rl.game.board import MAX_TOWER_HP_PER_PLAYER, Board
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
 
 RUN_DIR = EXPERIMENT_RUNS_DIR / "coach_accuracy"
@@ -181,8 +181,8 @@ def evaluate_state(coach: CoachEngine, sampled: dict, rollout_steps: int) -> dic
         card, _slot, zone = decode_action(board, 0, action)
         if card is None or zone is None:
             continue
-        target = DEPLOY_ZONES[0][zone]
-        grade = coach.grade_move(board, card, target.x, target.y, player=0)
+        x, y = board.zone_aim(0, card, zone)
+        grade = coach.grade_move(board, card, x, y, player=0)
         action_rows.append(
             {
                 "action": action,

@@ -48,32 +48,32 @@ def untrained_model_path(tmp_path_factory):
 
 class TestActionMapping:
     def test_nearest_zone_for_troops_by_distance(self):
-        assert _zone_name(nearest_zone(0, "Knight", 7.0, 1.0)) == "back-L"  # behind the king
-        assert _zone_name(nearest_zone(0, "Knight", 11.0, 0.6)) == "back-R"
-        assert _zone_name(nearest_zone(0, "Knight", 14.5, 9.0)) == "mid-R"
-        assert _zone_name(nearest_zone(0, "Knight", 3.0, 13.0)) == "bridge-L"
-        assert _zone_name(nearest_zone(0, "Cannon", 7.5, 10.0)) == "pull-L"
-        assert _zone_name(nearest_zone(0, "Cannon", 10.5, 10.0)) == "pull-R"
+        assert _zone_name(nearest_zone(new_board(), 0, "Knight", 7.0, 1.0)) == "back-L"  # behind the king
+        assert _zone_name(nearest_zone(new_board(), 0, "Knight", 11.0, 0.6)) == "back-R"
+        assert _zone_name(nearest_zone(new_board(), 0, "Knight", 14.5, 9.0)) == "mid-R"
+        assert _zone_name(nearest_zone(new_board(), 0, "Knight", 3.0, 13.0)) == "bridge-L"
+        assert _zone_name(nearest_zone(new_board(), 0, "Cannon", 7.5, 10.0)) == "pull-L"
+        assert _zone_name(nearest_zone(new_board(), 0, "Cannon", 10.5, 10.0)) == "pull-R"
 
     def test_a_building_behind_the_king_maps_to_the_nearest_zone_that_takes_buildings(self):
-        assert _zone_name(nearest_zone(0, "Cannon", 7.5, 1.0)) == "pull-L"
-        assert _zone_name(nearest_zone(1, "Cannon", 10.5, 31.0)) == "pull-R"
+        assert _zone_name(nearest_zone(new_board(), 0, "Cannon", 7.5, 1.0)) == "pull-L"
+        assert _zone_name(nearest_zone(new_board(), 1, "Cannon", 10.5, 31.0)) == "pull-R"
 
     def test_nearest_zone_for_spell_only_considers_spell_zones(self):
-        assert _zone_name(nearest_zone(0, "Fireball", 3.2, 25.0)) == "spell-tower-L"
-        assert _zone_name(nearest_zone(0, "Fireball", 13.8, 25.0)) == "spell-tower-R"
-        assert _zone_name(nearest_zone(0, "Fireball", 9.0, 28.0)) == "spell-king"
-        assert _zone_name(nearest_zone(0, "Fireball", 3.0, 9.0)) == "spell-tower-L"  # not "mid-L"
+        assert _zone_name(nearest_zone(new_board(), 0, "Fireball", 3.2, 25.0)) == "spell-tower-L"
+        assert _zone_name(nearest_zone(new_board(), 0, "Fireball", 13.8, 25.0)) == "spell-tower-R"
+        assert _zone_name(nearest_zone(new_board(), 0, "Fireball", 9.0, 28.0)) == "spell-king"
+        assert _zone_name(nearest_zone(new_board(), 0, "Fireball", 3.0, 9.0)) == "spell-tower-L"  # not "mid-L"
 
     def test_nearest_zone_for_player1_mirrors(self):
-        assert _zone_name(nearest_zone(1, "Knight", 3.0, 23.0)) == "mid-L"
-        assert _zone_name(nearest_zone(1, "Fireball", 3.5, 8.0)) == "spell-tower-L"
+        assert _zone_name(nearest_zone(new_board(), 1, "Knight", 3.0, 23.0)) == "mid-L"
+        assert _zone_name(nearest_zone(new_board(), 1, "Fireball", 3.5, 8.0)) == "spell-tower-L"
 
     def test_encode_decode_roundtrip(self):
         board = new_board()
         set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])
         action = encode_action(board, 0, "Giant", 7)
-        assert action == 1 + 1 * 11 + 7
+        assert action == 1 + 1 * 13 + 7
         card, slot, zone = decode_action(board, 0, action)
         assert (card, slot, zone) == ("Giant", 1, 7)
 
