@@ -27,7 +27,7 @@ pip install -e ".[test]"
 ## Quick start
 
 ```bash
-# PPO training: RandomAgent phase, then a mix of Training opponents (--no-curriculum skips phase 1)
+# PPO training: warm-up, scripted mix, then self-play (--layout no-curriculum | no-self-play)
 cr-rl-train
 
 # Evaluate a trained model
