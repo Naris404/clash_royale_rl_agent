@@ -66,16 +66,17 @@ class RLAgent:
         *,
         seed: int | None = None,
         model_path: str | Path | None = DEFAULT_MODEL_PATH,
+        model=None,
         deterministic: bool = True,
         play_chance: float = 0.5,
     ):
         self._rng = random.Random(seed)
         self.deterministic = deterministic
         self.play_chance = play_chance
-        self._model = None
+        self._model = model  # an already loaded (e.g. frozen) policy takes precedence over model_path
         self._model_path: Path | None = None
 
-        if model_path is not None:
+        if model is None and model_path is not None:
             path = Path(model_path)
             if path.is_file():
                 self._load_model(path)

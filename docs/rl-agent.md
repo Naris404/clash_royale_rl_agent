@@ -26,8 +26,9 @@ to either needs a new environment version.
 
 - **Algorithm:** MaskablePPO (`sb3-contrib`), PPO with invalid-action masking.
 - **Learner:** player 0 (bottom half of the arena). The opponent plays player 1.
-- **Training opponent:** the rule-based bot (`LogicAgent`); the curriculum
-  experiment starts against the random bot (`RandomAgent`).
+- **Training opponents:** a mix of the rule-based bot (`LogicAgent`), a noisy variant
+  (ε-`LogicAgent`) and the random bot (`RandomAgent`), assigned per parallel env (see
+  [Training setup](#training-setup)); a frozen policy can also be plugged in.
 - **Decision rate:** the agent is asked only at **Decision points** (see
   [Decision points](#decision-points)); the simulation runs at 10 Hz (`TICK_DT = 0.1` s).
 - **Episode:** one match, at most 3001 simulation ticks (180 s regulation + 120 s overtime),
@@ -235,7 +236,7 @@ zone `z` accepts that card type (troops: zones 0–7, buildings: zones 2–7, sp
 troop (Baby Dragon included) has 8 legal zones, the Cannon 6 and each of Fireball and
 Arrows 3, or 5 with enemies in both lanes, so at most 33 of the 53 actions are legal at once.
 
-The mask is applied during training (the env is wrapped in `ActionMasker`), during
+The mask is applied during training (each env serves its own `action_masks()`), during
 evaluation and in-game inference (`model.predict(..., action_masks=mask)`).
 MaskablePPO sets the logits of masked actions to a large negative value before the
 softmax, so they get zero probability, contribute nothing to the policy gradient, and
@@ -319,8 +320,8 @@ was trained with the same values.
 | Parameter | Value | Rationale |
 |---|---|---|
 | `learning_rate` | 3e-4, constant | Standard Adam step size for PPO (SB3 default); the sweep tests 1e-4 and 1e-3. |
-| `n_envs` | 8 | Eight environments with different seeds decorrelate the samples in a rollout. They run sequentially in one process (`DummyVecEnv`), so this buys sample diversity, not speed. |
-| `n_steps` (per env) | `max(2048 // n_envs, 256)` = 256 | A rollout of 2048 transitions (the PPO default size), with a floor of 256 steps (25.6 s of match time) per environment so each segment is longer than the discount horizon. |
+| `n_envs` | 12 | Twelve environments, one process each (`SubprocVecEnv`), use the 14-core CPU and decorrelate the samples in a rollout; the 8 / 2 / 2 opponent mix of phase 2 needs 12. |
+| `n_steps` (per env) | `max(2048 // n_envs, 256)` = 256 | The floor of 256 steps per environment keeps each segment longer than the discount horizon (3072 transitions per rollout with 12 envs). |
 | `batch_size` | 256 | 8 minibatches per epoch over the 2048-transition rollout: enough gradient steps per rollout while each minibatch still spans several environments and game phases. |
 | `n_epochs` | 10 | SB3 default. Simulation steps are the expensive part, so each rollout is reused for 10 passes; the clipped objective keeps that reuse from moving the policy too far. |
 | `gamma` | 0.995 | Applied per decision step. A play pays off only when units reach a tower: a Giant from back-L walks about 15 s (150 ticks, roughly 50 steps while the agent holds noop for 3 ticks) to the enemy princess tower. γ = 0.995 gives an effective horizon of 1/(1−γ) = 200 steps and still weights that payoff by 0.995^50 ≈ 0.78; the 0.99 default would weight it by 0.99^50 ≈ 0.61, and the match outcome even less. |
@@ -331,43 +332,61 @@ was trained with the same values.
 | `max_grad_norm` | 0.5 | SB3 default. Clips the rare large gradients from steps where a tower falls and the reward spikes. |
 | `net_arch` | pi [256, 256], vf [256, 256] | See [Network architecture](#network-architecture); the sweep tests 128 and 512 units. |
 | `total_timesteps` | 1,000,000 | About 555 full-length matches; small enough that several variants fit a laptop budget. |
-| `seed` | 42 | Fixed for reproducibility; environment `i` uses seed `42 + i`. |
+| `seed` | 42 | The run seed; every episode's seed is derived from it (see [Training setup](#training-setup)). |
 
 ## Training setup
 
 `cr-rl-train` (`train()`):
 
-- **Environments:** 8 × `ClashRoyaleEnv(opponent="logic")` wrapped in `ActionMasker`,
-  vectorized with `DummyVecEnv`; seeds `42 … 49`.
+- **Environments:** 12 `ClashRoyaleEnv`s in a `SubprocVecEnv`, one process each. Action
+  masks come from the env's own `action_masks()`; there is no `ActionMasker` wrapper.
+- **Curriculum:** phase 1 (the first 20% of the steps, `--phase1-fraction`) runs every
+  env against `RandomAgent`. Phase 2 assigns the Training opponent by env index: 8
+  `LogicAgent`, 2 ε-`LogicAgent`, 2 `RandomAgent`. `--no-curriculum` skips phase 1, so a
+  run with the same step budget starts in phase 2's mix at step 0 (the curriculum
+  ablation).
 - **Evaluation callback:** `MaskableEvalCallback` every 25,000 steps on a separate
-  environment (seed 10,042): 50 deterministic episodes vs the rule-based bot. The best
+  environment (run seed + 10,000): 50 deterministic episodes vs the rule-based bot. The best
   mean reward is saved to `models/best_model.zip` and copied to
   `models/ppo_cr_best.zip`, the path the game loads by default.
 - **Checkpoints:** every 100,000 steps to `models/checkpoints/`; the final model goes
   to `models/ppo_cr_final.zip`.
 - **Logging:** TensorBoard in `models/tb/`, including `rollout/win_rate_vs_logic`
-  (player 0 win rate over the last 200 decisive matches, draws skipped, logged every
-  5,000 steps).
-- **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--resume`, and
+  (player 0 win rate over the last 200 decisive matches against the whole opponent mix of
+  the current phase, despite the name; draws skipped, logged every 5,000 steps).
+- **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--no-curriculum`,
+  `--phase1-fraction`, `--resume`, and
   `--eval-only MODEL.zip --eval-episodes N`.
 
-**Seeding and determinism.** The board seed only shuffles the starting card order; the
-simulation and the rule-based bot are deterministic. A `ClashRoyaleEnv` built with a
-seed reuses that seed on every reset, so each training environment replays the same
-opening hand every episode. Against the rule-based bot, episodes differ only through
-the stochastic policy; against the random bot (curriculum phase 1), its unreseeded RNG
-adds variation.
-See [Known limitations](#known-limitations).
+**Training opponents.** `ClashRoyaleEnv(opponent=...)` takes `"logic"`, `"logic-eps"`,
+`"random"`, a frozen `MaskablePPO` policy, or any object with `choose_action(board,
+player)` and `reset()`.
+
+- *ε-`LogicAgent`* (`EpsilonLogicAgent`): at each tick it would act, with probability
+  ε = 0.2 it plays a random legal action (noop included) instead of the rule-based
+  choice. It draws from the Board's seeded RNG, so it is reproducible under a fixed
+  seed but differs from `LogicAgent` and across seeds.
+- *Frozen policy* (hook only; there is no snapshot pool): a loaded `MaskablePPO` plays as
+  player 1 through the fixed P1 view (observation mirrored in y only) and its action
+  mask, and, like the Session RL opponent, is asked only at Decision points
+  (`ScheduledAgent`).
+
+**Seeding and determinism.** The simulation is deterministic given the board seed, which
+shuffles both players' starting card order and seeds the Board RNG (ε-`LogicAgent`,
+`RandomAgent`). An env built with a run seed gives every episode its own seed,
+`derive_episode_seed(run_seed, env_index, episode)` (a `numpy.random.SeedSequence` of
+the three), so consecutive episodes see different openings and a whole run is
+reproducible from its run seed. `reset(seed=...)` overrides it, which evaluation uses for
+fixed seeds; `reset()` returns the episode's seed as `info["seed"]`. Phase 2 envs
+continue the env indices of phase 1, so no seed is replayed.
 
 **Experiments** (`src/cr_rl/experiments/`, results under `experiment_runs/`):
 
 - `cr-rl-sweep`: one training run per configuration (`baseline`, `low_lr`,
   `high_lr`, `high_entropy`, `low_entropy`, `gamma_99`, `big_net`, `small_net`), each
   evaluated vs the rule-based bot.
-- `cr-rl-curriculum`: phase 1 against the random bot (default 300k steps), phase 2
-  against the rule-based bot (default 700k steps), same hyperparameters.
 
-No sweep or curriculum results are committed yet.
+No sweep results are committed yet.
 
 ### Evaluation
 
@@ -444,13 +463,6 @@ Facts about the current code that the v2 work should address:
 - **No pocket for agents.** After an enemy princess tower falls, humans can deploy in a
   4 × 9 pocket on that side (ADR-0006); agents and the rule-based bot cannot, because the
   action layout has no zone there.
-- **Fixed seed per environment.** Each training environment replays one opening
-  hand, so the agent trains on only 8 distinct openings.
-- **Degenerate evaluation callback.** The evaluation environment also reuses its seed,
-  and both the policy (deterministic) and the rule-based bot are deterministic, so all
-  50 episodes of every evaluation are identical (verified in
-  `models/eval/evaluations.npz`: 80 of 80 evaluations). Model selection by
-  `ppo_cr_best.zip` is therefore unreliable.
 - **Partial observation.** No unit cooldown or deploy state, and opponent elixir is
   visible. The opponent's hand is unknown until its 4th play (then it follows from the
   last 4 plays).
@@ -472,3 +484,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Outcome reward with potential shaping (#41, ADR-0002): win/loss/draw plus Crown and tower-HP shaping per decision step, all weights configurable; the tower-HP-only per-tick reward is removed and `StepResult` no longer carries a reward. Observation and action layout unchanged. |
 | 2026-10-23 | Push Spell zones (#39, ADR-0002): zones 11 and 12 (spell-push-L / -R) aim a spell at the best enemy cluster in a lane and are legal only while that lane holds an enemy unit or building. `NUM_ZONES` 11 → 13, `NUM_ACTIONS` 45 → 53, `divmod(action − 1, 13)`; the observation is unchanged. A model trained on the 45-action layout is not valid. |
 | 2026-10-23 | Observation v2 (#40, ADR-0002): `OBS_DIM` 169 → 278. The 24 distance-sorted unit slots are replaced by a permutation-invariant grid (2 owners × 2 lanes × 8 depth bins × 6 unit cards, summed HP / max HP capped at 1); an elixir-advantage feature and the opponent's last 4 plays (from the Board's per-player play history) are added. Actions are unchanged. v1 and 169-dim checkpoints are ignored at load. |
+| 2026-10-23 | Training opponents, curriculum and seeds (#42, ADR-0002): `"logic-eps"` (ε-`LogicAgent`, ε = 0.2) and frozen-policy opponents; `cr-rl-train` runs 12 `SubprocVecEnv` envs with env-side masks, phase 1 vs `RandomAgent` then phase 2 with 8 / 2 / 2 `LogicAgent` / ε-`LogicAgent` / `RandomAgent` (`--no-curriculum` starts in phase 2); every episode gets a seed derived from the run seed, env index and episode counter, which removes the fixed-seed limitation. The separate `cr-rl-curriculum` experiment is removed. Observation and action layout unchanged. |

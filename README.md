@@ -27,7 +27,7 @@ pip install -e ".[test]"
 ## Quick start
 
 ```bash
-# PPO training vs LogicAgent (~1M steps, a few to a dozen minutes on CPU)
+# PPO training: RandomAgent phase, then a mix of Training opponents (--no-curriculum skips phase 1)
 cr-rl-train
 
 # Evaluate a trained model
@@ -49,7 +49,7 @@ clash_royale_rl_agent/
 │   ├── training/      # training and evaluation
 │   ├── coach/         # move suggestions and grading
 │   ├── server/        # FastAPI and WebSocket sessions
-│   ├── experiments/   # sweep, curriculum
+│   ├── experiments/   # sweep
 │   ├── stats/         # reports and plots
 ├── web/               # React + PixiJS
 ├── tests/             # pytest tests
@@ -93,7 +93,7 @@ from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.agents.rl import RLAgent
 
 # Training
-# cr-rl-train --timesteps 1000000 --n-envs 8
+# cr-rl-train --timesteps 1000000 --n-envs 12
 
 # Playing with a model
 agent = RLAgent(model_path="models/ppo_cr_best.zip")
@@ -157,9 +157,6 @@ compared with `cr-rl-stats`.
 ```bash
 # sweep: learning rate, entropy, gamma and network architecture
 cr-rl-sweep --timesteps 1000000 --eval-episodes 200
-
-# curriculum: RandomAgent first, then LogicAgent
-cr-rl-curriculum --phase1 300000 --phase2 700000
 
 # summary report and plots for the experiments chapter
 cr-rl-stats --experiments --plot

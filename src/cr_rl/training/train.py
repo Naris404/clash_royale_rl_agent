@@ -1,23 +1,28 @@
 """
-Trening PPO (MaskablePPO) — agent RL vs LogicAgent.
+Training (MaskablePPO) against a mix of Training opponents.
+
+Phase 1 runs every env against RandomAgent; phase 2 assigns an opponent per env index
+(8 LogicAgent, 2 ε-LogicAgent, 2 RandomAgent). `--no-curriculum` starts in phase 2.
 
 Usage:
-  python train.py
-  python train.py --timesteps 500000 --n-envs 8
-  python evaluate.py --model models/ppo_cr_best.zip
+  cr-rl-train
+  cr-rl-train --timesteps 500000 --n-envs 12
+  cr-rl-train --no-curriculum
+  cr-rl-evaluate --model models/ppo_cr_best.zip
 """
 
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.game.rewards import DEFAULT_GAMMA
@@ -28,29 +33,39 @@ DEFAULT_MODEL_DIR = MODELS_DIR
 DEFAULT_BEST_PATH = DEFAULT_MODEL_DIR / "ppo_cr_best.zip"
 DEFAULT_CHECKPOINT_PREFIX = DEFAULT_MODEL_DIR / "ppo_cr_checkpoint"
 
+DEFAULT_N_ENVS = 12
+DEFAULT_PHASE1_FRACTION = 0.2  # share of the step budget spent against RandomAgent
+PHASE2_OPPONENTS = ("logic",) * 8 + ("logic-eps",) * 2 + ("random",) * 2
 
-def mask_fn(env: ClashRoyaleEnv) -> np.ndarray:
-    return env.unwrapped.action_masks()
+
+def phase_opponents(phase: int, n_envs: int) -> list[str]:
+    """Opponent of each env index: phase 1 is all RandomAgent, phase 2 cycles the mix."""
+    if phase == 1:
+        return ["random"] * n_envs
+    return [PHASE2_OPPONENTS[i % len(PHASE2_OPPONENTS)] for i in range(n_envs)]
 
 
 def make_training_env(
     seed: int | None = None, opponent: str = "logic", gamma: float = DEFAULT_GAMMA
-) -> ActionMasker:
-    env = ClashRoyaleEnv(seed=seed, opponent=opponent, gamma=gamma)
-    return ActionMasker(env, mask_fn)
+) -> ClashRoyaleEnv:
+    return ClashRoyaleEnv(seed=seed, opponent=opponent, gamma=gamma)
 
 
 def make_vec_training_env(
-    n_envs: int, seed: int, opponent: str = "logic", gamma: float = DEFAULT_GAMMA
-) -> DummyVecEnv:
-    def _factory(rank: int):
+    seed: int,
+    opponents: list[str],
+    gamma: float = DEFAULT_GAMMA,
+    index_offset: int = 0,
+) -> SubprocVecEnv:
+    """One subprocess env per opponent; masks come from each env's own `action_masks()`."""
+
+    def _factory(env_index: int, opponent: str):
         def _init():
-            env_seed = seed + rank
-            return make_training_env(env_seed, opponent=opponent, gamma=gamma)
+            return ClashRoyaleEnv(seed=seed, env_index=env_index, opponent=opponent, gamma=gamma)
 
         return _init
 
-    return DummyVecEnv([_factory(i) for i in range(n_envs)])
+    return SubprocVecEnv([_factory(index_offset + i, name) for i, name in enumerate(opponents)])
 
 
 class WinRateCallback(BaseCallback):
@@ -82,7 +97,7 @@ class WinRateCallback(BaseCallback):
 def train(
     *,
     timesteps: int = 1_000_000,
-    n_envs: int = 8,
+    n_envs: int = DEFAULT_N_ENVS,
     seed: int = 42,
     learning_rate: float = 3e-4,
     n_steps: int = 2048,
@@ -90,58 +105,73 @@ def train(
     ent_coef: float = 0.02,
     gamma: float = DEFAULT_GAMMA,
     net_arch: tuple[int, ...] = (256, 256),
-    opponent: str = "logic",
+    curriculum: bool = True,
+    phase1_fraction: float = DEFAULT_PHASE1_FRACTION,
     model_dir: Path = DEFAULT_MODEL_DIR,
     resume: str | None = None,
 ) -> MaskablePPO:
     model_dir.mkdir(parents=True, exist_ok=True)
+    # Seed the libraries here, not through MaskablePPO(seed=...), which would also pin each
+    # env's first episode to seed + index instead of its derived episode seed.
+    set_random_seed(seed)
 
-    train_env = make_vec_training_env(n_envs, seed, opponent=opponent, gamma=gamma)
-    eval_env = make_training_env(seed + 10_000, opponent=opponent, gamma=gamma)
-
+    phase1_steps = int(timesteps * phase1_fraction) if curriculum else 0
+    phases = ([(1, phase1_steps)] if curriculum else []) + [(2, timesteps - phase1_steps)]
+    eval_env = make_training_env(seed + 10_000, gamma=gamma)
     policy_kwargs = dict(net_arch=dict(pi=list(net_arch), vf=list(net_arch)))
 
-    if resume:
-        model = MaskablePPO.load(resume, env=train_env)
-    else:
-        model = MaskablePPO(
-            "MlpPolicy",
-            train_env,
-            learning_rate=learning_rate,
-            n_steps=max(n_steps // n_envs, 256),
-            batch_size=batch_size,
-            n_epochs=10,
-            gamma=gamma,
-            gae_lambda=0.95,
-            ent_coef=ent_coef,
-            clip_range=0.2,
-            verbose=1,
-            seed=seed,
-            policy_kwargs=policy_kwargs,
-            tensorboard_log=str(model_dir / "tb"),
+    callbacks = [
+        MaskableEvalCallback(
+            eval_env,
+            best_model_save_path=str(model_dir),
+            log_path=str(model_dir / "eval"),
+            eval_freq=max(25_000 // n_envs, 1),
+            n_eval_episodes=50,
+            deterministic=True,
+            render=False,
+        ),
+        CheckpointCallback(
+            save_freq=max(100_000 // n_envs, 1),
+            save_path=str(model_dir / "checkpoints"),
+            name_prefix="ppo_cr",
+        ),
+        WinRateCallback(),
+    ]
+
+    model = None
+    for phase, steps in phases:
+        # Env indices are unique across phases, so no episode seed is replayed.
+        train_env = make_vec_training_env(
+            seed, phase_opponents(phase, n_envs), gamma=gamma, index_offset=(phase - 1) * n_envs
         )
-
-    eval_callback = MaskableEvalCallback(
-        eval_env,
-        best_model_save_path=str(model_dir),
-        log_path=str(model_dir / "eval"),
-        eval_freq=max(25_000 // n_envs, 1),
-        n_eval_episodes=50,
-        deterministic=True,
-        render=False,
-    )
-    checkpoint_callback = CheckpointCallback(
-        save_freq=max(100_000 // n_envs, 1),
-        save_path=str(model_dir / "checkpoints"),
-        name_prefix="ppo_cr",
-    )
-    win_callback = WinRateCallback()
-
-    model.learn(
-        total_timesteps=timesteps,
-        callback=[eval_callback, checkpoint_callback, win_callback],
-        progress_bar=True,
-    )
+        if model is not None:
+            model.set_env(train_env)
+        elif resume:
+            model = MaskablePPO.load(resume, env=train_env)
+        else:
+            model = MaskablePPO(
+                "MlpPolicy",
+                train_env,
+                learning_rate=learning_rate,
+                n_steps=max(n_steps // n_envs, 256),
+                batch_size=batch_size,
+                n_epochs=10,
+                gamma=gamma,
+                gae_lambda=0.95,
+                ent_coef=ent_coef,
+                clip_range=0.2,
+                verbose=1,
+                policy_kwargs=policy_kwargs,
+                tensorboard_log=str(model_dir / "tb"),
+            )
+        print(f"=== Phase {phase}: {dict(Counter(phase_opponents(phase, n_envs)))} ({steps:,} steps) ===")
+        model.learn(
+            total_timesteps=steps,
+            reset_num_timesteps=False,
+            callback=callbacks,
+            progress_bar=True,
+        )
+        train_env.close()
 
     final_path = model_dir / "ppo_cr_final.zip"
     model.save(str(final_path))
@@ -153,9 +183,8 @@ def train(
         import shutil
 
         shutil.copy2(best_eval, DEFAULT_BEST_PATH)
-        print(f"Najlepszy model ewaluacji: {DEFAULT_BEST_PATH}")
+        print(f"Best evaluation model: {DEFAULT_BEST_PATH}")
 
-    train_env.close()
     eval_env.close()
     return model
 
@@ -185,7 +214,7 @@ def evaluate_model(
             action, _ = model.predict(
                 obs,
                 deterministic=deterministic,
-                action_masks=env.unwrapped.action_masks(),
+                action_masks=env.action_masks(),
             )
             obs, reward, terminated, truncated, info = env.step(int(action))
             total_reward += float(reward)
@@ -214,11 +243,17 @@ def evaluate_model(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Trening PPO vs LogicAgent")
+    parser = argparse.ArgumentParser(description="PPO training against a mix of opponents")
     parser.add_argument("--timesteps", type=int, default=1_000_000)
-    parser.add_argument("--n-envs", type=int, default=8)
+    parser.add_argument("--n-envs", type=int, default=DEFAULT_N_ENVS)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument(
+        "--no-curriculum",
+        action="store_true",
+        help="Skip phase 1 (RandomAgent) and start in phase 2",
+    )
+    parser.add_argument("--phase1-fraction", type=float, default=DEFAULT_PHASE1_FRACTION)
     parser.add_argument("--resume", type=str, default=None, help="Path to a .zip to resume training")
     parser.add_argument(
         "--eval-only",
@@ -245,6 +280,8 @@ def main() -> None:
         n_envs=args.n_envs,
         seed=args.seed,
         learning_rate=args.lr,
+        curriculum=not args.no_curriculum,
+        phase1_fraction=args.phase1_fraction,
         resume=args.resume,
     )
 

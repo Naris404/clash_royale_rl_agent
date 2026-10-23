@@ -14,6 +14,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+import numpy as np
+
 from cr_rl.game.board import (
     ARENA_LENGTH,
     ARENA_WIDTH,
@@ -191,6 +193,19 @@ class LogicAgent:
             board, player, candidate.card, offensive=offensive, defensive=defensive
         ):
             candidates.append(candidate)
+
+
+@dataclass
+class EpsilonLogicAgent(LogicAgent):
+    """LogicAgent that, with probability `epsilon` per tick, plays a random legal action (noop included)."""
+
+    epsilon: float = 0.2
+
+    def choose_action(self, board: Board, player: int = 0) -> int:
+        if board.np_rng.random() >= self.epsilon:  # the Board's seeded RNG keeps episodes reproducible
+            return super().choose_action(board, player)
+        board.set_pending_play(player, None)
+        return int(board.np_rng.choice(np.flatnonzero(board.valid_action_mask(player))))
 
 
 # --- rules (scoring) ---
