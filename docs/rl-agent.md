@@ -447,6 +447,16 @@ gate* passes when the lower bound of the 95% Wilson interval of the shipped run'
 opponent) `cr-rl-stats` reads like the other experiment results. The v1 model is not part of
 this comparison.
 
+**Head-to-head** (`cr_rl/training/head_to_head.py`). `evaluate_head_to_head(model_a, model_b)`
+compares two selected models directly, e.g. the full arm against the no-self-play arm, which a
+win rate vs `LogicAgent` cannot do. Every Report seed is played twice, once with each model as
+player 0 (the other plays as the frozen policy through the P1 view), 400 matches in total. The
+`HeadToHead` result holds model A's `overall` report (wins, losses, draws, win rate with its 95%
+Wilson interval; `opponent` names model B) and the split `as_player_0` and `as_player_1`, plus
+the same `ReportMetadata` as the Report-seed evaluation. Matches played from B's side are
+converted to A's: winner swapped, return negated (the shaped reward is zero-sum by design). A model
+against itself gives `wins == losses`, because both sides replay the same deterministic match.
+
 ## Results
 
 ### v1 model (historical)
@@ -535,4 +545,5 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Overtime progress (#59, ADR-0002): one feature appended as the last observation element, `clip((time − 180) / 120, 0, 1)`, so the agent can tell how much Overtime is left; `OBS_DIM` 278 → 279, match time keeps its meaning. 278-dim checkpoints are ignored at load. |
 | 2026-10-23 | Checkpoint selection (#62, ADR-0002): a run picks its model by win rate vs `LogicAgent` on 100 fixed Selection seeds every 50k steps and on the final model, ties to the later checkpoint; every evaluated checkpoint and its win rate are kept (`models/checkpoints/`, `models/selection.json`). The shaped-reward `MaskableEvalCallback` and the 100k `CheckpointCallback` are removed. Observation and action layout unchanged. |
 | 2026-10-23 | Report-seed evaluation and the Ship gate (#63, ADR-0002): `cr-rl-report` plays each run's selected checkpoint on 200 Report seeds (`2_000_000 + i`) vs `LogicAgent` and `RandomAgent` with Wilson intervals, mean return, length and reproducibility metadata, ships the run with the best Selection win rate and states the Ship gate verdict on its Report results. Observation and action layout unchanged. |
+| 2026-10-23 | Head-to-head (#65, ADR-0002): `evaluate_head_to_head()` plays two models on every Report seed from both sides (400 matches) and reports A's wins, losses and draws with a 95% Wilson interval, the per-side split and the Report-seed metadata. Observation and action layout unchanged. |
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
