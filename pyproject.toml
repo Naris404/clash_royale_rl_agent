@@ -29,6 +29,7 @@ test = ["pytest>=8.0", "httpx>=0.27"]
 [project.scripts]
 cr-rl-train = "cr_rl.training.train:main"
 cr-rl-evaluate = "cr_rl.training.evaluate:main"
+cr-rl-report = "cr_rl.training.report:main"
 cr-rl-stats = "cr_rl.stats.reporting:main"
 cr-rl-coach-validate = "cr_rl.coach.validate:main"
 cr-rl-server = "cr_rl.server.app:main"

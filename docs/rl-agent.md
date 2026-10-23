@@ -440,9 +440,32 @@ return and mean match length.
 Checkpoint selection during training uses `play_matches()` on the Selection seeds (see
 [Training setup](#training-setup)).
 
-The protocol for the v2 model (ADR-0002, amended by ADR-0003): fixed seeds,
-200 matches vs the rule-based bot and 200 vs the random bot, reporting win rate, mean
-return and match length. The v1 model is not part of that comparison.
+**Seed sets.** Two fixed seed sets, disjoint from each other and from the training episode seeds:
+
+- *Selection seeds* (`SELECTION_SEEDS`, 100 seeds from 1,000,000) choose a run's checkpoint during
+  training. They are never used for reported numbers.
+- *Report seeds* (`REPORT_SEEDS`, 200 seeds, `2_000_000 + i`) produce every reported number
+  and are never used in training or selection. The same 200 seeds are played against
+  `LogicAgent` and against `RandomAgent`.
+
+**Report evaluation** (`cr_rl/training/report.py`, `cr-rl-report RUN_DIR...`). `evaluate_report()`
+plays a model deterministically on the Report seeds against both opponents and returns a
+`ReportEvaluation`: a `ReportMetadata` (model, first seed and episode count, deterministic flag,
+`ENV_VERSION`, `OBS_DIM`, `NUM_ACTIONS` and the training configuration if known, so every
+number can be regenerated) and one `OpponentReport` per opponent (wins, losses, draws, win
+rate with its 95% Wilson interval, mean return, mean match length in decision steps).
+
+**Configurations and the Ship gate.** For the final configuration (3 training seeds),
+`evaluate_configuration()` evaluates the checkpoint each run selected (`select_checkpoint()`)
+and returns a `ConfigurationReport`: every run's `RunReport`, the per-opponent `Spread` (mean,
+sample standard deviation, min, max) of the runs' win rates, and the shipped run. The shipped
+run is the one with the best Selection win rate, never chosen by Report results. The *Ship
+gate* passes when the lower bound of the 95% Wilson interval of the shipped run's win rate vs
+`LogicAgent` on the Report seeds is above 50% (`ship_gate_passes()`); the verdict
+(`ship_gate_passed`) is stated on that run alone. `save_configuration_report()` writes
+`experiment_runs/report_evaluation/results.json`, whose `results` rows (one per run and
+opponent) `cr-rl-stats` reads like the other experiment results. The v1 model is not part of
+this comparison.
 
 ## Results
 
@@ -532,4 +555,5 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Overtime progress (#59, ADR-0002): one feature appended as the last observation element, `clip((time − 180) / 120, 0, 1)`, so the agent can tell how much Overtime is left; `OBS_DIM` 278 → 279, match time keeps its meaning. 278-dim checkpoints are ignored at load. |
 | 2026-10-23 | Checkpoint selection (#62, ADR-0002): a run picks its model by win rate vs `LogicAgent` on 100 fixed Selection seeds every 50k steps and on the final model, ties to the later checkpoint; every evaluated checkpoint and its win rate are kept (`models/checkpoints/`, `models/selection.json`). The shaped-reward `MaskableEvalCallback` and the 100k `CheckpointCallback` are removed. Observation and action layout unchanged. |
 | 2026-10-23 | Self-play Training phase (#64, ADR-0002): a run has three Training phases (warm-up, scripted mix, self-play mix) selected by `--layout full / no-curriculum / no-self-play`, which replaces `--no-curriculum` and `--phase1-fraction`. The self-play mix trains against a pool of 3 Past selves seeded from the last 3 selection checkpoints; every 100k steps the current model joins by winning at least 45% of 50 matches against the pool. Decisions are logged to `models/pool.json`. Observation and action layout unchanged. |
+| 2026-10-23 | Report-seed evaluation and the Ship gate (#63, ADR-0002): `cr-rl-report` plays each run's selected checkpoint on 200 Report seeds (`2_000_000 + i`) vs `LogicAgent` and `RandomAgent` with Wilson intervals, mean return, length and reproducibility metadata, ships the run with the best Selection win rate and states the Ship gate verdict on its Report results. Observation and action layout unchanged. |
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
