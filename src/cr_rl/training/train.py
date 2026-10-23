@@ -27,7 +27,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from cr_rl.env.gym_env import ClashRoyaleEnv
-from cr_rl.game.rewards import DEFAULT_GAMMA
+from cr_rl.game.rewards import DEFAULT_GAMMA, RewardWeights
 from cr_rl.paths import MODELS_DIR
 from cr_rl.training.matches import play_matches, summarize_matches
 from cr_rl.training.phases import PHASE_LAYOUTS, phase_opponents, phase_steps
@@ -64,6 +64,7 @@ def make_vec_training_env(
     opponents: list[str | Path],
     gamma: float = DEFAULT_GAMMA,
     index_offset: int = 0,
+    reward_weights: RewardWeights = RewardWeights(),
 ) -> SubprocVecEnv:
     """One subprocess env per opponent; masks come from each env's own `action_masks()`.
 
@@ -73,7 +74,9 @@ def make_vec_training_env(
     def _factory(env_index: int, opponent: str | Path):
         def _init():
             policy = load_past_self(opponent) if isinstance(opponent, Path) else opponent
-            return ClashRoyaleEnv(seed=seed, env_index=env_index, opponent=policy, gamma=gamma)
+            return ClashRoyaleEnv(
+                seed=seed, env_index=env_index, opponent=policy, gamma=gamma, reward_weights=reward_weights
+            )
 
         return _init
 
@@ -113,6 +116,7 @@ def train(
     gamma: float = DEFAULT_GAMMA,
     net_arch: tuple[int, ...] = (256, 256),
     layout: str = "full",
+    reward_weights: RewardWeights = RewardWeights(),
     model_dir: Path = DEFAULT_MODEL_DIR,
     resume: str | None = None,
     selection_interval: int = SELECTION_INTERVAL,
@@ -144,7 +148,9 @@ def train(
             # The envs are rebuilt after every pool check, so a chunk ends at each check.
             chunk = min(remaining, pool_interval) if pool else remaining
             opponents = phase_opponents(phase, n_envs, pool.members if pool else ())
-            train_env = make_vec_training_env(seed, opponents, gamma=gamma, index_offset=env_offset)
+            train_env = make_vec_training_env(
+                seed, opponents, gamma=gamma, index_offset=env_offset, reward_weights=reward_weights
+            )
             env_offset += n_envs
             if model is not None:
                 model.set_env(train_env)
