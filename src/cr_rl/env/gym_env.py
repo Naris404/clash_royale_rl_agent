@@ -59,6 +59,7 @@ class ClashRoyaleEnv(gym.Env):
         self.schedule = DecisionSchedule(hold_ticks)
         self.board = Board(seed=seed)
         self.opponent = _build_opponent(opponent, seed, hold_ticks)
+        self.opponent_name = opponent if isinstance(opponent, str) else _object_opponent_name(opponent)
         self.action_space = spaces.Discrete(NUM_ACTIONS)
         self.observation_space = spaces.Box(
             low=-1.0,
@@ -114,6 +115,7 @@ class ClashRoyaleEnv(gym.Env):
         self._potential = potential(self.board, 0, self.reward_weights)
         info = dict(result.info)
         info["winner"] = self.board.winner
+        info["opponent"] = self.opponent_name
         return result.observation, float(reward), result.terminated, result.truncated, info
 
     def _tick(self, action: int):
@@ -127,6 +129,11 @@ class ClashRoyaleEnv(gym.Env):
 
     def render(self) -> None:
         self.board.render()
+
+
+def _object_opponent_name(opponent: Any) -> str:
+    """Training opponent type of a policy ("past-self") or any other opponent object."""
+    return "past-self" if hasattr(opponent, "predict") else "custom"
 
 
 def _build_opponent(spec: Union[str, Any], seed: Optional[int], hold_ticks: int) -> Any:
