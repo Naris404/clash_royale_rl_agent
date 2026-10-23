@@ -13,7 +13,7 @@ mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 
 | | |
 |---|---|
-| Documented layout | 278-dim observation (version 2), 53 actions (13 deploy zones) |
+| Documented layout | 279-dim observation (version 2), 53 actions (13 deploy zones) |
 | Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested and signed off ([checklist](playtest-env-v1.md#env-v11-sign-off)); frozen, tagged `env-v1.1` |
 | Trained model for this layout | none yet; the **v2 model** is trained only on env-v1.1, after its sign-off (ADR-0005) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
@@ -42,7 +42,7 @@ Code: `src/cr_rl/game/board.py` (observation, actions, mask), `src/cr_rl/game/re
 ## Environment interface
 
 `ClashRoyaleEnv` wraps `Board` as a Gymnasium environment with
-`observation_space = Box(-1, 1, (278,), float32)` and `action_space = Discrete(53)`,
+`observation_space = Box(-1, 1, (279,), float32)` and `action_space = Discrete(53)`,
 and exposes `action_masks()` for MaskablePPO.
 
 One `step(action)` registers the action with the decision schedule and then simulates
@@ -88,10 +88,10 @@ it is `None` on every earlier step.
 
 ## Observation
 
-A flat `float32` vector of `OBS_DIM = 278` features (observation version 2), built by
+A flat `float32` vector of `OBS_DIM = 279` features (observation version 2), built by
 `Board.get_observation(player)`. Segment offsets are named constants in `board.py`
 (`OBS_GLOBAL_FEATURES`, `OBS_TOWER_BASE`, `OBS_HAND_BASE`, `OBS_NEXT_BASE`, `OBS_PLAYS_BASE`,
-`OBS_GRID_BASE`), pinned by `tests/test_observation.py`. Card identity is one-hot everywhere.
+`OBS_GRID_BASE`, `OBS_OVERTIME_INDEX`), pinned by `tests/test_observation.py`. Card identity is one-hot everywhere.
 No `VecNormalize` is applied; every feature is already scaled to [-1, 1].
 
 | Indices | Count | Feature | Encoding |
@@ -99,13 +99,14 @@ No `VecNormalize` is applied; every feature is already scaled to [-1, 1].
 | 0 | 1 | Own elixir | `elixir / 10` |
 | 1 | 1 | Enemy elixir | `elixir / 10` (visible, unlike the real game) |
 | 2 | 1 | Elixir advantage | `(own − enemy elixir) / 10` |
-| 3 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime) |
+| 3 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime; see overtime progress) |
 | 4–6 | 3 | Own towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
 | 7–9 | 3 | Enemy towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
 | 10–41 | 32 | Hand: 4 slots × 8 cards | one-hot per slot |
 | 42–49 | 8 | Next card | one-hot over the 8 Deck cards |
 | 50–85 | 36 | Opponent's last 4 plays: 4 × (8 cards + none) | one-hot per play, oldest first |
 | 86–277 | 192 | Unit grid: 2 owners × 2 lanes × 8 depth bins × 6 unit cards | see below |
+| 278 | 1 | Overtime progress | `clip((time − 180) / 120, 0, 1)`: 0 throughout Regulation, 1 at the end of Overtime |
 
 **Hand.** Slot `s` occupies indices `10 + 8·s … 17 + 8·s`; the hot index is the
 card ID in Deck order: Knight 0, Giant 1, Hog Rider 2, Musketeer 3, Cannon 4,
@@ -287,8 +288,8 @@ orthogonal initialization (SB3 defaults).
 
 ```mermaid
 flowchart LR
-    obs["Observation<br/>278"] --> p1["Linear 278→256<br/>Tanh"]
-    obs --> v1["Linear 278→256<br/>Tanh"]
+    obs["Observation<br/>279"] --> p1["Linear 279→256<br/>Tanh"]
+    obs --> v1["Linear 279→256<br/>Tanh"]
     subgraph policy["Policy network (actor)"]
         p1 --> p2["Linear 256→256<br/>Tanh"] --> logits["Linear 256→53<br/>action logits"]
     end
@@ -301,11 +302,11 @@ flowchart LR
 
 | Part | Parameters |
 |---|---|
-| Policy MLP (278→256→256) | 137,216 |
-| Value MLP (278→256→256) | 137,216 |
+| Policy MLP (279→256→256) | 137,472 |
+| Value MLP (279→256→256) | 137,472 |
 | Action head (256→53) | 13,621 |
 | Value head (256→1) | 257 |
-| **Total** | **288,310** |
+| **Total** | **288,822** |
 
 A flat MLP fits the problem size: the observation is small and fixed-length, and the
 network is small enough to train on a laptop CPU (ADR-0002 keeps it for v2).
@@ -485,4 +486,5 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Push Spell zones (#39, ADR-0002): zones 11 and 12 (spell-push-L / -R) aim a spell at the best enemy cluster in a lane and are legal only while that lane holds an enemy unit or building. `NUM_ZONES` 11 → 13, `NUM_ACTIONS` 45 → 53, `divmod(action − 1, 13)`; the observation is unchanged. A model trained on the 45-action layout is not valid. |
 | 2026-10-23 | Observation v2 (#40, ADR-0002): `OBS_DIM` 169 → 278. The 24 distance-sorted unit slots are replaced by a permutation-invariant grid (2 owners × 2 lanes × 8 depth bins × 6 unit cards, summed HP / max HP capped at 1); an elixir-advantage feature and the opponent's last 4 plays (from the Board's per-player play history) are added. Actions are unchanged. v1 and 169-dim checkpoints are ignored at load. |
 | 2026-10-23 | Training opponents, curriculum and seeds (#42, ADR-0002): `"logic-eps"` (ε-`LogicAgent`, ε = 0.2) and frozen-policy opponents; `cr-rl-train` runs 12 `SubprocVecEnv` envs with env-side masks, phase 1 vs `RandomAgent` then phase 2 with 8 / 2 / 2 `LogicAgent` / ε-`LogicAgent` / `RandomAgent` (`--no-curriculum` starts in phase 2); every episode gets a seed derived from the run seed, env index and episode counter, which removes the fixed-seed limitation. The separate `cr-rl-curriculum` experiment is removed. Observation and action layout unchanged. |
+| 2026-10-23 | Overtime progress (#59, ADR-0002): one feature appended as the last observation element, `clip((time − 180) / 120, 0, 1)`, so the agent can tell how much Overtime is left; `OBS_DIM` 278 → 279, match time keeps its meaning. 278-dim checkpoints are ignored at load. |
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
