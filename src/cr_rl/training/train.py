@@ -14,12 +14,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
 from collections import Counter, defaultdict, deque
 from pathlib import Path
+from typing import Sequence
 
 from sb3_contrib import MaskablePPO
-from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import SubprocVecEnv
 
@@ -27,11 +28,16 @@ from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.game.rewards import DEFAULT_GAMMA
 from cr_rl.paths import MODELS_DIR
 from cr_rl.training.matches import play_matches, summarize_matches
+from cr_rl.training.selection import (
+    SELECTION_INTERVAL,
+    SELECTION_SEEDS,
+    SelectionCallback,
+    select_checkpoint,
+)
 
 
 DEFAULT_MODEL_DIR = MODELS_DIR
 DEFAULT_BEST_PATH = DEFAULT_MODEL_DIR / "ppo_cr_best.zip"
-DEFAULT_CHECKPOINT_PREFIX = DEFAULT_MODEL_DIR / "ppo_cr_checkpoint"
 
 DEFAULT_N_ENVS = 12
 DEFAULT_PHASE1_FRACTION = 0.2  # share of the step budget spent against RandomAgent
@@ -105,6 +111,8 @@ def train(
     phase1_fraction: float = DEFAULT_PHASE1_FRACTION,
     model_dir: Path = DEFAULT_MODEL_DIR,
     resume: str | None = None,
+    selection_interval: int = SELECTION_INTERVAL,
+    selection_seeds: Sequence[int] = SELECTION_SEEDS,
 ) -> MaskablePPO:
     model_dir.mkdir(parents=True, exist_ok=True)
     # Seed the libraries here, not through MaskablePPO(seed=...), which would also pin each
@@ -113,26 +121,10 @@ def train(
 
     phase1_steps = int(timesteps * phase1_fraction) if curriculum else 0
     phases = ([(1, phase1_steps)] if curriculum else []) + [(2, timesteps - phase1_steps)]
-    eval_env = make_training_env(seed + 10_000, gamma=gamma)
     policy_kwargs = dict(net_arch=dict(pi=list(net_arch), vf=list(net_arch)))
 
-    callbacks = [
-        MaskableEvalCallback(
-            eval_env,
-            best_model_save_path=str(model_dir),
-            log_path=str(model_dir / "eval"),
-            eval_freq=max(25_000 // n_envs, 1),
-            n_eval_episodes=50,
-            deterministic=True,
-            render=False,
-        ),
-        CheckpointCallback(
-            save_freq=max(100_000 // n_envs, 1),
-            save_path=str(model_dir / "checkpoints"),
-            name_prefix="ppo_cr",
-        ),
-        WinRateCallback(),
-    ]
+    selection = SelectionCallback(model_dir, interval=selection_interval, seeds=selection_seeds)
+    callbacks = [selection, WinRateCallback()]
 
     model = None
     for phase, steps in phases:
@@ -173,15 +165,16 @@ def train(
     model.save(str(final_path))
     print(f"Saved final model: {final_path}")
 
-    best_eval = model_dir / "best_model.zip"
-    if best_eval.exists() and model_dir == DEFAULT_MODEL_DIR:
+    selection.evaluate()  # the final model takes part in the selection too
+    selected = select_checkpoint(selection.results)
+    selected_path = model_dir / "checkpoints" / selected.path
+    shutil.copy2(selected_path, model_dir / "best_model.zip")
+    print(f"Selected checkpoint: {selected.path} (win rate {selected.win_rate:.1%})")
+    if model_dir == DEFAULT_MODEL_DIR:
         # only the main training updates ppo_cr_best.zip — sweeps have their own directories
-        import shutil
+        shutil.copy2(selected_path, DEFAULT_BEST_PATH)
+        print(f"Best model: {DEFAULT_BEST_PATH}")
 
-        shutil.copy2(best_eval, DEFAULT_BEST_PATH)
-        print(f"Best evaluation model: {DEFAULT_BEST_PATH}")
-
-    eval_env.close()
     return model
 
 

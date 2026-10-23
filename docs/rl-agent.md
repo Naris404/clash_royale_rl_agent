@@ -347,12 +347,18 @@ was trained with the same values.
   `LogicAgent`, 2 ε-`LogicAgent`, 2 `RandomAgent`. `--no-curriculum` skips phase 1, so a
   run with the same step budget starts in phase 2's mix at step 0 (the curriculum
   ablation).
-- **Evaluation callback:** `MaskableEvalCallback` every 25,000 steps on a separate
-  environment (run seed + 10,000): 50 deterministic episodes vs the rule-based bot. The best
-  mean reward is saved to `models/best_model.zip` and copied to
-  `models/ppo_cr_best.zip`, the path the game loads by default.
-- **Checkpoints:** every 100,000 steps to `models/checkpoints/`; the final model goes
-  to `models/ppo_cr_final.zip`.
+- **Checkpoint selection:** `SelectionCallback` (`cr_rl/training/selection.py`) plays the
+  current policy deterministically vs `LogicAgent` on the 100 Selection seeds
+  (`SELECTION_SEEDS`, `1_000_000 + i`, the same every round) every 50,000 steps
+  (`SELECTION_INTERVAL`) and once on the final model. Each evaluated checkpoint is kept in
+  `models/checkpoints/ppo_cr_<step>_steps.zip`; its win rate is logged with its 95% Wilson
+  interval (`selection/win_rate` in TensorBoard) and the list of `CheckpointResult(step,
+  wins, episodes, path)` is written to `models/selection.json` (`load_selection()`). The
+  highest win rate becomes the run's model, a tie going to the later checkpoint
+  (`select_checkpoint()`): it is copied to `models/best_model.zip` and, for the main run, to
+  `models/ppo_cr_best.zip`, the path the game loads by default. Shaped reward plays no part.
+  Selection seeds are never used for reported numbers.
+- **Final model:** saved to `models/ppo_cr_final.zip`.
 - **Logging:** TensorBoard in `models/tb/`.
   - `rollout/win_rate_vs_<opponent>`: player 0's win rate over the last 200 decisive
     matches (draws skipped) against each Training opponent type separately: `random`,
@@ -410,6 +416,9 @@ in agent steps) plays N matches as
 player 0 vs the rule-based bot with the deterministic policy and seeds
 `seed, seed + 1, …, seed + N − 1`, and reports wins, losses, draws, win rate, mean
 return and mean match length.
+
+Checkpoint selection during training uses `play_matches()` on the Selection seeds (see
+[Training setup](#training-setup)).
 
 The protocol for the v2 model (ADR-0002, amended by ADR-0003): fixed seeds,
 200 matches vs the rule-based bot and 200 vs the random bot, reporting win rate, mean
@@ -501,4 +510,5 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Observation v2 (#40, ADR-0002): `OBS_DIM` 169 → 278. The 24 distance-sorted unit slots are replaced by a permutation-invariant grid (2 owners × 2 lanes × 8 depth bins × 6 unit cards, summed HP / max HP capped at 1); an elixir-advantage feature and the opponent's last 4 plays (from the Board's per-player play history) are added. Actions are unchanged. v1 and 169-dim checkpoints are ignored at load. |
 | 2026-10-23 | Training opponents, curriculum and seeds (#42, ADR-0002): `"logic-eps"` (ε-`LogicAgent`, ε = 0.2) and frozen-policy opponents; `cr-rl-train` runs 12 `SubprocVecEnv` envs with env-side masks, phase 1 vs `RandomAgent` then phase 2 with 8 / 2 / 2 `LogicAgent` / ε-`LogicAgent` / `RandomAgent` (`--no-curriculum` starts in phase 2); every episode gets a seed derived from the run seed, env index and episode counter, which removes the fixed-seed limitation. The separate `cr-rl-curriculum` experiment is removed. Observation and action layout unchanged. |
 | 2026-10-23 | Overtime progress (#59, ADR-0002): one feature appended as the last observation element, `clip((time − 180) / 120, 0, 1)`, so the agent can tell how much Overtime is left; `OBS_DIM` 278 → 279, match time keeps its meaning. 278-dim checkpoints are ignored at load. |
+| 2026-10-23 | Checkpoint selection (#62, ADR-0002): a run picks its model by win rate vs `LogicAgent` on 100 fixed Selection seeds every 50k steps and on the final model, ties to the later checkpoint; every evaluated checkpoint and its win rate are kept (`models/checkpoints/`, `models/selection.json`). The shaped-reward `MaskableEvalCallback` and the 100k `CheckpointCallback` are removed. Observation and action layout unchanged. |
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
