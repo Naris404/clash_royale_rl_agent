@@ -17,6 +17,7 @@ from cr_rl.game.board import (
     OBS_GRID_BASE,
     OBS_HAND_BASE,
     OBS_NEXT_BASE,
+    OBS_OVERTIME_INDEX,
     OBS_PLAYS_BASE,
     OBS_TOWER_BASE,
 )
@@ -30,9 +31,9 @@ def test_segment_offsets_and_total_size():
     assert OBS_HAND_BASE == 10  # 4 slots x 8 cards
     assert OBS_NEXT_BASE == 42  # 8 cards
     assert OBS_PLAYS_BASE == 50  # 4 plays x (8 cards + none)
-    assert OBS_GRID_BASE == 86  # 2 owners x 2 lanes x 8 depth bins x 6 unit cards
-    assert OBS_DIM == 278
-    assert OBS_GRID_BASE + 2 * 2 * 8 * 6 == OBS_DIM
+    assert OBS_GRID_BASE == 86  # 4 plays x (8 cards + none) end here
+    assert OBS_OVERTIME_INDEX == 278  # 2 owners x 2 lanes x 8 depth bins x 6 unit cards
+    assert OBS_DIM == 279  # the overtime progress is the last feature
 
 
 def test_global_features_and_tower_order():
@@ -64,7 +65,7 @@ def test_a_unit_lights_exactly_its_lane_depth_cell_with_hp_over_max_hp():
     board = new_board()
     place_unit(board, "Giant", 0, 4.5, 12.0, hp=cards_dic["Giant"]["hp"] / 2)
 
-    grid = board.get_observation(0)[OBS_GRID_BASE:]
+    grid = board.get_observation(0)[OBS_GRID_BASE:OBS_OVERTIME_INDEX]
 
     # own owner, left lane, depth bin 3 (y 12-16), unit card 1 (Giant): ((0*2+0)*8+3)*6+1 = 19
     assert np.flatnonzero(grid).tolist() == [19]
@@ -82,7 +83,7 @@ def test_two_knights_in_one_cell_read_one_and_a_wounded_one_reads_less():
     place_unit(board, "Knight", 0, 5.0, 7.0)
     place_unit(board, "Musketeer", 0, 4.0, 6.0, hp=cards_dic["Musketeer"]["hp"] / 4)
 
-    grid = board.get_observation(0)[OBS_GRID_BASE:]
+    grid = board.get_observation(0)[OBS_GRID_BASE:OBS_OVERTIME_INDEX]
 
     assert grid[_grid_cell(0, 0, 1, 0)] == 1.0  # Knight: 1.0 + 1.0 capped at 1
     assert grid[_grid_cell(0, 0, 1, 3)] == pytest.approx(0.25)  # Musketeer
@@ -103,7 +104,7 @@ def test_lane_and_depth_bins(x, y, lane, depth):
     board = new_board()
     place_unit(board, "Knight", 1, x, y)
 
-    grid = board.get_observation(0)[OBS_GRID_BASE:]
+    grid = board.get_observation(0)[OBS_GRID_BASE:OBS_OVERTIME_INDEX]
 
     assert np.flatnonzero(grid).tolist() == [_grid_cell(1, lane, depth, 0)]  # enemy owner block
 
@@ -115,7 +116,7 @@ def test_dead_units_and_spells_have_no_cells():
     set_hand(board, 0, ["Fireball"])
     assert board.play_card_at(0, "Fireball", 9.0, 20.0)
 
-    assert not board.get_observation(0)[OBS_GRID_BASE:].any()
+    assert not board.get_observation(0)[OBS_GRID_BASE:OBS_OVERTIME_INDEX].any()
 
 
 def test_both_players_see_a_mirrored_position_alike():
@@ -175,3 +176,20 @@ def test_a_reset_forgets_the_plays():
     _play_in_order(board, 1, [board.get_hand(1)[0]])
     board.reset()
     assert _observed_plays(board.get_observation(0)) == [8, 8, 8, 8]
+
+
+@pytest.mark.parametrize("player", [0, 1])
+@pytest.mark.parametrize(
+    ("time", "overtime_progress"),
+    [(0.0, 0.0), (90.0, 0.0), (180.0, 0.0), (240.0, 0.5), (270.0, 0.75), (300.0, 1.0)],
+)
+def test_overtime_progress_is_zero_in_regulation_and_reaches_one_at_the_end_of_overtime(
+    player, time, overtime_progress
+):
+    board = new_board()
+    board.time = time
+
+    obs = board.get_observation(player)
+
+    assert obs[-1] == pytest.approx(overtime_progress)
+    assert obs[3] == pytest.approx(min(1.0, time / 180.0))  # match time keeps its meaning
