@@ -17,6 +17,40 @@ documentation and source code are cited only to describe implementation behaviou
 are labelled **[impl]**. Anything not checked against a primary source is marked
 **(unverified)**.
 
+## Outcome
+
+The grilling session that followed this review settled what to adopt. The authoritative
+design is [ADR-0002](../adr/0002-rl-v2-architecture.md); where this note and the ADR
+differ, the ADR wins. Recommendation numbers refer to §5.
+
+**Accepted:**
+
+- H1: every Match end is a termination, nothing is truncated.
+- H2: models are selected and reported by win rate. 100 Selection seeds pick the
+  checkpoint, 200 Report seeds give every reported number and the Ship gate, with 95%
+  Wilson intervals and 3 training seeds per configuration.
+- M1: a Past-self pool after the scripted phase, with the parameters of Generals.io
+  (3 Past selves, 45% admission check, deterministic play).
+- M4: the budget is checked against the learning curve. The final runs move from 1M to
+  3M steps if the selection win rate still rises by more than 10 pp over the last 20%.
+
+**Changed:**
+
+- L3: the overtime time-aliasing fix is adopted, but as one extra last feature,
+  `overtime_progress`, and the match-time feature keeps its meaning.
+- M3: the Training phases stay at fixed shares of the budget (0–20% / 20–60% / 60–100%)
+  instead of a win-rate gate; the curriculum is judged by jumpstart, time to a 50%
+  selection win rate and final win rate on the Report seeds.
+- H2: the shipped model is the best selection win rate of the 3 seeds, the ablations get
+  3 seeds each (500k steps), and a no-self-play Ablation arm plus a head-to-head
+  against the full arm were added.
+- M2: only its documentation part was taken: the stale numbers in `docs/rl-agent.md` are
+  fixed.
+
+**Deferred (ADR-0002 Future work):** `target_kl` (M2), learning-rate decay (L2),
+multi-length noop (L4), a privileged critic (L5), a behaviour-cloning warm start (L6),
+and CNN, LSTM or autoregressive heads.
+
 ## 1. Summary
 
 **Verdict:** the design is close to what the literature recommends for an affordable
