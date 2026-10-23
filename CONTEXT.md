@@ -89,6 +89,12 @@ The rule when overtime ends without a crown: the player whose weakest tower has 
 HP loses; equal weakest towers give a draw.
 _Avoid_: HP comparison, decision
 
+**Match end**:
+A match ends only by the rules: a king tower falls, regulation ends with unequal
+crowns, the first crown is scored in overtime, or overtime runs out (Tiebreak or
+draw). A match is never cut short.
+_Avoid_: timeout, truncation
+
 ## Platform
 
 **Session**:
@@ -141,6 +147,41 @@ and no noop hold is running. Choosing noop starts a short hold (0.3 s by default
 before the agent is asked again. Training and the live RL opponent use the same
 schedule.
 _Avoid_: step, frame, agent tick
+
+**Selection seeds**:
+The fixed set of matches used only to choose which checkpoint of a training run
+becomes its model. Never used for reported results.
+_Avoid_: validation set, eval seeds
+
+**Report seeds**:
+The fixed set of matches, disjoint from the selection seeds, on which every reported
+result and the ship gate are measured.
+_Avoid_: test set, eval seeds
+
+**Ship gate**:
+The condition for the v2 model to replace the rule-based bot as the RL opponent in a
+Session: on the report seeds, the lower bound of the 95% Wilson interval of its win
+rate against the rule-based bot is above 50%.
+_Avoid_: release criterion, acceptance
+
+**Past self**:
+A frozen earlier version of the agent used as a Training opponent.
+_Avoid_: snapshot (that is the per-tick client state), old model
+
+**Past-self pool**:
+The small set of past selves the agent plays during the self-play phase; a new past
+self joins only by beating the pool.
+_Avoid_: snapshot pool, league
+
+**Training phase**:
+One stage of a training run with its own set of Training opponents: warm-up, scripted
+mix, then self-play mix.
+_Avoid_: stage, curriculum step
+
+**Ablation arm**:
+A training configuration that differs from the full configuration in exactly one
+thing, trained on the shorter ablation budget.
+_Avoid_: variant, experiment
 
 ## Environment lifecycle
 
