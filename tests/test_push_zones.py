@@ -7,7 +7,7 @@ import pytest
 
 from cr_rl.coach.evaluator import CoachEngine, decode_action, nearest_zone
 from cr_rl.coach.inference import PolicyEstimate
-from cr_rl.coach.explainer import format_hint
+from cr_rl.coach.explainer import build_reason, format_hint
 from cr_rl.game.board import DEPLOY_ZONES, HAND_SIZE, NUM_ACTIONS, NUM_ZONES
 from cr_rl.game.cards import cards_dic
 from scenario import new_board, place_unit, set_hand
@@ -98,6 +98,16 @@ class TestAim:
 
         assert first.hp == first.max_hp - ARROWS["damage"]
         assert second.hp == second.max_hp
+
+    def test_a_tie_follows_placement_order_not_position_order(self):
+        board = _caster("Arrows")
+        far = place_unit(board, "Knight", 1, 5.0, 19.0)  # placed first, yet further right and further back
+        near = place_unit(board, "Knight", 1, 2.0, 12.0)
+
+        assert board.play_card(0, "Arrows", PUSH_L)
+
+        assert far.hp == far.max_hp - ARROWS["damage"]
+        assert near.hp == near.max_hp
 
     def test_a_building_is_a_valid_target(self):
         board = _caster("Fireball")
@@ -210,6 +220,21 @@ class TestCoach:
     def test_hints_name_the_enemy_push_and_its_lane(self, lang, zone, words):
         hint = format_hint("Fireball", zone, 0.5, lang=lang)
         assert all(word in hint for word in words), hint
+
+    @pytest.mark.parametrize(
+        ("lang", "words"),
+        [("en", ("left", "Knight ×2")), ("pl", ("lewa", "Knight ×2"))],
+    )
+    def test_the_reason_names_the_lane_and_the_target_cluster(self, lang, words):
+        board = _caster("Fireball")
+        place_unit(board, "Knight", 1, 4.0, 12.0)
+        place_unit(board, "Knight", 1, 4.5, 12.0)
+        place_unit(board, "Giant", 1, 3.0, 20.0)
+
+        reason = build_reason(board, 0, "Fireball", PUSH_L, lang=lang)
+
+        assert all(word in reason for word in words), reason
+        assert "Giant" not in reason
 
     def test_a_push_suggestion_carries_the_aim_point_for_the_arena_marker(self):
         class StubInspector:

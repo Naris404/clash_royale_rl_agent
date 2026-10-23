@@ -79,9 +79,8 @@ schedule. The env uses it for player 0 and the Session uses it for the RL oppone
 bot is not gated. There is no switch to turn the schedule off. Coach Hints and move grades
 are computed from the Board at any tick and are unaffected.
 
-Because one step now spans several ticks, `gamma` and `n_steps` below count agent steps,
-not ticks; the figures in their rationale were derived for one step per tick and are
-revisited with the v2 training run.
+Because one step spans several ticks, `gamma` and `n_steps` below count agent steps,
+not ticks.
 
 When the match ends, `info["winner"]` holds the winner (0 or 1) or `None` for a draw;
 it is `None` on every earlier step.
@@ -324,8 +323,8 @@ was trained with the same values.
 | `n_steps` (per env) | `max(2048 // n_envs, 256)` = 256 | A rollout of 2048 transitions (the PPO default size), with a floor of 256 steps (25.6 s of match time) per environment so each segment is longer than the discount horizon. |
 | `batch_size` | 256 | 8 minibatches per epoch over the 2048-transition rollout: enough gradient steps per rollout while each minibatch still spans several environments and game phases. |
 | `n_epochs` | 10 | SB3 default. Simulation steps are the expensive part, so each rollout is reused for 10 passes; the clipped objective keeps that reuse from moving the policy too far. |
-| `gamma` | 0.995 | A play pays off only when units reach a tower: a Giant from back-L walks about 15 s (150 ticks) to the enemy princess tower. At 10 Hz, γ = 0.995 gives an effective horizon of 1/(1−γ) = 200 ticks (20 s) and a half-life of about 14 s; the default 0.99 (100 ticks, 7 s half-life) would discount a slow push nearly to zero. |
-| `gae_lambda` | 0.95 | SB3 default. Advantages still credit rewards a few seconds after the action (λγ = 0.945 per tick) while damping the variance of the noisy tower-damage returns. |
+| `gamma` | 0.995 | Applied per decision step. A play pays off only when units reach a tower: a Giant from back-L walks about 15 s (150 ticks, roughly 50 steps while the agent holds noop for 3 ticks) to the enemy princess tower. γ = 0.995 gives an effective horizon of 1/(1−γ) = 200 steps and still weights that payoff by 0.995^50 ≈ 0.78; the 0.99 default would weight it by 0.99^50 ≈ 0.61, and the match outcome even less. |
+| `gae_lambda` | 0.95 | SB3 default. Advantages still credit rewards some tens of decision steps after the action (λγ = 0.945 per step) while damping the variance of the return, which is dominated by the sparse match outcome. |
 | `clip_range` | 0.2 | SB3 default. Limits each update to a ±20% change in action probabilities, which keeps the rare card-play actions from being suppressed by one bad rollout. |
 | `ent_coef` | 0.02 | SB3 uses 0. Noop is legal on every tick and right most of the time, so without an entropy bonus the policy tends to collapse to waiting early; 0.02 keeps card plays explored. The sweep tests 0.005 and 0.05. |
 | `vf_coef` | 0.5 | SB3 default. With separate networks it only scales the value loss against the policy loss in the shared Adam step. |

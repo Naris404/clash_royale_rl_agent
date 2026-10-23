@@ -72,6 +72,11 @@ TROOP_ONLY_CARD_TYPES = frozenset({"ground", "air"})
 SPELL_CARD_TYPES = frozenset({"spell"})
 
 
+def lane_of(x: float) -> int:
+    """The lane of an x coordinate: 0 = left, 1 = right of the board's center line."""
+    return int(x >= ARENA_WIDTH / 2)
+
+
 @dataclass(frozen=True)
 class DeployZone:
     """Discrete placement spot with absolute coordinates and the card types it accepts."""
@@ -408,7 +413,7 @@ class Board:
         """Enemy units and buildings in a lane (0 = left, 1 = right) by x, in placement order."""
         return [
             t for t in self.troops
-            if t.alive and t.owner != player and int(t.x >= ARENA_WIDTH / 2) == lane
+            if t.alive and t.owner != player and lane_of(t.x) == lane
         ]
 
     def zone_allows(self, player: int, card_name: str, zone_idx: int) -> bool:
@@ -443,18 +448,18 @@ class Board:
         damage = float(stats["damage"])
         tower_damage = float(stats.get("tower_damage", damage))
         victims = [(t, damage) for t in self.troops if t.alive and t.owner != player]
-        victims += [(t, tower_damage) for t in self.towers if t.alive and t.owner != player and t.name == "Tower"]
+        victims += [(t, tower_damage) for t in self.towers if t.alive and t.owner != player and t.name != "King_Tower"]
 
-        best_aim, best_score = (0.0, 0.0), -1.0
-        for candidate in self._lane_enemies(player, lane):
-            aim = (
-                min(max(candidate.x, DEPLOY_X_MARGIN), ARENA_WIDTH - DEPLOY_X_MARGIN),
-                min(max(candidate.y, BACK_EDGE_MARGIN), ARENA_LENGTH - BACK_EDGE_MARGIN),
+        def aim_at(unit: Troop) -> tuple[float, float]:
+            return (
+                min(max(unit.x, DEPLOY_X_MARGIN), ARENA_WIDTH - DEPLOY_X_MARGIN),
+                min(max(unit.y, BACK_EDGE_MARGIN), ARENA_LENGTH - BACK_EDGE_MARGIN),
             )
-            score = sum(min(dmg, t.hp) for t, dmg in victims if t.distance_to_xy(*aim) <= radius)
-            if score > best_score:
-                best_aim, best_score = aim, score
-        return best_aim
+
+        def damage_at(aim: tuple[float, float]) -> float:
+            return sum(min(dmg, t.hp) for t, dmg in victims if t.distance_to_xy(*aim) <= radius)
+
+        return max((aim_at(t) for t in self._lane_enemies(player, lane)), key=damage_at)
 
     def play_card(self, player: int, card_name: str, zone_idx: int) -> bool:
         aim = self.zone_aim(player, card_name, zone_idx)
@@ -869,7 +874,7 @@ class Board:
             if not troop.alive or troop.name not in UNIT_CARDS:
                 continue
             view_y = troop.y if player == 0 else ARENA_LENGTH - troop.y
-            lane = int(troop.x >= ARENA_WIDTH / 2)
+            lane = lane_of(troop.x)
             depth = min(max(int(view_y // DEPTH_BIN_ROWS), 0), DEPTH_BINS - 1)
             cell = (int(troop.owner != player), lane, depth, UNIT_CARDS.index(troop.name))
             grid[cell] = min(1.0, grid[cell] + troop.hp / troop.max_hp)

@@ -194,7 +194,7 @@ class CoachEngine:
             zone=zone_idx,
             prob=prob,
             value=estimate.value,
-            reason=build_reason(board, player, card, lang=self.lang),
+            reason=build_reason(board, player, card, zone_idx, lang=self.lang),
             hint=format_hint(card, zone_idx, prob, lang=self.lang),
             top=top,
             source="rl",
@@ -222,7 +222,7 @@ class CoachEngine:
             zone=zone_idx,
             prob=None,
             value=None,
-            reason=self._fallback.last_decision or build_reason(board, player, card, lang=self.lang),
+            reason=self._fallback.last_decision or build_reason(board, player, card, zone_idx, lang=self.lang),
             hint=format_hint(card, zone_idx, None, lang=self.lang),
             source="heuristic",
             aim=_aim(board, player, card, zone_idx),
@@ -259,7 +259,7 @@ class CoachEngine:
             best_card=best_card,
             best_zone=best_zone,
             best_prob=float(estimate.probs[estimate.action]),
-            reason=build_reason(board, player, best_card, lang=self.lang),
+            reason=build_reason(board, player, best_card, best_zone, lang=self.lang),
         )
 
     def _grade_with_heuristic(
@@ -292,7 +292,7 @@ class CoachEngine:
             best_card=best_card,
             best_zone=best_zone,
             best_prob=None,
-            reason=build_reason(board, player, best_card, lang=self.lang),
+            reason=build_reason(board, player, best_card, best_zone, lang=self.lang),
         )
 
     def _classify(
