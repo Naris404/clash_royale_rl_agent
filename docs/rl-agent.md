@@ -55,12 +55,13 @@ ticks until the next Decision point or the end of the match. Every tick:
 4. Combat runs for one tick.
 5. Dead units are removed and the clock advances by 0.1 s.
 6. End check: **terminated** when a king tower is destroyed (3 crowns for its
-   destroyer). Otherwise nothing happens before 180 s; then **truncated** as soon as the
+   destroyer). Otherwise nothing happens before 180 s; then also **terminated** as soon as the
    crowns differ (end of regulation, or the first crown of the up-to-120 s overtime), so the
    player with more crowns wins (a princess tower is 1 crown). Tied crowns at 180 s start
    overtime; if it ends without a crown, the player whose weakest standing tower has less
    HP loses and equal weakest towers are a draw. 1800 ticks of 0.1 s accumulate to just
-   under 180.0 in floating point, so a regulation match lasts 1801 ticks.
+   under 180.0 in floating point, so a regulation match lasts 1801 ticks. Every Match end is a
+   termination, so `truncated` is always `False` and the value of a final state is 0 for PPO.
 
 The returned reward is computed once per step, from the position at the start and at the
 end of the step (see [Reward](#reward)). `reset()` also advances to the first Decision point.

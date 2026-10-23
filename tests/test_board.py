@@ -879,7 +879,7 @@ class TestCrowns:
         _tower(board, 0, "King_Tower").hp = 1.0  # P0 is far behind on total HP
         board.time = REGULATION_TIME - TICK_DT
         result = board.step(0, action_p1=0)
-        assert result.truncated
+        assert result.terminated and not result.truncated
         assert board.winner == 0
 
     def test_more_crowns_for_the_opponent_wins_it_the_match(self):
@@ -975,7 +975,7 @@ class TestOvertime:
         _tower(board, 1, "Tower", "R").hp = 900.0
         board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
         result = board.step(0, action_p1=0)
-        assert result.truncated
+        assert result.terminated and not result.truncated
         assert board.winner == 1  # P0's weakest tower (500) is below P1's (900)
 
     def test_a_damaged_king_tower_counts_as_the_weakest_tower(self):
@@ -1003,6 +1003,59 @@ class TestOvertime:
                 board.step(int(board.np_rng.integers(0, NUM_ACTIONS)))
             outcomes.append((board.winner, board.crowns, board.time))
         assert outcomes[0] == outcomes[1]
+
+
+class TestEveryMatchEndTerminates:
+    """The rules decide every Match end, so none is a time-limit truncation."""
+
+    @staticmethod
+    def _run_to_the_end(board: Board):
+        results = [board.step(0, action_p1=0) for _ in range(round(10.0 / TICK_DT))]
+        return next(r for r in results if r.terminated or r.truncated)
+
+    def _regulation_end_with_a_crown(self) -> Board:
+        board = new_board()
+        tower = _tower(board, 1, "Tower", "L")
+        tower.hp, tower.alive = 0.0, False
+        board.time = REGULATION_TIME - TICK_DT
+        return board
+
+    def _first_crown_in_overtime(self) -> Board:
+        board = new_board()
+        board.time = REGULATION_TIME + 5.0
+        tower = _tower(board, 1, "Tower", "R")
+        tower.hp = 1.0
+        place_unit(board, "Knight", 0, tower.x, tower.y - 1.0)
+        return board
+
+    def _overtime_tiebreak(self) -> Board:
+        board = new_board()
+        _tower(board, 0, "Tower", "L").hp = 500.0
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        return board
+
+    def _overtime_draw(self) -> Board:
+        board = new_board()
+        board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        return board
+
+    def _king_kill(self) -> Board:
+        board = new_board()
+        king = _tower(board, 1, "King_Tower")
+        king.hp = 1.0
+        place_unit(board, "Knight", 0, king.x, king.y - 1.0)
+        return board
+
+    @pytest.mark.parametrize(
+        "make_board",
+        ["_regulation_end_with_a_crown", "_first_crown_in_overtime", "_overtime_tiebreak", "_overtime_draw", "_king_kill"],
+    )
+    def test_every_kind_of_match_end_is_a_termination(self, make_board):
+        board = getattr(self, make_board)()
+        result = self._run_to_the_end(board)
+        assert board.done
+        assert result.terminated
+        assert not result.truncated
 
 
 class TestTowerFirstHitDelay:
