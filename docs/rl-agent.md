@@ -131,9 +131,11 @@ spell effects are not observed (a flying unit is identified by its card).
 
 **Player 1 view.** For `player = 1` the vector is built from player 1's perspective,
 so a policy trained as player 0 can drive player 1: own elixir first, own towers
-first, own hand, and unit positions rotated by 180° (`x' = 18 − x`, `y' = 32 − y`).
-See [Known limitations](#known-limitations) for where this view and the action
-layout disagree.
+first, own hand, and unit positions mirrored in y only (`y' = 32 − y`, x unchanged).
+This matches player 1's deploy zones (also mirrored in y only) and its tower order
+(left princess first), so left stays left for both players and a unit deployed at a
+zone appears in the same lane of its owner's view (`tests/test_board.py`,
+`TestMirroredObservation`).
 
 ## Actions
 
@@ -151,14 +153,14 @@ the y coordinate is mirrored (`y → 32 − y`):
 
 | Zone | Name | (x, y) | Accepts | Purpose |
 |---|---|---|---|---|
-| 0 | back-L | (3.0, 4.5) | troops, buildings | slow buildup behind the towers |
-| 1 | back-R | (14.0, 4.5) | troops, buildings | |
-| 2 | mid-L | (3.0, 9.0) | troops, buildings | standard lane play |
-| 3 | mid-R | (14.0, 9.0) | troops, buildings | |
-| 4 | bridge-L | (3.0, 14.0) | troops, buildings | bridge pressure |
-| 5 | bridge-R | (14.0, 14.0) | troops, buildings | |
-| 6 | pull-L | (5.5, 9.5) | troops, buildings | **pull zone** for building-targeters |
-| 7 | pull-R | (12.5, 9.5) | troops, buildings | |
+| 0 | back-L | (7.5, 0.5) | troops | behind the king tower: slow buildup (a Giant push); walks to the left Bridge lane |
+| 1 | back-R | (10.5, 0.5) | troops | walks to the right Bridge lane |
+| 2 | mid-L | (3.5, 10.5) | troops, buildings | standard lane play, just in front of the princess tower |
+| 3 | mid-R | (14.5, 10.5) | troops, buildings | |
+| 4 | bridge-L | (3.5, 14.0) | troops, buildings | bridge pressure |
+| 5 | bridge-R | (14.5, 14.0) | troops, buildings | |
+| 6 | pull-L | (8.0, 11.0) | troops, buildings | **pull zone** for building-targeters |
+| 7 | pull-R | (10.0, 11.0) | troops, buildings | |
 | 8 | spell-tower-L | (3.5, 24.0) | spells | **spell zone** on the left enemy princess tower |
 | 9 | spell-tower-R | (14.5, 24.0) | spells | right enemy princess tower |
 | 10 | spell-king | (9.0, 29.0) | spells | enemy king tower |
@@ -183,11 +185,17 @@ Pinned by `tests/test_arena_geometry.py` (ADR-0005):
   mirror-symmetric about x = 9. A troop behind its king walks to the lane on its side of
   the centre line.
 
-The deploy-zone coordinates in the table are unchanged apart from spell-king, which
-follows the enemy king tower.
+The zones are the ADR-0002 layout on these geometry constants: indices 0–10 are pinned
+by `tests/test_board.py` (`TestDeployZones`). "Troops" are ground and air units; the back
+zones refuse buildings because a Cannon behind the king would be wasted. No zone starts
+a unit inside a tower, a Giant in a back zone included
+(`tests/test_arena_geometry.py`). Spell-king follows the enemy king tower. The push
+Spell zones 11 and 12 of ADR-0002 are not in the layout yet.
 
 The pull-zone placement is derived in ADR-0002: a Cannon at pull-L is closer to an
-enemy Hog Rider leaving the left bridge than the princess tower is.
+enemy Hog Rider leaving the left bridge than the princess tower is, and the pull zones
+sit symmetrically about x = 9, so both lanes have the same margin
+(`tests/test_scenarios.py`, both lanes).
 
 ### Targeting
 
@@ -202,9 +210,9 @@ only forms once it is in range. The King tower activation rules are unchanged.
 
 `Board.valid_action_mask(player)` returns a 45-element boolean mask. Noop is always
 legal; play `(s, z)` is legal when the player can afford the card in slot `s` and
-zone `z` accepts that card type (troop/building zones 0–7, spell zones 8–10). With
-the Deck a troop or building (Baby Dragon included) has 8 legal zones and each of
-Fireball and Arrows has 3, so at most 33 of the 45 actions are legal at once.
+zone `z` accepts that card type (troops: zones 0–7, buildings: zones 2–7, spells: zones
+8–10). With the Deck a troop (Baby Dragon included) has 8 legal zones, the Cannon 6 and
+each of Fireball and Arrows 3, so at most 33 of the 45 actions are legal at once.
 
 The mask is applied during training (the env is wrapped in `ActionMasker`), during
 evaluation and in-game inference (`model.predict(..., action_masks=mask)`).
@@ -415,11 +423,6 @@ Facts about the current code that the v2 work should address:
 - **No pocket for agents.** After an enemy princess tower falls, humans can deploy in a
   4 × 9 pocket on that side (ADR-0006); agents and the rule-based bot cannot, because the
   action layout has no zone there.
-- **Player 1 lane mismatch.** The player 1 observation rotates unit positions by 180°
-  (left and right swap), but player 1's deploy zones mirror only y (left stays left)
-  and the tower features keep the left/right order. A policy trained as player 0 and
-  run as player 1, which is how the RL opponent plays in the web game, sees its unit
-  in one lane after choosing a zone in the other.
 - **Fixed seed per environment.** Each training environment replays one opening
   hand, so the agent trains on only 8 distinct openings.
 - **Degenerate evaluation callback.** The evaluation environment also reuses its seed,
@@ -443,4 +446,5 @@ Facts about the current code that the v2 work should address:
 | 2026-10-21 | Decision points (#36, ADR-0002): the agent is asked only when a card play is legal and no noop hold runs; noop holds 3 ticks (configurable); skipped-tick rewards are summed into the step; the Session RL opponent follows the same schedule. Observation and action layout unchanged. |
 | 2026-10-21 | Target locking (#48): troops and towers keep their target until it dies or leaves range instead of re-picking the closest every tick. Observation and action layout unchanged. |
 | 2026-10-21 | Pocket deploy zone (#50, ADR-0006): a fallen enemy princess tower opens a 4 × 9 pocket for its destroyer, humans only; the snapshot carries `pockets`. Action mask, zones and observation are unchanged. |
+| 2026-10-23 | Zone layout v2 and the P1 lane fix (#38, ADR-0002): zones 0–10 keep their indices on the new coordinates (back zones behind the king, troops only; mid at the princess towers; centred pull zones). The player 1 observation mirrors only y (x unchanged), fixing the lane mismatch. 45 actions and 169 dims unchanged, but a model trained on the old zones or the 180° view is not valid. |
 | 2026-10-23 | Outcome reward with potential shaping (#41, ADR-0002): win/loss/draw plus Crown and tower-HP shaping per decision step, all weights configurable; the tower-HP-only per-tick reward is removed and `StepResult` no longer carries a reward. Observation and action layout unchanged. |
