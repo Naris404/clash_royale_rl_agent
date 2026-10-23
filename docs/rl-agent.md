@@ -13,13 +13,14 @@ mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 
 | | |
 |---|---|
-| Documented layout | 169-dim observation, 53 actions (13 deploy zones) |
+| Documented layout | 278-dim observation (version 2), 53 actions (13 deploy zones) |
 | Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested and signed off ([checklist](playtest-env-v1.md#env-v11-sign-off)); frozen, tagged `env-v1.1` |
 | Trained model for this layout | none yet; the **v2 model** is trained only on env-v1.1, after its sign-off (ADR-0005) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
-The observation and action layout above is the env-v1 contract: it is pinned by
-`tests/test_env_layout.py`, and any change to it needs a new environment version.
+The observation and action layout above is the contract: the observation is pinned by
+`tests/test_observation.py` and the actions by `tests/test_env_layout.py`, and any change
+to either needs a new environment version.
 
 ## Agent at a glance
 
@@ -40,7 +41,7 @@ Code: `src/cr_rl/game/board.py` (observation, actions, mask), `src/cr_rl/game/re
 ## Environment interface
 
 `ClashRoyaleEnv` wraps `Board` as a Gymnasium environment with
-`observation_space = Box(-1, 1, (169,), float32)` and `action_space = Discrete(53)`,
+`observation_space = Box(-1, 1, (278,), float32)` and `action_space = Discrete(53)`,
 and exposes `action_masks()` for MaskablePPO.
 
 One `step(action)` registers the action with the decision schedule and then simulates
@@ -87,55 +88,64 @@ it is `None` on every earlier step.
 
 ## Observation
 
-A flat `float32` vector of `OBS_DIM = 169` features, built by
+A flat `float32` vector of `OBS_DIM = 278` features (observation version 2), built by
 `Board.get_observation(player)`. Segment offsets are named constants in `board.py`
-(`OBS_GLOBAL_FEATURES`, `OBS_TOWER_FEATURES`, `OBS_HAND_BASE`, `OBS_NEXT_BASE`, `OBS_UNIT_BASE`, …).
+(`OBS_GLOBAL_FEATURES`, `OBS_TOWER_BASE`, `OBS_HAND_BASE`, `OBS_NEXT_BASE`, `OBS_PLAYS_BASE`,
+`OBS_GRID_BASE`), pinned by `tests/test_observation.py`. Card identity is one-hot everywhere.
 No `VecNormalize` is applied; every feature is already scaled to [-1, 1].
 
 | Indices | Count | Feature | Encoding |
 |---|---|---|---|
 | 0 | 1 | Own elixir | `elixir / 10` |
 | 1 | 1 | Enemy elixir | `elixir / 10` (visible, unlike the real game) |
-| 2 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime) |
-| 3–5 | 3 | Own towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
-| 6–8 | 3 | Enemy towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
-| 9–40 | 32 | Hand: 4 slots × 8 cards | one-hot per slot |
-| 41–48 | 8 | Next card | one-hot over the 8 Deck cards |
-| 49–168 | 120 | Units: 24 slots × 5 features | see below |
+| 2 | 1 | Elixir advantage | `(own − enemy elixir) / 10` |
+| 3 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime) |
+| 4–6 | 3 | Own towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
+| 7–9 | 3 | Enemy towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
+| 10–41 | 32 | Hand: 4 slots × 8 cards | one-hot per slot |
+| 42–49 | 8 | Next card | one-hot over the 8 Deck cards |
+| 50–85 | 36 | Opponent's last 4 plays: 4 × (8 cards + none) | one-hot per play, oldest first |
+| 86–277 | 192 | Unit grid: 2 owners × 2 lanes × 8 depth bins × 6 unit cards | see below |
 
-**Hand.** Slot `s` occupies indices `9 + 8·s … 16 + 8·s`; the hot index is the
+**Hand.** Slot `s` occupies indices `10 + 8·s … 17 + 8·s`; the hot index is the
 card ID in Deck order: Knight 0, Giant 1, Hog Rider 2, Musketeer 3, Cannon 4,
 Fireball 5, Arrows 6, Baby Dragon 7. The hand is always full (4 cards). Slots are
 positional: playing the card in slot `s` shifts slots `s+1…3` down by one and the
 drawn card lands in slot 3.
 
-**Next card.** Indices `41 … 48` hold the one-hot of the visible next card, the card
-drawn after the next play (the Cycle's queue head). The rest of the queue and the
-enemy hand are not observed; the queue follows from the Cycle since each played card
-goes to its back.
+**Next card.** Indices `42 … 49` hold the one-hot of the visible next card, the card
+drawn after the next play (the Cycle's queue head).
 
-**Units.** Every living troop and building on the board (both players, towers
-excluded), sorted by distance to the observer's **enemy** king tower, nearest first,
-truncated to 24. Slot `k` occupies indices `49 + 5·k … 53 + 5·k`:
+**Opponent's last plays.** The Board keeps each player's play history (`Board.play_history`,
+every card played, spells included). The observation holds the opponent's last 4 plays as
+four blocks of 9 (8 Deck cards plus "none"), oldest first; the latest play is always the last
+block, and plays that have not happened yet read "none" in the leading blocks. The Cycle is
+FIFO and the queue holds exactly 4 cards, so after the opponent's 4th play these four cards
+are their queue: the other 4 Deck cards are their hand, and the oldest of the four is their
+next card. The agent's own plays are not part of its observation.
 
-| Offset | Feature | Encoding |
-|---|---|---|
-| +0 | Owner | +1 own, −1 enemy, 0 empty slot |
-| +1 | Card | `card_id / 7` (Knight 0.0, Giant 1/7, Hog Rider 2/7, Musketeer 3/7, Cannon 4/7, Baby Dragon 1.0) |
-| +2 | x position | `x / 18` |
-| +3 | y position | `y / 32` |
-| +4 | Health | `hp / max_hp` |
+**Unit grid.** Every living troop and building (towers excluded) adds to one cell, indexed
+`[owner][lane][depth][unit card]` in row-major order, with `owner` 0 = own and 1 = enemy:
 
-Unit attack cooldown, deploy state, remaining Cannon lifetime, whether a unit flies and
-spell effects are not observed (a flying unit is identified by its card).
+- *Lane:* 0 (left) when `x < 9`, 1 (right) otherwise, against the board's centre line.
+- *Depth:* `min(7, floor(y / 4))` in the observer's view, so 8 bins of 4 rows each; the
+  river (`y = 16`) lies on the edge between bins 3 and 4.
+- *Unit card:* the 6 non-spell Deck cards in Deck order (Knight, Giant, Hog Rider,
+  Musketeer, Cannon, Baby Dragon). Spells are not units and have no cells.
+- *Value:* the summed `hp / max_hp` of the units in the cell, capped at 1, so one full-HP
+  unit reads 1.0, a wounded one less, and two Knights in one cell read 1.0.
+
+The grid does not reshuffle when units spawn or die: a unit always occupies the same
+cell. Unit attack cooldown, deploy state, remaining Cannon lifetime and spell effects are
+not observed.
 
 **Player 1 view.** For `player = 1` the vector is built from player 1's perspective,
 so a policy trained as player 0 can drive player 1: own elixir first, own towers
-first, own hand, and unit positions mirrored in y only (`y' = 32 − y`, x unchanged).
-This matches player 1's deploy zones (also mirrored in y only) and its tower order
-(left princess first), so left stays left for both players and a unit deployed at a
-zone appears in the same lane of its owner's view (`tests/test_board.py`,
-`TestMirroredObservation`).
+first, own hand, the opponent's plays, and depth measured in y mirrored only
+(`y' = 32 − y`, x unchanged). This matches player 1's deploy zones (also mirrored in y
+only) and its tower order (left princess first), so left stays left for both players and a
+unit deployed at a zone appears in the same lane and depth of its owner's view
+(`tests/test_board.py`, `TestMirroredObservation`).
 
 ## Actions
 
@@ -277,8 +287,8 @@ orthogonal initialization (SB3 defaults).
 
 ```mermaid
 flowchart LR
-    obs["Observation<br/>169"] --> p1["Linear 169→256<br/>Tanh"]
-    obs --> v1["Linear 169→256<br/>Tanh"]
+    obs["Observation<br/>278"] --> p1["Linear 278→256<br/>Tanh"]
+    obs --> v1["Linear 278→256<br/>Tanh"]
     subgraph policy["Policy network (actor)"]
         p1 --> p2["Linear 256→256<br/>Tanh"] --> logits["Linear 256→53<br/>action logits"]
     end
@@ -291,11 +301,11 @@ flowchart LR
 
 | Part | Parameters |
 |---|---|
-| Policy MLP (169→256→256) | 109,312 |
-| Value MLP (169→256→256) | 109,312 |
+| Policy MLP (278→256→256) | 137,216 |
+| Value MLP (278→256→256) | 137,216 |
 | Action head (256→53) | 13,621 |
 | Value head (256→1) | 257 |
-| **Total** | **232,502** |
+| **Total** | **288,310** |
 
 A flat MLP fits the problem size: the observation is small and fixed-length, and the
 network is small enough to train on a laptop CPU (ADR-0002 keeps it for v2).
@@ -442,8 +452,9 @@ Facts about the current code that the v2 work should address:
   50 episodes of every evaluation are identical (verified in
   `models/eval/evaluations.npz`: 80 of 80 evaluations). Model selection by
   `ppo_cr_best.zip` is therefore unreliable.
-- **Partial observation.** No queue beyond the next card, no unit cooldown or deploy
-  state, and opponent elixir is visible.
+- **Partial observation.** No unit cooldown or deploy state, and opponent elixir is
+  visible. The opponent's hand is unknown until its 4th play (then it follows from the
+  last 4 plays).
 
 ## Change log
 
@@ -461,3 +472,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Zone layout v2 and the P1 lane fix (#38, ADR-0002): zones 0–10 keep their indices on the new coordinates (back zones behind the king, troops only; mid at the princess towers; centred pull zones). The player 1 observation mirrors only y (x unchanged), fixing the lane mismatch. 45 actions and 169 dims unchanged, but a model trained on the old zones or the 180° view is not valid. |
 | 2026-10-23 | Outcome reward with potential shaping (#41, ADR-0002): win/loss/draw plus Crown and tower-HP shaping per decision step, all weights configurable; the tower-HP-only per-tick reward is removed and `StepResult` no longer carries a reward. Observation and action layout unchanged. |
 | 2026-10-23 | Push Spell zones (#39, ADR-0002): zones 11 and 12 (spell-push-L / -R) aim a spell at the best enemy cluster in a lane and are legal only while that lane holds an enemy unit or building. `NUM_ZONES` 11 → 13, `NUM_ACTIONS` 45 → 53, `divmod(action − 1, 13)`; the observation is unchanged. A model trained on the 45-action layout is not valid. |
+| 2026-10-23 | Observation v2 (#40, ADR-0002): `OBS_DIM` 169 → 278. The 24 distance-sorted unit slots are replaced by a permutation-invariant grid (2 owners × 2 lanes × 8 depth bins × 6 unit cards, summed HP / max HP capped at 1); an elixir-advantage feature and the opponent's last 4 plays (from the Board's per-player play history) are added. Actions are unchanged. v1 and 169-dim checkpoints are ignored at load. |
