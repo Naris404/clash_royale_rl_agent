@@ -1,4 +1,4 @@
-"""Board tests — game mechanics, observations, rewards, determinism."""
+"""Board tests — game mechanics, observations, determinism."""
 
 from __future__ import annotations
 
@@ -558,20 +558,7 @@ class TestHitEvents:
         assert all(e.damage != cards_dic["Fireball"]["damage"] for e in board.hit_events)
 
 
-class TestRewardsAndObservations:
-    def test_reward_positive_when_enemy_tower_damaged(self):
-        board = new_board()
-        tower = next(t for t in board.towers if t.owner == 1 and t.name == "Tower")
-        place_unit(board, "Hog_Rider", 0, tower.x, tower.y - 1.0)
-        # Hog has deploy_time=1.0 and first_hit_speed=0.6 — first damage after ~1.6 s.
-        rewards = [board.step(0, action_p1=0).reward for _ in range(20)]
-        assert sum(rewards) > 0.0
-
-    def test_reward_zero_without_combat(self):
-        board = new_board()
-        result = board.step(0, action_p1=0)
-        assert result.reward == 0.0
-
+class TestObservations:
     def test_observation_shape_and_normalization(self):
         board = new_board()
         obs = board.get_observation(0)
@@ -797,11 +784,11 @@ class TestDeterminism:
             run = []
             for a0, a1 in zip(actions, actions[::-1]):
                 r = board.step(a0, action_p1=a1)
-                run.append((r.observation.copy(), r.reward, r.terminated, r.truncated))
+                run.append((r.observation.copy(), r.terminated, r.truncated))
             results.append(run)
-        for (obs1, rew1, t1, tr1), (obs2, rew2, t2, tr2) in zip(*results):
+        for (obs1, t1, tr1), (obs2, t2, tr2) in zip(*results):
             np.testing.assert_array_equal(obs1, obs2)
-            assert (rew1, t1, tr1) == (rew2, t2, tr2)
+            assert (t1, tr1) == (t2, tr2)
 
     def test_different_seeds_differ(self):
         obs_a = new_board(seed=1).get_observation(0)

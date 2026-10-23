@@ -17,6 +17,7 @@ from pathlib import Path
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 
+from cr_rl.game.rewards import DEFAULT_GAMMA
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
 from cr_rl.training.train import DEFAULT_MODEL_DIR, evaluate_model, make_training_env, make_vec_training_env
 
@@ -41,7 +42,7 @@ def train_curriculum(
         n_steps=max(2048 // n_envs, 256),
         batch_size=256,
         n_epochs=10,
-        gamma=0.995,
+        gamma=DEFAULT_GAMMA,
         ent_coef=0.02,
         verbose=1,
         seed=seed,

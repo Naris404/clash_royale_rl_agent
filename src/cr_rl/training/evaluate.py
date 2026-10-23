@@ -21,7 +21,7 @@ def main() -> None:
         f"W: {stats['wins']} L: {stats['losses']} D: {stats['draws']} | "
         f"Win rate: {stats['win_rate']:.1%}"
     )
-    print(f"Mean reward (tower HP): {stats['mean_reward']:.4f}")
+    print(f"Mean return: {stats['mean_reward']:.4f}")
     print(f"Mean match length (ticks): {stats['mean_length']:.0f}")
 
 

@@ -32,7 +32,7 @@ The observation and action layout above is the env-v1 contract: it is pinned by
 - **Episode:** one match, at most 3001 simulation ticks (180 s regulation + 120 s overtime),
   fewer agent steps.
 
-Code: `src/cr_rl/game/board.py` (observation, actions, mask, reward),
+Code: `src/cr_rl/game/board.py` (observation, actions, mask), `src/cr_rl/game/rewards.py` (reward),
 `src/cr_rl/env/gym_env.py` (Gymnasium wrapper), `src/cr_rl/game/decisions.py`
 (decision schedule), `src/cr_rl/training/train.py`
 (training and evaluation), `src/cr_rl/agents/rl.py` (inference).
@@ -50,7 +50,7 @@ ticks until the next Decision point or the end of the match. Every tick:
    through `set_pending_play` and returns noop). The opponent acts on every tick.
 2. Player 0's action is applied (noop on the skipped ticks), then player 1's.
 3. Elixir regenerates for both players (start 5, max 10, +1 per 2.8 s; twice as fast from 2:00 through overtime).
-4. Combat runs for one tick; the reward is computed from the tower-HP change.
+4. Combat runs for one tick.
 5. Dead units are removed and the clock advances by 0.1 s.
 6. End check: **terminated** when a king tower is destroyed (3 crowns for its
    destroyer). Otherwise nothing happens before 180 s; then **truncated** as soon as the
@@ -60,8 +60,8 @@ ticks until the next Decision point or the end of the match. Every tick:
    HP loses and equal weakest towers are a draw. 1800 ticks of 0.1 s accumulate to just
    under 180.0 in floating point, so a regulation match lasts 1801 ticks.
 
-The returned reward is the sum of the rewards of all simulated ticks, so the return of a
-match equals the per-tick total. `reset()` also advances to the first Decision point.
+The returned reward is computed once per step, from the position at the start and at the
+end of the step (see [Reward](#reward)). `reset()` also advances to the first Decision point.
 
 ### Decision points
 
@@ -223,21 +223,39 @@ plays.
 
 ## Reward
 
-The reward is the per-step change in tower HP, from player 0's perspective:
+Outcome-driven, with potential-based shaping (Ng et al. 1999). It is computed per
+decision step by `cr_rl.game.rewards.step_reward`, from player 0's perspective:
 
 ```
-r_t = (enemy_tower_hp_lost_t − own_tower_hp_lost_t) / MAX_TOWER_HP_PER_PLAYER
+r = λ_win   · outcome                              (last step only: win +1, loss −1, draw 0)
+  + λ_crown · (γ·Φ_crown(s′) − Φ_crown(s))         Φ_crown = my Crowns − enemy Crowns
+  + λ_hp    · (γ·Φ_hp(s′)    − Φ_hp(s))            Φ_hp = (my tower HP − enemy tower HP) / MAX_TOWER_HP_PER_PLAYER
 ```
 
-with `MAX_TOWER_HP_PER_PLAYER = 2 × 3052 + 4824 = 10928` (one player's total tower
-HP). There is no shaping and no terminal win/loss bonus, so the episode return is the
-net tower damage as a fraction of one player's total tower HP, bounded by [-1, 1].
+with `MAX_TOWER_HP_PER_PLAYER = 2 × 3052 + 4824 = 10928` (one player's total tower HP).
+`s` is the state at the Decision point where the step started and `s′` the state where
+it ended, so a step spanning several ticks pays the net change.
 
-Destroying the king tower ends the match, so the return reflects the result only
-through HP: a narrow total-HP win at the time limit and a king-tower win can yield
-similar returns. The reward is sparse, being zero on every tick without tower damage;
-ADR-0002 plans shaped auxiliaries (troop trade value, elixir-leak penalty, kill/loss
-delta) for v2.
+- **Outcome.** Follows the match rules: more Crowns at the end of Regulation, the first
+  Crown in Overtime, a king tower kill, then the Tiebreak (weakest standing tower); a
+  draw is 0. The outcome is paid on the step that ends the match.
+- **γ.** PPO's γ, applied per decision step. `ClashRoyaleEnv(gamma=...)` takes it;
+  `train()` passes its own `gamma` on, default `DEFAULT_GAMMA = 0.995`.
+- **Φ(terminal) = 0.** The last step therefore pays `−Φ(s)` of shaping on top of the
+  outcome. With γ = 1 the shaping terms telescope to zero over a match (Φ at the start is
+  0, as both players have full towers), so the undiscounted return equals the outcome and
+  shaping cannot change the optimal policy.
+- **Weights.** `RewardWeights(win=1.0, crown=0.2, hp=0.5)`, passed as
+  `ClashRoyaleEnv(reward_weights=...)`. `crown = hp = 0` is the outcome-only reward of
+  the no-shaping ablation; no code changes are needed.
+- **Symmetry.** Every term is antisymmetric between the players, so player 0 and
+  player 1 get negated rewards for the same transition.
+- **Removed.** Troop trade value, the kill/loss delta and the elixir-leak penalty: the
+  potentials already give a dense signal and those terms are not potential-based.
+  Ablations are judged by win rate, not shaped return.
+
+The Coach's blunder and Key moment thresholds were tuned to the old tower-HP reward
+scale and are retuned once a v2 model exists.
 
 ## Network architecture
 
@@ -412,8 +430,6 @@ Facts about the current code that the v2 work should address:
   50 episodes of every evaluation are identical (verified in
   `models/eval/evaluations.npz`: 80 of 80 evaluations). Model selection by
   `ppo_cr_best.zip` is therefore unreliable.
-- **Sparse, HP-only reward.** No signal for trades, elixir efficiency or winning
-  itself; see [Reward](#reward).
 - **Partial observation.** No queue beyond the next card, no unit cooldown or deploy
   state, and opponent elixir is visible.
 
@@ -431,3 +447,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-21 | Target locking (#48): troops and towers keep their target until it dies or leaves range instead of re-picking the closest every tick. Observation and action layout unchanged. |
 | 2026-10-21 | Pocket deploy zone (#50, ADR-0006): a fallen enemy princess tower opens a 4 × 9 pocket for its destroyer, humans only; the snapshot carries `pockets`. Action mask, zones and observation are unchanged. |
 | 2026-10-23 | Zone layout v2 and the P1 lane fix (#38, ADR-0002): zones 0–10 keep their indices on the new coordinates (back zones behind the king, troops only; mid at the princess towers; centred pull zones). The player 1 observation mirrors only y (x unchanged), fixing the lane mismatch. 45 actions and 169 dims unchanged, but a model trained on the old zones or the 180° view is not valid. |
+| 2026-10-23 | Outcome reward with potential shaping (#41, ADR-0002): win/loss/draw plus Crown and tower-HP shaping per decision step, all weights configurable; the tower-HP-only per-tick reward is removed and `StepResult` no longer carries a reward. Observation and action layout unchanged. |
