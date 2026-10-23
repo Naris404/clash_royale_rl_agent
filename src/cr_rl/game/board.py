@@ -448,7 +448,7 @@ class Board:
         damage = float(stats["damage"])
         tower_damage = float(stats.get("tower_damage", damage))
         victims = [(t, damage) for t in self.troops if t.alive and t.owner != player]
-        victims += [(t, tower_damage) for t in self.towers if t.alive and t.owner != player]
+        victims += [(t, tower_damage) for t in self.towers if t.alive and t.owner != player and t.name != "King_Tower"]
 
         def aim_at(unit: Troop) -> tuple[float, float]:
             return (
