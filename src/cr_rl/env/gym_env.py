@@ -23,11 +23,17 @@ from cr_rl.game.decisions import NOOP_HOLD_TICKS, DecisionSchedule, ScheduledAge
 from cr_rl.game.rewards import DEFAULT_GAMMA, RewardWeights, potential, step_reward
 from cr_rl.agents.logic import EpsilonLogicAgent, LogicAgent
 from cr_rl.agents.rl import RandomAgent, RLAgent
+from cr_rl.training.phases import PAST_SELF
+from cr_rl.training.seeds import TRAINING_SEED_LIMIT
 
 
 def derive_episode_seed(run_seed: int, env_index: int, episode: int) -> int:
-    """Seed of one training episode, derived from the run seed, the env index and the episode counter."""
-    return int(np.random.SeedSequence([run_seed, env_index, episode]).generate_state(1)[0] >> 1)
+    """Seed of one training episode, derived from the run seed, the env index and the episode counter.
+
+    Always below `TRAINING_SEED_LIMIT`, so it never lands in the Selection or Report seeds.
+    """
+    word = np.random.SeedSequence([run_seed, env_index, episode]).generate_state(1)[0]
+    return int(word % TRAINING_SEED_LIMIT)
 
 
 class ClashRoyaleEnv(gym.Env):
@@ -128,8 +134,8 @@ class ClashRoyaleEnv(gym.Env):
 
 
 def _object_opponent_name(opponent: Any) -> str:
-    """Training opponent type of a policy ("past-self") or any other opponent object."""
-    return "past-self" if hasattr(opponent, "predict") else "custom"
+    """Training opponent type of a policy (`PAST_SELF`) or any other opponent object."""
+    return PAST_SELF if hasattr(opponent, "predict") else "custom"
 
 
 def _build_opponent(spec: Union[str, Any], seed: Optional[int], hold_ticks: int) -> Any:

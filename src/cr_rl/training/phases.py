@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 PAST_SELF = "past-self"  # placeholder in a mix; replaced by a Past-self pool member per env
@@ -25,19 +26,23 @@ WARM_UP_MIX = ("random",) * 12
 SCRIPTED_MIX = ("logic",) * 8 + ("logic-eps",) * 2 + ("random",) * 2
 SELF_PLAY_MIX = (PAST_SELF,) * 4 + ("logic",) * 6 + ("logic-eps",) + ("random",)
 
-# One setting selects a layout: "full" is the main configuration, the other two are the
+# One setting selects a layout: FULL is the main configuration, the other two are the
 # no-curriculum and no-self-play Ablation arms.
+FULL = "full"
+NO_CURRICULUM = "no-curriculum"
+NO_SELF_PLAY = "no-self-play"
+
 PHASE_LAYOUTS: dict[str, tuple[TrainingPhase, ...]] = {
-    "full": (
+    FULL: (
         TrainingPhase("warm-up", WARM_UP_MIX, 0.2),
         TrainingPhase("scripted-mix", SCRIPTED_MIX, 0.6),
         TrainingPhase("self-play-mix", SELF_PLAY_MIX, 1.0),
     ),
-    "no-curriculum": (
+    NO_CURRICULUM: (
         TrainingPhase("scripted-mix", SCRIPTED_MIX, 0.6),
         TrainingPhase("self-play-mix", SELF_PLAY_MIX, 1.0),
     ),
-    "no-self-play": (
+    NO_SELF_PLAY: (
         TrainingPhase("warm-up", WARM_UP_MIX, 0.2),
         TrainingPhase("scripted-mix", SCRIPTED_MIX, 1.0),
     ),
@@ -51,15 +56,17 @@ def phase_steps(layout: str, timesteps: int) -> list[tuple[TrainingPhase, int]]:
     result = []
     used = 0
     for phase in PHASE_LAYOUTS[layout]:
-        end = timesteps if phase.end == 1.0 else int(timesteps * phase.end)
+        end = round(timesteps * phase.end)
         result.append((phase, end - used))
         used = end
     return result
 
 
-def phase_opponents(phase: TrainingPhase, n_envs: int, past_selves: Sequence = ()) -> list:
+def phase_opponents(phase: TrainingPhase, n_envs: int, past_selves: Sequence[Path] = ()) -> list[str | Path]:
     """Opponent of each env index; the k-th Past-self env gets pool member k, in rotation."""
-    opponents = []
+    if phase.uses_pool and not past_selves:
+        raise ValueError(f"Phase {phase.name!r} plays Past selves but the Past-self pool is empty")
+    opponents: list[str | Path] = []
     past_self_envs = 0
     for index in range(n_envs):
         opponent = phase.mix[index % len(phase.mix)]

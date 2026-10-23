@@ -43,9 +43,9 @@ except ImportError:
 STATS_DIR = DEFAULT_MODEL_DIR / "stats"
 COACH_VALIDATION_PATH = STATS_DIR / "coach_validation.json"
 KNOWN_MODELS = (
-    ("Best (eval)", DEFAULT_BEST_PATH),
+    ("Best (selection)", DEFAULT_BEST_PATH),
     ("Final", DEFAULT_MODEL_DIR / "ppo_cr_final.zip"),
-    ("Eval callback", DEFAULT_MODEL_DIR / "best_model.zip"),
+    ("Selected checkpoint", DEFAULT_MODEL_DIR / "best_model.zip"),
 )
 
 
@@ -119,16 +119,6 @@ def _fmt_float(value: float | int | list | np.ndarray, digits: int = 4) -> str:
     return f"{float(value):.{digits}f}"
 
 
-def _mean_per_eval_step(values: list | np.ndarray) -> list[float]:
-    """SB3 EvalCallback stores many episodes per step — we return the mean."""
-    arr = np.asarray(values, dtype=np.float64)
-    if arr.size == 0:
-        return []
-    if arr.ndim == 1:
-        return arr.astype(float).tolist()
-    return arr.mean(axis=1).astype(float).tolist()
-
-
 def _section(title: str) -> None:
     line = "=" * len(title)
     print(f"\n{title}\n{line}")
@@ -170,23 +160,6 @@ def load_tensorboard_scalars(tb_root: Path) -> list[ScalarSeries]:
     return series
 
 
-def load_eval_npz(eval_dir: Path) -> dict[str, Any] | None:
-    npz_path = eval_dir / "evaluations.npz"
-    if not npz_path.is_file():
-        return None
-    data = np.load(npz_path)
-    timesteps = data["timesteps"].tolist()
-    results = _mean_per_eval_step(data["results"])
-    ep_lengths = _mean_per_eval_step(data["ep_lengths"])
-    return {
-        "timesteps": timesteps,
-        "results": results,
-        "ep_lengths": ep_lengths,
-        "results_per_episode": np.asarray(data["results"]).tolist(),
-        "ep_lengths_per_episode": np.asarray(data["ep_lengths"]).tolist(),
-    }
-
-
 def find_checkpoints(checkpoint_dir: Path) -> list[Path]:
     if not checkpoint_dir.is_dir():
         return []
@@ -220,7 +193,13 @@ def discover_models(extra: str | None = None) -> list[tuple[str, Path]]:
 
 
 def evaluate_logic_vs_random(episodes: int, seed: int = 0) -> ModelEvalResult:
-    """LogicAgent (P0) vs RandomAgent (P1) — direct match on Board."""
+    """LogicAgent (P0) vs RandomAgent (P1) — direct match on Board.
+
+    This stays a separate loop, not a `play_matches` call: it drives the Board tick by tick with
+    LogicAgent as player 0, which the match runner (a policy as player 0) does not support.
+    Known issue, kept so the reported numbers do not change: `board.step(0, 0)` discards the
+    action RandomAgent chose, so the opponent stays idle.
+    """
     from cr_rl.game.board import Board
     from cr_rl.agents.logic import LogicAgent
     from cr_rl.agents.rl import RandomAgent
@@ -350,28 +329,6 @@ def print_training_curves(series: list[ScalarSeries]) -> None:
         )
 
 
-def print_eval_npz_summary(eval_data: dict[str, Any] | None) -> None:
-    _section("Evaluation history (evaluations.npz)")
-
-    if eval_data is None:
-        print(f"File not found: {DEFAULT_MODEL_DIR / 'eval' / 'evaluations.npz'}")
-        print("(appears after longer training — callback every ~25k steps)")
-        return
-
-    timesteps = eval_data["timesteps"]
-    results = eval_data["results"]
-    lengths = eval_data["ep_lengths"]
-
-    print(f"Number of evaluations: {len(timesteps)}")
-    if not timesteps:
-        return
-
-    best_idx = int(np.argmax(results))
-    print(f"Best mean reward: {_fmt_float(results[best_idx])} @ step {timesteps[best_idx]:,}")
-    print(f"Last mean reward: {_fmt_float(results[-1])} @ step {timesteps[-1]:,}")
-    print(f"Last mean match length: {_fmt_float(lengths[-1], 0)} ticks")
-
-
 def print_model_table(results: list[ModelEvalResult]) -> None:
     _section("Live evaluation vs LogicAgent")
 
@@ -470,7 +427,6 @@ def print_recommendation(results: list[ModelEvalResult]) -> None:
 
 def save_plots(
     series: list[ScalarSeries],
-    eval_data: dict[str, Any] | None,
     live_results: list[ModelEvalResult],
     output_dir: Path,
 ) -> list[Path]:
@@ -534,19 +490,6 @@ def save_plots(
         "Value",
         "training_stability.png",
     )
-
-    if eval_data and eval_data["timesteps"]:
-        fig, ax = plt.subplots(figsize=(9, 4))
-        ax.plot(eval_data["timesteps"], eval_data["results"], marker="o", linewidth=1.8)
-        ax.set_title("Periodic evaluation (eval callback)")
-        ax.set_xlabel("Training step")
-        ax.set_ylabel("Mean reward")
-        ax.grid(True, alpha=0.3)
-        path = output_dir / "eval_callback.png"
-        fig.tight_layout()
-        fig.savefig(path, dpi=120)
-        plt.close(fig)
-        saved.append(path)
 
     trained_live = [
         r
@@ -632,7 +575,6 @@ def save_experiment_plots(
 
 def save_report_json(
     series: list[ScalarSeries],
-    eval_data: dict[str, Any] | None,
     live_results: list[ModelEvalResult],
     output_path: Path,
     *,
@@ -643,7 +585,6 @@ def save_report_json(
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "tensorboard_tags": sorted({s.tag for s in series}),
-        "eval_npz": eval_data,
         "live_evaluation": [asdict(r) for r in live_results],
         "logic_vs_random": asdict(logic_vs_random) if logic_vs_random else None,
         "experiments": experiment_results or [],
@@ -669,10 +610,8 @@ def run_statistics(
     print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     tb_series = load_tensorboard_scalars(DEFAULT_MODEL_DIR / "tb")
-    eval_data = load_eval_npz(DEFAULT_MODEL_DIR / "eval")
 
     print_training_curves(tb_series)
-    print_eval_npz_summary(eval_data)
 
     models = discover_models(model_path)
     if not compare_checkpoints:
@@ -704,7 +643,6 @@ def run_statistics(
         json_path = STATS_DIR / "report.json"
         save_report_json(
             tb_series,
-            eval_data,
             live_results,
             json_path,
             logic_vs_random=logic_vs_random,
@@ -714,7 +652,7 @@ def run_statistics(
         print(f"\nSaved JSON: {json_path}")
 
     if plot:
-        figures = save_plots(tb_series, eval_data, live_results, STATS_DIR / "figures")
+        figures = save_plots(tb_series, live_results, STATS_DIR / "figures")
         if include_experiments:
             figures.extend(
                 save_experiment_plots(

@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import shutil
 from collections import Counter, defaultdict, deque
 from pathlib import Path
@@ -30,7 +31,7 @@ from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.game.rewards import DEFAULT_GAMMA, RewardWeights
 from cr_rl.paths import MODELS_DIR
 from cr_rl.training.matches import play_matches, summarize_matches
-from cr_rl.training.phases import PHASE_LAYOUTS, phase_opponents, phase_steps
+from cr_rl.training.phases import FULL, PAST_SELF, PHASE_LAYOUTS, phase_opponents, phase_steps
 from cr_rl.training.self_play import (
     ADMISSION_MATCHES,
     POOL_LOG_FILENAME,
@@ -45,18 +46,13 @@ from cr_rl.training.selection import (
     select_checkpoint,
 )
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_DIR = MODELS_DIR
 DEFAULT_BEST_PATH = DEFAULT_MODEL_DIR / "ppo_cr_best.zip"
 
 DEFAULT_N_ENVS = 12
 LOG_INTERVAL = 5_000  # env steps between per-opponent win-rate logs
-
-
-def make_training_env(
-    seed: int | None = None, opponent: str = "logic", gamma: float = DEFAULT_GAMMA
-) -> ClashRoyaleEnv:
-    return ClashRoyaleEnv(seed=seed, opponent=opponent, gamma=gamma)
 
 
 def make_vec_training_env(
@@ -115,7 +111,7 @@ def train(
     ent_coef: float = 0.02,
     gamma: float = DEFAULT_GAMMA,
     net_arch: tuple[int, ...] = (256, 256),
-    layout: str = "full",
+    layout: str = FULL,
     reward_weights: RewardWeights = RewardWeights(),
     model_dir: Path = DEFAULT_MODEL_DIR,
     resume: str | None = None,
@@ -172,8 +168,8 @@ def train(
                     policy_kwargs=policy_kwargs,
                     tensorboard_log=str(model_dir / "tb"),
                 )
-            mix = Counter("past-self" if isinstance(o, Path) else o for o in opponents)
-            print(f"=== {phase.name}: {dict(mix)} ({chunk:,} steps) ===")
+            mix = Counter(PAST_SELF if isinstance(o, Path) else o for o in opponents)
+            logger.info("=== %s: %s (%s steps) ===", phase.name, dict(mix), f"{chunk:,}")
             model.learn(
                 total_timesteps=chunk,
                 reset_num_timesteps=False,
@@ -187,17 +183,17 @@ def train(
 
     final_path = model_dir / "ppo_cr_final.zip"
     model.save(str(final_path))
-    print(f"Saved final model: {final_path}")
+    logger.info("Saved final model: %s", final_path)
 
     selection.evaluate()  # the final model takes part in the selection too
     selected = select_checkpoint(selection.results)
     selected_path = model_dir / "checkpoints" / selected.path
     shutil.copy2(selected_path, model_dir / "best_model.zip")
-    print(f"Selected checkpoint: {selected.path} (win rate {selected.win_rate:.1%})")
+    logger.info("Selected checkpoint: %s (win rate %.1f%%)", selected.path, selected.win_rate * 100)
     if model_dir == DEFAULT_MODEL_DIR:
         # only the main training updates ppo_cr_best.zip — sweeps have their own directories
         shutil.copy2(selected_path, DEFAULT_BEST_PATH)
-        print(f"Best model: {DEFAULT_BEST_PATH}")
+        logger.info("Best model: %s", DEFAULT_BEST_PATH)
 
     return model
 
@@ -211,7 +207,10 @@ def _check_pool(pool: PastSelfPool, model: MaskablePPO, model_dir: Path) -> None
     decision = pool.consider(candidate, step)
     pool.save_log(model_dir / POOL_LOG_FILENAME)
     verdict = f"joins, replacing {decision.replaced}" if decision.joined else "stays out"
-    print(f"Pool check @ {step:,} steps: {decision.wins}/{decision.matches} wins, candidate {verdict}")
+    logger.info(
+        "Pool check @ %s steps: %d/%d wins, candidate %s",
+        f"{step:,}", decision.wins, decision.matches, verdict,
+    )
 
 
 def evaluate_model(
@@ -235,7 +234,7 @@ def main() -> None:
     parser.add_argument(
         "--layout",
         choices=sorted(PHASE_LAYOUTS),
-        default="full",
+        default=FULL,
         help="Training phases: full, no-curriculum (no warm-up) or no-self-play",
     )
     parser.add_argument("--resume", type=str, default=None, help="Path to a .zip to resume training")
@@ -248,6 +247,7 @@ def main() -> None:
     )
     parser.add_argument("--eval-episodes", type=int, default=100)
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     if args.eval_only:
         stats = evaluate_model(args.eval_only, n_episodes=args.eval_episodes)

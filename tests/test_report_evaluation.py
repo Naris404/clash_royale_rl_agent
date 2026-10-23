@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pytest
 from sb3_contrib import MaskablePPO
 
@@ -25,7 +26,9 @@ from cr_rl.training.report import (
     ship_gate_passes,
     summarize_configuration,
 )
+from cr_rl.training.seeds import TRAINING_SEED_LIMIT
 from cr_rl.training.selection import SELECTION_SEEDS, CheckpointResult, save_selection
+from cr_rl.training.self_play import admission_seeds
 
 TINY_SEEDS = range(2_000_000, 2_000_002)
 
@@ -53,14 +56,27 @@ class TestReportSeeds:
     def test_are_disjoint_from_selection_seeds(self):
         assert not set(REPORT_SEEDS) & set(SELECTION_SEEDS)
 
-    def test_are_never_drawn_as_training_episode_seeds(self):
-        training = {
-            derive_episode_seed(run, env, episode)
-            for run in (0, 42)
-            for env in range(12)
-            for episode in range(200)
-        }
-        assert not training & (set(REPORT_SEEDS) | set(SELECTION_SEEDS))
+    def test_the_training_seed_limit_lies_below_both_ranges(self):
+        assert TRAINING_SEED_LIMIT <= min(SELECTION_SEEDS.start, REPORT_SEEDS.start)
+
+    def test_the_largest_possible_training_episode_seed_stays_below_the_limit(self, monkeypatch):
+        class WorstCase:  # a SeedSequence whose generated state is the largest 32-bit word
+            def __init__(self, entropy):
+                pass
+
+            def generate_state(self, n_words):
+                return np.full(n_words, 2**32 - 1, dtype=np.uint32)
+
+        monkeypatch.setattr(np.random, "SeedSequence", WorstCase)
+        assert derive_episode_seed(0, 0, 0) < TRAINING_SEED_LIMIT
+
+    def test_the_largest_possible_admission_seed_stays_below_the_limit(self, monkeypatch):
+        class WorstCase:  # a generator that always draws the largest values the population allows
+            def choice(self, population, size, replace):
+                return np.arange(population - size, population)
+
+        monkeypatch.setattr(np.random, "default_rng", lambda seed_sequence: WorstCase())
+        assert max(admission_seeds(0, 100_000)) < TRAINING_SEED_LIMIT
 
 
 class TestOpponentReport:

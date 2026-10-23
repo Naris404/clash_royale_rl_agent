@@ -17,8 +17,10 @@ from typing import Any, Sequence
 from sb3_contrib import MaskablePPO
 
 from cr_rl.game.board import NUM_ACTIONS, OBS_DIM
+from cr_rl.jsonio import write_json
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
 from cr_rl.training.matches import MatchResult, play_matches, summarize_matches, wilson_interval
+from cr_rl.training.seeds import REPORT_SEEDS
 from cr_rl.training.selection import (
     SELECTION_FILENAME,
     CheckpointResult,
@@ -26,8 +28,6 @@ from cr_rl.training.selection import (
     select_checkpoint,
 )
 
-# Disjoint from SELECTION_SEEDS (1_000_000 + i) and from training episode seeds.
-REPORT_SEEDS = range(2_000_000, 2_000_200)
 REPORT_OPPONENTS = ("logic", "random")
 ENV_VERSION = "env-v1.1"
 SHIP_GATE_OPPONENT = "logic"
@@ -129,6 +129,20 @@ def report_matches(opponent: str, results: Sequence[MatchResult]) -> OpponentRep
     )
 
 
+def report_metadata(model: str, seeds: range, config: dict[str, Any] | None = None) -> ReportMetadata:
+    """Metadata of a deterministic evaluation of `model` on `seeds` in the current environment."""
+    return ReportMetadata(
+        model=model,
+        seed_start=seeds.start,
+        episodes=len(seeds),
+        deterministic=True,
+        env_version=ENV_VERSION,
+        obs_dim=OBS_DIM,
+        num_actions=NUM_ACTIONS,
+        config=config,
+    )
+
+
 def ship_gate_passes(report: OpponentReport) -> bool:
     """The Ship gate: the lower bound of the 95% Wilson interval is above 50%."""
     return report.ci_low > SHIP_GATE_THRESHOLD
@@ -143,16 +157,7 @@ def evaluate_report(
     opponents: Sequence[str] = REPORT_OPPONENTS,
 ) -> ReportEvaluation:
     """Play `player` deterministically on the same seeds against each opponent."""
-    metadata = ReportMetadata(
-        model=model,
-        seed_start=seeds.start,
-        episodes=len(seeds),
-        deterministic=True,
-        env_version=ENV_VERSION,
-        obs_dim=OBS_DIM,
-        num_actions=NUM_ACTIONS,
-        config=config,
-    )
+    metadata = report_metadata(model, seeds, config)
     reports = tuple(report_matches(name, play_matches(player, name, seeds)) for name in opponents)
     return ReportEvaluation(metadata, reports)
 
@@ -212,7 +217,7 @@ def save_configuration_report(
     """Write the report, with `extra` entries beside it; `results` holds `configuration_rows`."""
     payload = {"experiment": experiment, **asdict(report), **(extra or {}), "results": configuration_rows(report)}
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(path, payload)
 
 
 def main() -> None:
