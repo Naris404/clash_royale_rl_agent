@@ -322,7 +322,7 @@ was trained with the same values.
 | `learning_rate` | 3e-4, constant | Standard Adam step size for PPO (SB3 default); the sweep tests 1e-4 and 1e-3. |
 | `n_envs` | 12 | Twelve environments, one process each (`SubprocVecEnv`), use the 14-core CPU and decorrelate the samples in a rollout; the 8 / 2 / 2 opponent mix of phase 2 needs 12. |
 | `n_steps` (per env) | `max(2048 // n_envs, 256)` = 256 | The floor of 256 steps per environment keeps each segment longer than the discount horizon (3072 transitions per rollout with 12 envs). |
-| `batch_size` | 256 | 8 minibatches per epoch over the 2048-transition rollout: enough gradient steps per rollout while each minibatch still spans several environments and game phases. |
+| `batch_size` | 256 | 12 minibatches per epoch over the 3072-transition rollout (256 steps × 12 envs): enough gradient steps per rollout while each minibatch still spans several environments and game phases. |
 | `n_epochs` | 10 | SB3 default. Simulation steps are the expensive part, so each rollout is reused for 10 passes; the clipped objective keeps that reuse from moving the policy too far. |
 | `gamma` | 0.995 | Applied per decision step. A play pays off only when units reach a tower: a Giant from back-L walks about 15 s (150 ticks, roughly 50 steps while the agent holds noop for 3 ticks) to the enemy princess tower. γ = 0.995 gives an effective horizon of 1/(1−γ) = 200 steps and still weights that payoff by 0.995^50 ≈ 0.78; the 0.99 default would weight it by 0.99^50 ≈ 0.61, and the match outcome even less. |
 | `gae_lambda` | 0.95 | SB3 default. Advantages still credit rewards some tens of decision steps after the action (λγ = 0.945 per step) while damping the variance of the return, which is dominated by the sparse match outcome. |
@@ -331,7 +331,7 @@ was trained with the same values.
 | `vf_coef` | 0.5 | SB3 default. With separate networks it only scales the value loss against the policy loss in the shared Adam step. |
 | `max_grad_norm` | 0.5 | SB3 default. Clips the rare large gradients from steps where a tower falls and the reward spikes. |
 | `net_arch` | pi [256, 256], vf [256, 256] | See [Network architecture](#network-architecture); the sweep tests 128 and 512 units. |
-| `total_timesteps` | 1,000,000 | About 555 full-length matches; small enough that several variants fit a laptop budget. |
+| `total_timesteps` | 1,000,000 | Decision steps, not ticks: about 5,000 to 38,000 matches, depending on how often the policy waits (26 steps per match for random plays, 210 when it waits 90% of the time); small enough that several variants fit a laptop budget. |
 | `seed` | 42 | The run seed; every episode's seed is derived from it (see [Training setup](#training-setup)). |
 
 ## Training setup
@@ -485,3 +485,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Push Spell zones (#39, ADR-0002): zones 11 and 12 (spell-push-L / -R) aim a spell at the best enemy cluster in a lane and are legal only while that lane holds an enemy unit or building. `NUM_ZONES` 11 → 13, `NUM_ACTIONS` 45 → 53, `divmod(action − 1, 13)`; the observation is unchanged. A model trained on the 45-action layout is not valid. |
 | 2026-10-23 | Observation v2 (#40, ADR-0002): `OBS_DIM` 169 → 278. The 24 distance-sorted unit slots are replaced by a permutation-invariant grid (2 owners × 2 lanes × 8 depth bins × 6 unit cards, summed HP / max HP capped at 1); an elixir-advantage feature and the opponent's last 4 plays (from the Board's per-player play history) are added. Actions are unchanged. v1 and 169-dim checkpoints are ignored at load. |
 | 2026-10-23 | Training opponents, curriculum and seeds (#42, ADR-0002): `"logic-eps"` (ε-`LogicAgent`, ε = 0.2) and frozen-policy opponents; `cr-rl-train` runs 12 `SubprocVecEnv` envs with env-side masks, phase 1 vs `RandomAgent` then phase 2 with 8 / 2 / 2 `LogicAgent` / ε-`LogicAgent` / `RandomAgent` (`--no-curriculum` starts in phase 2); every episode gets a seed derived from the run seed, env index and episode counter, which removes the fixed-seed limitation. The separate `cr-rl-curriculum` experiment is removed. Observation and action layout unchanged. |
+| 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
