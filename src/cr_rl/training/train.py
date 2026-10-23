@@ -1,13 +1,15 @@
 """
 Training (MaskablePPO) against a mix of Training opponents.
 
-Phase 1 runs every env against RandomAgent; phase 2 assigns an opponent per env index
-(8 LogicAgent, 2 ε-LogicAgent, 2 RandomAgent). `--no-curriculum` starts in phase 2.
+A run goes through the Training phases of a layout (see `cr_rl.training.phases`): warm-up
+against RandomAgent, the scripted mix, then the self-play mix with a Past-self pool
+(see `cr_rl.training.self_play`). `--layout` selects the full, no-curriculum or
+no-self-play arrangement.
 
 Usage:
   cr-rl-train
   cr-rl-train --timesteps 500000 --n-envs 12
-  cr-rl-train --no-curriculum
+  cr-rl-train --layout no-curriculum
   cr-rl-evaluate --model models/ppo_cr_best.zip
 """
 
@@ -28,6 +30,14 @@ from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.game.rewards import DEFAULT_GAMMA
 from cr_rl.paths import MODELS_DIR
 from cr_rl.training.matches import play_matches, summarize_matches
+from cr_rl.training.phases import PHASE_LAYOUTS, phase_opponents, phase_steps
+from cr_rl.training.self_play import (
+    ADMISSION_MATCHES,
+    POOL_LOG_FILENAME,
+    POOL_UPDATE_INTERVAL,
+    PastSelfPool,
+    load_past_self,
+)
 from cr_rl.training.selection import (
     SELECTION_INTERVAL,
     SELECTION_SEEDS,
@@ -40,16 +50,7 @@ DEFAULT_MODEL_DIR = MODELS_DIR
 DEFAULT_BEST_PATH = DEFAULT_MODEL_DIR / "ppo_cr_best.zip"
 
 DEFAULT_N_ENVS = 12
-DEFAULT_PHASE1_FRACTION = 0.2  # share of the step budget spent against RandomAgent
 LOG_INTERVAL = 5_000  # env steps between per-opponent win-rate logs
-PHASE2_OPPONENTS = ("logic",) * 8 + ("logic-eps",) * 2 + ("random",) * 2
-
-
-def phase_opponents(phase: int, n_envs: int) -> list[str]:
-    """Opponent of each env index: phase 1 is all RandomAgent, phase 2 cycles the mix."""
-    if phase == 1:
-        return ["random"] * n_envs
-    return [PHASE2_OPPONENTS[i % len(PHASE2_OPPONENTS)] for i in range(n_envs)]
 
 
 def make_training_env(
@@ -60,15 +61,19 @@ def make_training_env(
 
 def make_vec_training_env(
     seed: int,
-    opponents: list[str],
+    opponents: list[str | Path],
     gamma: float = DEFAULT_GAMMA,
     index_offset: int = 0,
 ) -> SubprocVecEnv:
-    """One subprocess env per opponent; masks come from each env's own `action_masks()`."""
+    """One subprocess env per opponent; masks come from each env's own `action_masks()`.
 
-    def _factory(env_index: int, opponent: str):
+    An opponent is a bot name or the checkpoint file of a Past self, loaded in the subprocess.
+    """
+
+    def _factory(env_index: int, opponent: str | Path):
         def _init():
-            return ClashRoyaleEnv(seed=seed, env_index=env_index, opponent=opponent, gamma=gamma)
+            policy = load_past_self(opponent) if isinstance(opponent, Path) else opponent
+            return ClashRoyaleEnv(seed=seed, env_index=env_index, opponent=policy, gamma=gamma)
 
         return _init
 
@@ -107,59 +112,72 @@ def train(
     ent_coef: float = 0.02,
     gamma: float = DEFAULT_GAMMA,
     net_arch: tuple[int, ...] = (256, 256),
-    curriculum: bool = True,
-    phase1_fraction: float = DEFAULT_PHASE1_FRACTION,
+    layout: str = "full",
     model_dir: Path = DEFAULT_MODEL_DIR,
     resume: str | None = None,
     selection_interval: int = SELECTION_INTERVAL,
     selection_seeds: Sequence[int] = SELECTION_SEEDS,
+    pool_interval: int = POOL_UPDATE_INTERVAL,
+    pool_matches: int = ADMISSION_MATCHES,
 ) -> MaskablePPO:
     model_dir.mkdir(parents=True, exist_ok=True)
     # Seed the libraries here, not through MaskablePPO(seed=...), which would also pin each
     # env's first episode to seed + index instead of its derived episode seed.
     set_random_seed(seed)
 
-    phase1_steps = int(timesteps * phase1_fraction) if curriculum else 0
-    phases = ([(1, phase1_steps)] if curriculum else []) + [(2, timesteps - phase1_steps)]
     policy_kwargs = dict(net_arch=dict(pi=list(net_arch), vf=list(net_arch)))
 
     selection = SelectionCallback(model_dir, interval=selection_interval, seeds=selection_seeds)
     callbacks = [selection, WinRateCallback()]
 
     model = None
-    for phase, steps in phases:
-        # Env indices are unique across phases, so no episode seed is replayed.
-        train_env = make_vec_training_env(
-            seed, phase_opponents(phase, n_envs), gamma=gamma, index_offset=(phase - 1) * n_envs
-        )
-        if model is not None:
-            model.set_env(train_env)
-        elif resume:
-            model = MaskablePPO.load(resume, env=train_env)
-        else:
-            model = MaskablePPO(
-                "MlpPolicy",
-                train_env,
-                learning_rate=learning_rate,
-                n_steps=max(n_steps // n_envs, 256),
-                batch_size=batch_size,
-                n_epochs=10,
-                gamma=gamma,
-                gae_lambda=0.95,
-                ent_coef=ent_coef,
-                clip_range=0.2,
-                verbose=1,
-                policy_kwargs=policy_kwargs,
-                tensorboard_log=str(model_dir / "tb"),
+    env_offset = 0  # env indices are unique across the run, so no episode seed is replayed
+    for phase, steps in phase_steps(layout, timesteps):
+        pool = None
+        if phase.uses_pool:
+            selection.evaluate()  # the model so far joins the checkpoints the pool is seeded from
+            pool = PastSelfPool.from_selection(
+                selection.results, model_dir / "checkpoints", run_seed=seed, matches=pool_matches
             )
-        print(f"=== Phase {phase}: {dict(Counter(phase_opponents(phase, n_envs)))} ({steps:,} steps) ===")
-        model.learn(
-            total_timesteps=steps,
-            reset_num_timesteps=False,
-            callback=callbacks,
-            progress_bar=True,
-        )
-        train_env.close()
+        remaining = steps
+        while remaining > 0:
+            # The envs are rebuilt after every pool check, so a chunk ends at each check.
+            chunk = min(remaining, pool_interval) if pool else remaining
+            opponents = phase_opponents(phase, n_envs, pool.members if pool else ())
+            train_env = make_vec_training_env(seed, opponents, gamma=gamma, index_offset=env_offset)
+            env_offset += n_envs
+            if model is not None:
+                model.set_env(train_env)
+            elif resume:
+                model = MaskablePPO.load(resume, env=train_env)
+            else:
+                model = MaskablePPO(
+                    "MlpPolicy",
+                    train_env,
+                    learning_rate=learning_rate,
+                    n_steps=max(n_steps // n_envs, 256),
+                    batch_size=batch_size,
+                    n_epochs=10,
+                    gamma=gamma,
+                    gae_lambda=0.95,
+                    ent_coef=ent_coef,
+                    clip_range=0.2,
+                    verbose=1,
+                    policy_kwargs=policy_kwargs,
+                    tensorboard_log=str(model_dir / "tb"),
+                )
+            mix = Counter("past-self" if isinstance(o, Path) else o for o in opponents)
+            print(f"=== {phase.name}: {dict(mix)} ({chunk:,} steps) ===")
+            model.learn(
+                total_timesteps=chunk,
+                reset_num_timesteps=False,
+                callback=callbacks,
+                progress_bar=True,
+            )
+            train_env.close()
+            remaining -= chunk
+            if pool and remaining > 0:
+                _check_pool(pool, model, model_dir)
 
     final_path = model_dir / "ppo_cr_final.zip"
     model.save(str(final_path))
@@ -176,6 +194,18 @@ def train(
         print(f"Best model: {DEFAULT_BEST_PATH}")
 
     return model
+
+
+def _check_pool(pool: PastSelfPool, model: MaskablePPO, model_dir: Path) -> None:
+    """Admission check of the current model; every decision is logged to `pool.json`."""
+    step = model.num_timesteps
+    candidate = model_dir / "pool" / f"ppo_cr_{step}_steps.zip"
+    candidate.parent.mkdir(exist_ok=True)
+    model.save(str(candidate))
+    decision = pool.consider(candidate, step)
+    pool.save_log(model_dir / POOL_LOG_FILENAME)
+    verdict = f"joins, replacing {decision.replaced}" if decision.joined else "stays out"
+    print(f"Pool check @ {step:,} steps: {decision.wins}/{decision.matches} wins, candidate {verdict}")
 
 
 def evaluate_model(
@@ -197,11 +227,11 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument(
-        "--no-curriculum",
-        action="store_true",
-        help="Skip phase 1 (RandomAgent) and start in phase 2",
+        "--layout",
+        choices=sorted(PHASE_LAYOUTS),
+        default="full",
+        help="Training phases: full, no-curriculum (no warm-up) or no-self-play",
     )
-    parser.add_argument("--phase1-fraction", type=float, default=DEFAULT_PHASE1_FRACTION)
     parser.add_argument("--resume", type=str, default=None, help="Path to a .zip to resume training")
     parser.add_argument(
         "--eval-only",
@@ -228,8 +258,7 @@ def main() -> None:
         n_envs=args.n_envs,
         seed=args.seed,
         learning_rate=args.lr,
-        curriculum=not args.no_curriculum,
-        phase1_fraction=args.phase1_fraction,
+        layout=args.layout,
         resume=args.resume,
     )
 

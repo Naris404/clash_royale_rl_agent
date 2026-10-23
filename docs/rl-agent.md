@@ -342,11 +342,31 @@ was trained with the same values.
 
 - **Environments:** 12 `ClashRoyaleEnv`s in a `SubprocVecEnv`, one process each. Action
   masks come from the env's own `action_masks()`; there is no `ActionMasker` wrapper.
-- **Curriculum:** phase 1 (the first 20% of the steps, `--phase1-fraction`) runs every
-  env against `RandomAgent`. Phase 2 assigns the Training opponent by env index: 8
-  `LogicAgent`, 2 ε-`LogicAgent`, 2 `RandomAgent`. `--no-curriculum` skips phase 1, so a
-  run with the same step budget starts in phase 2's mix at step 0 (the curriculum
-  ablation).
+- **Training phases** (`cr_rl/training/phases.py`): the step budget is split into phases,
+  each with its own Training opponents, assigned by env index and fixed within the phase.
+
+  | Training phase | Steps | Training opponents (12 envs) |
+  |---|---|---|
+  | Warm-up | 0–20% | 12 `RandomAgent` |
+  | Scripted mix | 20–60% | 8 `LogicAgent`, 2 ε-`LogicAgent`, 2 `RandomAgent` |
+  | Self-play mix | 60–100% | 4 Past self, 6 `LogicAgent`, 1 ε-`LogicAgent`, 1 `RandomAgent` |
+
+  `--layout` (`train(layout=...)`, one setting) selects the arrangement:
+  `full` (the table), `no-curriculum` (no warm-up: scripted mix 0–60%, self-play mix
+  60–100%) or `no-self-play` (warm-up 0–20%, scripted mix 20–100%); `PHASE_LAYOUTS` holds
+  them. The two non-default layouts are the curriculum and self-play Ablation arms.
+- **Past-self pool** (`cr_rl/training/self_play.py`): holds 3 Past selves, checkpoint files
+  seeded at the start of the self-play phase from the last 3 selection checkpoints (the
+  model at that point is evaluated first, so it is among them). Every 100,000 steps
+  (`POOL_UPDATE_INTERVAL`, `pool_interval`) the current model is a candidate: it saves
+  itself to `models/pool/`, plays 50 matches (`ADMISSION_MATCHES`) against the pool, spread
+  over the members in rotation, and replaces the oldest Past self only if it wins at least
+  45% (`ADMISSION_WIN_RATE`; draws do not count). Past selves play deterministically as
+  player 1 at Decision points. The 4 self-play envs take pool members in rotation and the
+  envs are rebuilt after every check, each Past self loaded from its checkpoint file in the
+  env's own process. The admission seeds derive from the run seed and the step
+  (`admission_seeds()`), so the decisions follow from the run seed and the checkpoint files;
+  they are logged to `models/pool.json`.
 - **Checkpoint selection:** `SelectionCallback` (`cr_rl/training/selection.py`) plays the
   current policy deterministically vs `LogicAgent` on the 100 Selection seeds
   (`SELECTION_SEEDS`, `1_000_000 + i`, the same every round) every 50,000 steps
@@ -371,8 +391,8 @@ was trained with the same values.
     well above 0.2, means the 10 epochs per rollout move the policy too far. No
     `target_kl` is set; the two metrics are only monitored, and `target_kl` or a lower
     learning rate is the remedy if they drift.
-- **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--no-curriculum`,
-  `--phase1-fraction`, `--resume`, and
+- **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--layout`,
+  `--resume`, and
   `--eval-only MODEL.zip --eval-episodes N`.
 
 **Training opponents.** `ClashRoyaleEnv(opponent=...)` takes `"logic"`, `"logic-eps"`,
@@ -383,7 +403,7 @@ player)` and `reset()`.
   ε = 0.2 it plays a random legal action (noop included) instead of the rule-based
   choice. It draws from the Board's seeded RNG, so it is reproducible under a fixed
   seed but differs from `LogicAgent` and across seeds.
-- *Frozen policy* (hook only; there is no snapshot pool): a loaded `MaskablePPO` plays as
+- *Frozen policy* (a Past self, see the Past-self pool above): a loaded `MaskablePPO` plays as
   player 1 through the fixed P1 view (observation mirrored in y only) and its action
   mask, and, like the Session RL opponent, is asked only at Decision points
   (`ScheduledAgent`).
@@ -394,8 +414,8 @@ shuffles both players' starting card order and seeds the Board RNG (ε-`LogicAge
 `derive_episode_seed(run_seed, env_index, episode)` (a `numpy.random.SeedSequence` of
 the three), so consecutive episodes see different openings and a whole run is
 reproducible from its run seed. `reset(seed=...)` overrides it, which evaluation uses for
-fixed seeds; `reset()` returns the episode's seed as `info["seed"]`. Phase 2 envs
-continue the env indices of phase 1, so no seed is replayed.
+fixed seeds; `reset()` returns the episode's seed as `info["seed"]`. Envs built
+later in a run continue the env indices of the earlier ones, so no seed is replayed.
 
 **Experiments** (`src/cr_rl/experiments/`, results under `experiment_runs/`):
 
@@ -511,4 +531,5 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Training opponents, curriculum and seeds (#42, ADR-0002): `"logic-eps"` (ε-`LogicAgent`, ε = 0.2) and frozen-policy opponents; `cr-rl-train` runs 12 `SubprocVecEnv` envs with env-side masks, phase 1 vs `RandomAgent` then phase 2 with 8 / 2 / 2 `LogicAgent` / ε-`LogicAgent` / `RandomAgent` (`--no-curriculum` starts in phase 2); every episode gets a seed derived from the run seed, env index and episode counter, which removes the fixed-seed limitation. The separate `cr-rl-curriculum` experiment is removed. Observation and action layout unchanged. |
 | 2026-10-23 | Overtime progress (#59, ADR-0002): one feature appended as the last observation element, `clip((time − 180) / 120, 0, 1)`, so the agent can tell how much Overtime is left; `OBS_DIM` 278 → 279, match time keeps its meaning. 278-dim checkpoints are ignored at load. |
 | 2026-10-23 | Checkpoint selection (#62, ADR-0002): a run picks its model by win rate vs `LogicAgent` on 100 fixed Selection seeds every 50k steps and on the final model, ties to the later checkpoint; every evaluated checkpoint and its win rate are kept (`models/checkpoints/`, `models/selection.json`). The shaped-reward `MaskableEvalCallback` and the 100k `CheckpointCallback` are removed. Observation and action layout unchanged. |
+| 2026-10-23 | Self-play Training phase (#64, ADR-0002): a run has three Training phases (warm-up, scripted mix, self-play mix) selected by `--layout full / no-curriculum / no-self-play`, which replaces `--no-curriculum` and `--phase1-fraction`. The self-play mix trains against a pool of 3 Past selves seeded from the last 3 selection checkpoints; every 100k steps the current model joins by winning at least 45% of 50 matches against the pool. Decisions are logged to `models/pool.json`. Observation and action layout unchanged. |
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
