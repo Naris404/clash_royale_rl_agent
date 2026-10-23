@@ -123,6 +123,7 @@ export interface Hint {
   hint: string;
   top: HintTop[];
   source: string;
+  aim?: [number, number] | null; // where the move lands now (a push zone's target moves)
 }
 
 export type Grade = "best" | "good" | "inaccuracy" | "blunder" | "unknown";

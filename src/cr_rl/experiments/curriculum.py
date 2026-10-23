@@ -17,6 +17,7 @@ from pathlib import Path
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 
+from cr_rl.game.rewards import DEFAULT_GAMMA
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
 from cr_rl.training.train import DEFAULT_MODEL_DIR, evaluate_model, make_training_env, make_vec_training_env
 
@@ -29,11 +30,12 @@ def train_curriculum(
     phase2_timesteps: int,
     n_envs: int,
     seed: int,
+    gamma: float = DEFAULT_GAMMA,
 ) -> MaskablePPO:
     RUN_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"=== Phase 1: vs RandomAgent ({phase1_timesteps:,} steps) ===")
-    env_random = make_vec_training_env(n_envs, seed, opponent="random")
+    env_random = make_vec_training_env(n_envs, seed, opponent="random", gamma=gamma)
     model = MaskablePPO(
         "MlpPolicy",
         env_random,
@@ -41,7 +43,7 @@ def train_curriculum(
         n_steps=max(2048 // n_envs, 256),
         batch_size=256,
         n_epochs=10,
-        gamma=0.995,
+        gamma=gamma,
         ent_coef=0.02,
         verbose=1,
         seed=seed,
@@ -52,8 +54,8 @@ def train_curriculum(
     env_random.close()
 
     print(f"=== Phase 2: vs LogicAgent ({phase2_timesteps:,} steps) ===")
-    env_logic = make_vec_training_env(n_envs, seed + 1000, opponent="logic")
-    eval_env = make_training_env(seed + 10_000, opponent="logic")
+    env_logic = make_vec_training_env(n_envs, seed + 1000, opponent="logic", gamma=gamma)
+    eval_env = make_training_env(seed + 10_000, opponent="logic", gamma=gamma)
     model.set_env(env_logic)
     eval_callback = MaskableEvalCallback(
         eval_env,

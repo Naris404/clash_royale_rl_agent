@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
 from cr_rl.env.gym_env import ClashRoyaleEnv
-from cr_rl.agents.logic import LogicAgent
-from cr_rl.game.board import TICK_DT, Board
+from cr_rl.game.board import TICK_DT
 
 
 def _ticks_between(env: ClashRoyaleEnv, action: int) -> int:
@@ -52,27 +49,3 @@ class TestNoopHold:
         env = ClashRoyaleEnv(seed=0, opponent="random", hold_ticks=5)
         env.reset(seed=0)
         assert _ticks_between(env, 0) == 5
-
-
-class TestReward:
-    def test_skipped_tick_rewards_sum_to_the_per_tick_total(self):
-        def play_match(hold_ticks: int) -> float:
-            env = ClashRoyaleEnv(seed=1, hold_ticks=hold_ticks)
-            env.reset(seed=1)
-            total, done = 0.0, False
-            while not done:
-                _, reward, terminated, truncated, _ = env.step(0)
-                total += reward
-                done = terminated or truncated
-            return total
-
-        # The agent never plays, so only the rule-based bot deals damage; the reference
-        # ticks the Board directly, one reward per tick.
-        board, bot = Board(seed=1), LogicAgent()
-        board.reset(seed=1)
-        per_tick = 0.0
-        while not board.done:
-            per_tick += board.step(0, action_p1=bot.choose_action(board, player=1)).reward
-        assert per_tick != 0.0
-        assert play_match(3) == pytest.approx(per_tick)
-        assert play_match(1) == pytest.approx(per_tick)

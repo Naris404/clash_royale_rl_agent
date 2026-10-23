@@ -23,9 +23,15 @@ def _save_model(path, obs_dim: int) -> None:
     MaskablePPO("MlpPolicy", _Env(obs_dim), n_steps=8, batch_size=8).save(str(path))
 
 
-def test_checkpoint_from_the_6_card_layout_is_ignored(tmp_path):
+@pytest.mark.parametrize(
+    "old_obs_dim",
+    [
+        153,  # 6-card layout: 3 + 6 + 4 x 6 cards + 24 x 5
+        169,  # 8-card layout with 24 distance-sorted unit slots (before observation v2)
+    ],
+)
+def test_checkpoint_from_an_older_observation_layout_is_ignored(tmp_path, old_obs_dim):
     pytest.importorskip("sb3_contrib")
-    old_obs_dim = 153  # before the 8-card Deck: 3 + 6 + 4 x 6 cards + 24 x 5
     _save_model(tmp_path / "old.zip", old_obs_dim)
 
     assert load_compatible_model(tmp_path / "old.zip") is None

@@ -20,6 +20,7 @@ from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from cr_rl.env.gym_env import ClashRoyaleEnv
+from cr_rl.game.rewards import DEFAULT_GAMMA
 from cr_rl.paths import MODELS_DIR
 
 
@@ -32,16 +33,20 @@ def mask_fn(env: ClashRoyaleEnv) -> np.ndarray:
     return env.unwrapped.action_masks()
 
 
-def make_training_env(seed: int | None = None, opponent: str = "logic") -> ActionMasker:
-    env = ClashRoyaleEnv(seed=seed, opponent=opponent)
+def make_training_env(
+    seed: int | None = None, opponent: str = "logic", gamma: float = DEFAULT_GAMMA
+) -> ActionMasker:
+    env = ClashRoyaleEnv(seed=seed, opponent=opponent, gamma=gamma)
     return ActionMasker(env, mask_fn)
 
 
-def make_vec_training_env(n_envs: int, seed: int, opponent: str = "logic") -> DummyVecEnv:
+def make_vec_training_env(
+    n_envs: int, seed: int, opponent: str = "logic", gamma: float = DEFAULT_GAMMA
+) -> DummyVecEnv:
     def _factory(rank: int):
         def _init():
             env_seed = seed + rank
-            return make_training_env(env_seed, opponent=opponent)
+            return make_training_env(env_seed, opponent=opponent, gamma=gamma)
 
         return _init
 
@@ -83,7 +88,7 @@ def train(
     n_steps: int = 2048,
     batch_size: int = 256,
     ent_coef: float = 0.02,
-    gamma: float = 0.995,
+    gamma: float = DEFAULT_GAMMA,
     net_arch: tuple[int, ...] = (256, 256),
     opponent: str = "logic",
     model_dir: Path = DEFAULT_MODEL_DIR,
@@ -91,8 +96,8 @@ def train(
 ) -> MaskablePPO:
     model_dir.mkdir(parents=True, exist_ok=True)
 
-    train_env = make_vec_training_env(n_envs, seed, opponent=opponent)
-    eval_env = make_training_env(seed + 10_000, opponent=opponent)
+    train_env = make_vec_training_env(n_envs, seed, opponent=opponent, gamma=gamma)
+    eval_env = make_training_env(seed + 10_000, opponent=opponent, gamma=gamma)
 
     policy_kwargs = dict(net_arch=dict(pi=list(net_arch), vf=list(net_arch)))
 

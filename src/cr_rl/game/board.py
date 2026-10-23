@@ -48,7 +48,7 @@ BACK_EDGE_MARGIN = 0.5
 DEPLOY_X_MARGIN = 1.0  # units and spells stay this far from the side walls
 
 # Pocket after an enemy princess tower falls (measured in the real game): 4 tiles deep from the
-# enemy bank, as wide as one lane half. Humans only: agents keep the 11 deploy zones (ADR-0006).
+# enemy bank, as wide as one lane half. Humans only: agents keep the 13 deploy zones (ADR-0006).
 POCKET_DEPTH = 4.0
 POCKET_WIDTH = ARENA_WIDTH / 2
 
@@ -68,7 +68,13 @@ TOWER_LAYOUT = {
 }
 
 TROOP_CARD_TYPES = frozenset({"ground", "air", "building"})
+TROOP_ONLY_CARD_TYPES = frozenset({"ground", "air"})
 SPELL_CARD_TYPES = frozenset({"spell"})
+
+
+def lane_of(x: float) -> int:
+    """The lane of an x coordinate: 0 = left, 1 = right of the board's center line."""
+    return int(x >= ARENA_WIDTH / 2)
 
 
 @dataclass(frozen=True)
@@ -79,25 +85,31 @@ class DeployZone:
     x: float
     y: float
     card_types: frozenset[str]
+    # Push zones only: the lane (0 = left, 1 = right) whose best enemy cluster the spell aims at.
+    # Their x, y are nominal (the lane's enemy tower); the real aim depends on the board.
+    push_lane: Optional[int] = None
 
     def allows(self, card_type: str) -> bool:
         return card_type in self.card_types
 
 
-# P0 layout (ADR-0002). Pull zones sit near the center so a building planted there is
-# closer to an enemy building-targeter at the bridge exit than the princess tower is.
+# P0 layout (ADR-0002). Back zones sit behind the king tower (troops only: a building there would
+# be wasted). Pull zones sit near the center so a building planted there is closer to an enemy
+# building-targeter at the bridge exit than the princess tower is, with the same margin per lane.
 _P0_ZONES = (
-    DeployZone("back-L", 3.0, 4.5, TROOP_CARD_TYPES),
-    DeployZone("back-R", 14.0, 4.5, TROOP_CARD_TYPES),
-    DeployZone("mid-L", 3.0, 9.0, TROOP_CARD_TYPES),
-    DeployZone("mid-R", 14.0, 9.0, TROOP_CARD_TYPES),
-    DeployZone("bridge-L", 3.0, 14.0, TROOP_CARD_TYPES),
-    DeployZone("bridge-R", 14.0, 14.0, TROOP_CARD_TYPES),
-    DeployZone("pull-L", 5.5, 9.5, TROOP_CARD_TYPES),
-    DeployZone("pull-R", 12.5, 9.5, TROOP_CARD_TYPES),
+    DeployZone("back-L", 7.5, 0.5, TROOP_ONLY_CARD_TYPES),
+    DeployZone("back-R", 10.5, 0.5, TROOP_ONLY_CARD_TYPES),
+    DeployZone("mid-L", 3.5, 10.5, TROOP_CARD_TYPES),
+    DeployZone("mid-R", 14.5, 10.5, TROOP_CARD_TYPES),
+    DeployZone("bridge-L", 3.5, 14.0, TROOP_CARD_TYPES),
+    DeployZone("bridge-R", 14.5, 14.0, TROOP_CARD_TYPES),
+    DeployZone("pull-L", 8.0, 11.0, TROOP_CARD_TYPES),
+    DeployZone("pull-R", 10.0, 11.0, TROOP_CARD_TYPES),
     DeployZone("spell-tower-L", 3.5, 24.0, SPELL_CARD_TYPES),
     DeployZone("spell-tower-R", 14.5, 24.0, SPELL_CARD_TYPES),
     DeployZone("spell-king", 9.0, 29.0, SPELL_CARD_TYPES),
+    DeployZone("spell-push-L", 3.5, 24.0, SPELL_CARD_TYPES, push_lane=0),
+    DeployZone("spell-push-R", 14.5, 24.0, SPELL_CARD_TYPES, push_lane=1),
 )
 DEPLOY_ZONES: dict[int, tuple[DeployZone, ...]] = {
     0: _P0_ZONES,
@@ -107,23 +119,32 @@ NUM_ZONES = len(_P0_ZONES)
 
 HAND_SIZE = 4
 DECK_SIZE = len(DECK)
-NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (44 plays)
-MAX_UNITS_OBS = 24
+NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (52 plays)
 
-# Observation vector segments — explicit offsets instead of "magic" indices.
-OBS_GLOBAL_FEATURES = 3  # P0 elixir, P1 elixir, time
-OBS_TOWER_FEATURES = 6  # HP of the 6 towers (layout: P0 L/R/King, P1 L/R/King)
-OBS_HAND_BASE = OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES
+# Observation layout v2 (ADR-0002). Every segment offset is pinned by tests/test_observation.py.
+UNIT_CARDS = tuple(c for c in DECK if cards_dic[c]["type"] != "spell")  # spells have no grid cells
+NUM_LANES = 2  # left / right of the board's center line
+DEPTH_BINS = 8  # 4 rows each along the observer's view of y; the river sits on a bin edge
+DEPTH_BIN_ROWS = ARENA_LENGTH / DEPTH_BINS
+PLAY_HISTORY_LEN = 4  # the opponent's last plays; the Cycle makes them their hand and next card
+NO_PLAY = DECK_SIZE  # "none" slot of a play one-hot: that play has not happened yet
+
+OBS_GLOBAL_FEATURES = 4  # own elixir, enemy elixir, elixir advantage, time
+OBS_TOWER_BASE = OBS_GLOBAL_FEATURES
+OBS_TOWER_FEATURES = 6  # HP of the 6 towers (layout: own L/R/King, enemy L/R/King)
+OBS_HAND_BASE = OBS_TOWER_BASE + OBS_TOWER_FEATURES
 OBS_HAND_FEATURES = HAND_SIZE * DECK_SIZE
 OBS_NEXT_BASE = OBS_HAND_BASE + OBS_HAND_FEATURES  # one-hot of the visible next card
-OBS_UNIT_BASE = OBS_NEXT_BASE + DECK_SIZE
-OBS_UNIT_FEATURES = MAX_UNITS_OBS * 5
-OBS_DIM = OBS_UNIT_BASE + OBS_UNIT_FEATURES
+OBS_PLAYS_BASE = OBS_NEXT_BASE + DECK_SIZE  # enemy's last plays, oldest first, each one-hot + none
+OBS_PLAYS_FEATURES = PLAY_HISTORY_LEN * (DECK_SIZE + 1)
+OBS_GRID_BASE = OBS_PLAYS_BASE + OBS_PLAYS_FEATURES  # [owner: own, enemy][lane][depth][unit card]
+OBS_GRID_FEATURES = 2 * NUM_LANES * DEPTH_BINS * len(UNIT_CARDS)
+OBS_DIM = OBS_GRID_BASE + OBS_GRID_FEATURES
 
 # Crowns a player holds once the enemy king tower is down (this ends the match at once).
 KING_CROWNS = 3
 
-# Reward scale for tower HP loss (one player's total max HP: 2× princess + king).
+# One player's total max tower HP (2× princess + king); scales the tower-HP shaping potential.
 MAX_TOWER_HP_PER_PLAYER = (
     2 * float(cards_dic["Tower"]["hp"]) + float(cards_dic["King_Tower"]["hp"])
 )
@@ -132,7 +153,6 @@ MAX_TOWER_HP_PER_PLAYER = (
 @dataclass
 class StepResult:
     observation: np.ndarray
-    reward: float
     terminated: bool
     truncated: bool
     info: dict = field(default_factory=dict)
@@ -171,9 +191,9 @@ class Board:
     """
     Simplified Clash Royale environment for RL.
 
-    Akcja (int 0..44):
+    Action (int 0..52):
       0 — do nothing
-      1..44 — play a card (hand slot 0..3 × zone 0..10); 4 cards in hand, cycling the 8-card Deck
+      1..52 — play a card (hand slot 0..3 × zone 0..12); 4 cards in hand, cycling the 8-card Deck
 
     Player 0 learns; player 1 is a random bot by default (a second model can be plugged in).
     """
@@ -191,6 +211,7 @@ class Board:
         self._pending_play: dict[int, Optional[tuple[str, float, float]]] = {0: None, 1: None}
         self.hand: dict[int, list[str]] = {0: [], 1: []}
         self.hand_queue: dict[int, deque[str]] = {0: deque(), 1: deque()}
+        self.play_history: dict[int, list[str]] = {0: [], 1: []}  # every card played, oldest first
         self.spell_effects: list[SpellEffect] = []
         self.hit_events: list[HitEvent] = []
 
@@ -236,6 +257,7 @@ class Board:
             queue: deque[str] = deque(cards)
             self.hand[player] = [queue.popleft() for _ in range(HAND_SIZE)]
             self.hand_queue[player] = queue
+            self.play_history[player] = []
 
     def get_hand(self, player: int) -> list[str]:
         return list(self.hand[player])
@@ -252,6 +274,7 @@ class Board:
         if card_name not in hand:
             return
         hand.remove(card_name)
+        self.play_history[player].append(card_name)
         queue = self.hand_queue[player]
         queue.append(card_name)
         if queue:
@@ -386,18 +409,61 @@ class Board:
             return None, None
         return hand[slot], zone_idx
 
+    def _lane_enemies(self, player: int, lane: int) -> list[Troop]:
+        """Enemy units and buildings in a lane (0 = left, 1 = right) by x, in placement order."""
+        return [
+            t for t in self.troops
+            if t.alive and t.owner != player and lane_of(t.x) == lane
+        ]
+
     def zone_allows(self, player: int, card_name: str, zone_idx: int) -> bool:
-        """Whether a card of this type can be played in the zone (ignoring elixir and hand)."""
+        """Whether the card can be played in the zone now (ignoring elixir and hand).
+
+        The card type must fit, and a push zone needs an enemy unit or building in its lane.
+        """
         if not 0 <= zone_idx < NUM_ZONES:
             return False
-        card_type = cards_dic.get(card_name, {}).get("type")
-        return DEPLOY_ZONES[player][zone_idx].allows(card_type)
+        zone = DEPLOY_ZONES[player][zone_idx]
+        if not zone.allows(cards_dic.get(card_name, {}).get("type")):
+            return False
+        return zone.push_lane is None or bool(self._lane_enemies(player, zone.push_lane))
+
+    def zone_aim(self, player: int, card_name: str, zone_idx: int) -> Optional[tuple[float, float]]:
+        """Where playing the card in the zone lands now; None when the zone is not legal for it."""
+        if not self.zone_allows(player, card_name, zone_idx):
+            return None
+        zone = DEPLOY_ZONES[player][zone_idx]
+        if zone.push_lane is None:
+            return zone.x, zone.y
+        return self._push_aim(player, card_name, zone.push_lane)
+
+    def _push_aim(self, player: int, spell_name: str, lane: int) -> tuple[float, float]:
+        """The enemy position in the lane where the spell does the most damage.
+
+        Ties go to the earliest-placed unit. The aim is kept inside the spell area, so a
+        unit hugging a wall still gets hit.
+        """
+        stats = cards_dic[spell_name]
+        radius = float(stats["radius"])
+        damage = float(stats["damage"])
+        tower_damage = float(stats.get("tower_damage", damage))
+        victims = [(t, damage) for t in self.troops if t.alive and t.owner != player]
+        victims += [(t, tower_damage) for t in self.towers if t.alive and t.owner != player and t.name != "King_Tower"]
+
+        def aim_at(unit: Troop) -> tuple[float, float]:
+            return (
+                min(max(unit.x, DEPLOY_X_MARGIN), ARENA_WIDTH - DEPLOY_X_MARGIN),
+                min(max(unit.y, BACK_EDGE_MARGIN), ARENA_LENGTH - BACK_EDGE_MARGIN),
+            )
+
+        def damage_at(aim: tuple[float, float]) -> float:
+            return sum(min(dmg, t.hp) for t, dmg in victims if t.distance_to_xy(*aim) <= radius)
+
+        return max((aim_at(t) for t in self._lane_enemies(player, lane)), key=damage_at)
 
     def play_card(self, player: int, card_name: str, zone_idx: int) -> bool:
-        if not self.zone_allows(player, card_name, zone_idx):
-            return False
-        zone = DEPLOY_ZONES[player][zone_idx]
-        return self.play_card_at(player, card_name, zone.x, zone.y)
+        aim = self.zone_aim(player, card_name, zone_idx)
+        return aim is not None and self.play_card_at(player, card_name, *aim)
 
     def step(
         self,
@@ -406,10 +472,9 @@ class Board:
     ) -> StepResult:
         if self.done:
             return StepResult(
-                self.get_observation(0), 0.0, True, False, {"winner": self.winner}
+                self.get_observation(0), True, False, {"winner": self.winner}
             )
 
-        towers_before = self._tower_hp_snapshot()
         self.hit_events = []
 
         if action_p1 is None:
@@ -421,10 +486,6 @@ class Board:
         self._regen_elixir()
         self._simulate_combat(TICK_DT)
 
-        tower_delta = self._tower_hp_delta(towers_before)
-        # Reward comes only from tower HP: enemy loss (+) minus own loss (-).
-        reward = (tower_delta[0] - tower_delta[1]) / MAX_TOWER_HP_PER_PLAYER
-
         self._remove_dead()
         self._tick_spell_effects(TICK_DT)
         self.time += TICK_DT
@@ -433,7 +494,6 @@ class Board:
 
         return StepResult(
             observation=self.get_observation(0),
-            reward=reward,
             terminated=terminated,
             truncated=truncated,
             info={
@@ -729,20 +789,6 @@ class Board:
     def _remove_dead(self) -> None:
         self.troops = [t for t in self.troops if t.alive]
 
-    def _tower_hp_snapshot(self) -> dict[int, float]:
-        snap: dict[int, float] = {0: 0.0, 1: 0.0}
-        for t in self.towers:
-            if t.alive:
-                snap[t.owner] += t.hp
-        return snap
-
-    def _tower_hp_delta(self, before: dict[int, float]) -> tuple[float, float]:
-        after = self._tower_hp_snapshot()
-        # (P0 gain, P1 gain) in terms of the opponent's HP loss
-        enemy_loss_p0 = before[1] - after[1]
-        enemy_loss_p1 = before[0] - after[0]
-        return enemy_loss_p0, enemy_loss_p1
-
     @property
     def crowns(self) -> list[int]:
         """Crowns per player: 1 per enemy princess tower destroyed, 3 once the enemy king is down."""
@@ -797,42 +843,41 @@ class Board:
     def get_observation(self, player: int) -> np.ndarray:
         """State vector from `player`'s perspective.
 
-        For player=1 the view is mirrored: own towers at the start of the segment,
-        unit positions rotated by 180° (x' = W - x, y' = L - y) — so that a
-        model trained as P0 can also play as P1.
+        For player=1 the view is mirrored: own towers first and depth measured from its own
+        back edge (y' = L - y, x unchanged), the same way as the deploy zones, so a model
+        trained as P0 can also play as P1 and left stays left.
         """
         obs = np.zeros(OBS_DIM, dtype=np.float32)
         enemy = 1 - player
         obs[0] = self.elixir[player] / MAX_ELIXIR
         obs[1] = self.elixir[enemy] / MAX_ELIXIR
-        obs[2] = min(1.0, self.time / REGULATION_TIME)
+        obs[2] = (self.elixir[player] - self.elixir[enemy]) / MAX_ELIXIR
+        obs[3] = min(1.0, self.time / REGULATION_TIME)
 
         towers = [t for t in self.towers if t.owner == player]
         towers += [t for t in self.towers if t.owner == enemy]
-        idx = OBS_GLOBAL_FEATURES
-        for tower in towers:
-            obs[idx] = tower.hp / tower.max_hp if tower.max_hp else 0.0
-            idx += 1
+        for i, tower in enumerate(towers):
+            obs[OBS_TOWER_BASE + i] = tower.hp / tower.max_hp if tower.max_hp else 0.0
 
         for slot, card_name in enumerate(self.get_hand(player)):
             obs[OBS_HAND_BASE + slot * DECK_SIZE + CARD_TO_ID[card_name]] = 1.0
         obs[OBS_NEXT_BASE + CARD_TO_ID[self.get_next_card(player)]] = 1.0
 
-        enemy_kx, enemy_ky = TOWER_LAYOUT[enemy]["King_Tower"]
-        alive_troops = [t for t in self.troops if t.alive]
-        alive_troops.sort(key=lambda t: t.distance_to_xy(enemy_kx, enemy_ky))
+        recent = self.play_history[enemy][-PLAY_HISTORY_LEN:]
+        recent = [None] * (PLAY_HISTORY_LEN - len(recent)) + recent  # missing plays come first
+        for i, card_name in enumerate(recent):
+            card_id = NO_PLAY if card_name is None else CARD_TO_ID[card_name]
+            obs[OBS_PLAYS_BASE + i * (DECK_SIZE + 1) + card_id] = 1.0
 
-        for slot, troop in enumerate(alive_troops[:MAX_UNITS_OBS]):
-            base = OBS_UNIT_BASE + slot * 5
-            obs[base] = 1.0 if troop.owner == player else -1.0
-            obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, DECK_SIZE - 1)
-            if player == 0:
-                ux, uy = troop.x, troop.y
-            else:
-                ux, uy = ARENA_WIDTH - troop.x, ARENA_LENGTH - troop.y
-            obs[base + 2] = ux / ARENA_WIDTH
-            obs[base + 3] = uy / ARENA_LENGTH
-            obs[base + 4] = troop.hp / troop.max_hp if troop.max_hp else 0.0
+        grid = obs[OBS_GRID_BASE:].reshape(2, NUM_LANES, DEPTH_BINS, len(UNIT_CARDS))
+        for troop in self.troops:
+            if not troop.alive or troop.name not in UNIT_CARDS:
+                continue
+            view_y = troop.y if player == 0 else ARENA_LENGTH - troop.y
+            lane = lane_of(troop.x)
+            depth = min(max(int(view_y // DEPTH_BIN_ROWS), 0), DEPTH_BINS - 1)
+            cell = (int(troop.owner != player), lane, depth, UNIT_CARDS.index(troop.name))
+            grid[cell] = min(1.0, grid[cell] + troop.hp / troop.max_hp)
 
         return obs
 
@@ -869,14 +914,12 @@ class Board:
 def run_random_episode(steps: int = 500, seed: int = 0) -> None:
     env = Board(seed=seed)
     obs = env.reset(seed=seed)
-    total_reward = 0.0
     for _ in range(steps):
         action = env.np_rng.integers(0, NUM_ACTIONS)
         result = env.step(action)
-        total_reward += result.reward
         if result.terminated or result.truncated:
             break
-    print(f"Match over: winner={env.winner}, reward={total_reward:.3f}, steps={env.time:.1f}s")
+    print(f"Match over: winner={env.winner}, steps={env.time:.1f}s")
 
 
 if __name__ == "__main__":

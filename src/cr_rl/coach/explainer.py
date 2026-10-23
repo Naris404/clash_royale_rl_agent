@@ -7,15 +7,17 @@ calm board) — the analytics/coaching module from the thesis description.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Optional
 
 from cr_rl.game.board import DEPLOY_ZONES, RIVER_Y, Board
+from cr_rl.game.cards import cards_dic
 
 # Keyed by DeployZone.name so the labels cannot drift from the zone layout.
 ZONE_NAMES = {
     "pl": {
-        "back-L": "tył, lewa aleja",
-        "back-R": "tył, prawa aleja",
+        "back-L": "za królem, lewa strona",
+        "back-R": "za królem, prawa strona",
         "mid-L": "środek, lewa aleja",
         "mid-R": "środek, prawa aleja",
         "bridge-L": "lewy most",
@@ -25,10 +27,12 @@ ZONE_NAMES = {
         "spell-tower-L": "lewa wieża wroga",
         "spell-tower-R": "prawa wieża wroga",
         "spell-king": "król wroga",
+        "spell-push-L": "wrogi push, lewa aleja",
+        "spell-push-R": "wrogi push, prawa aleja",
     },
     "en": {
-        "back-L": "back, left lane",
-        "back-R": "back, right lane",
+        "back-L": "behind the king, left",
+        "back-R": "behind the king, right",
         "mid-L": "mid, left lane",
         "mid-R": "mid, right lane",
         "bridge-L": "left bridge",
@@ -38,6 +42,8 @@ ZONE_NAMES = {
         "spell-tower-L": "enemy left tower",
         "spell-tower-R": "enemy right tower",
         "spell-king": "enemy king",
+        "spell-push-L": "the enemy push, left lane",
+        "spell-push-R": "the enemy push, right lane",
     },
 }
 
@@ -56,6 +62,10 @@ _REASONS = {
     "spell_value": {
         "pl": "Fireball — korzystna wymiana obrażeniami obszarowymi",
         "en": "Fireball — favorable area-damage trade",
+    },
+    "push_zone": {
+        "pl": "Wrogi push, {lane} aleja — zaklęcie trafia w grupę: {cluster}",
+        "en": "Enemy push, {lane} lane — the spell hits the cluster: {cluster}",
     },
     "elixir_leak": {
         "pl": "Pełny eliksir — nie marnuj, zagraj kartę",
@@ -76,16 +86,36 @@ _REASONS = {
 }
 
 
+_LANE_NAMES = {"pl": ("lewa", "prawa"), "en": ("left", "right")}
+
+
 def zone_name(zone_idx: int, lang: str = "en") -> str:
     if not 0 <= zone_idx < len(DEPLOY_ZONES[0]):
         return str(zone_idx)
     return ZONE_NAMES.get(lang, ZONE_NAMES["en"])[DEPLOY_ZONES[0][zone_idx].name]
 
 
+def _push_reason(board: Board, player: int, card: str, zone_idx: int, lang: str) -> Optional[str]:
+    """Names the lane and the enemy units a push zone's spell lands on; None for any other zone."""
+    zone = DEPLOY_ZONES[player][zone_idx]
+    aim = board.zone_aim(player, card, zone_idx)
+    if zone.push_lane is None or aim is None:
+        return None
+    radius = float(cards_dic[card]["radius"])
+    cluster = Counter(
+        t.name for t in board.troops if t.alive and t.owner != player and t.distance_to_xy(*aim) <= radius
+    )
+    return _REASONS["push_zone"][lang].format(
+        lane=_LANE_NAMES[lang][zone.push_lane],
+        cluster=", ".join(f"{name} ×{n}" if n > 1 else name for name, n in cluster.items()),
+    )
+
+
 def build_reason(
     board: Board,
     player: int,
     card: Optional[str],
+    zone_idx: Optional[int] = None,
     *,
     lang: str = "en",
 ) -> str:
@@ -101,6 +131,10 @@ def build_reason(
         if (e.y < RIVER_Y if player == 0 else e.y > RIVER_Y) and not e.is_building
     ]
 
+    if zone_idx is not None:
+        push_reason = _push_reason(board, player, card, zone_idx, lang)
+        if push_reason:
+            return push_reason
     if card == "Fireball" and enemies:
         return _REASONS["spell_value"][lang]
     if on_my_side and card in DEFENSIVE_CARDS:
