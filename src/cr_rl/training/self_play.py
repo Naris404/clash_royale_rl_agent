@@ -8,7 +8,6 @@ from the run seed and the checkpoint files.
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Sequence
@@ -16,7 +15,9 @@ from typing import Callable, Sequence
 import numpy as np
 from sb3_contrib import MaskablePPO
 
+from cr_rl.jsonio import write_json
 from cr_rl.training.matches import MatchResult, play_matches
+from cr_rl.training.seeds import TRAINING_SEED_LIMIT
 from cr_rl.training.selection import CheckpointResult
 
 POOL_SIZE = 3
@@ -46,7 +47,7 @@ def load_past_self(path: Path) -> MaskablePPO:
 def admission_seeds(run_seed: int, step: int, matches: int = ADMISSION_MATCHES) -> list[int]:
     """The seeds of one admission check, derived from the run seed and the training step."""
     rng = np.random.default_rng(np.random.SeedSequence([run_seed, _ADMISSION_STREAM, step]))
-    return [int(seed) for seed in rng.choice(2**31 - 1, size=matches, replace=False)]
+    return [int(seed) for seed in rng.choice(TRAINING_SEED_LIMIT, size=matches, replace=False)]
 
 
 def play_against_pool(
@@ -98,4 +99,4 @@ class PastSelfPool:
         return decision
 
     def save_log(self, path: Path) -> None:
-        path.write_text(json.dumps([asdict(d) for d in self.decisions], indent=2), encoding="utf-8")
+        write_json(path, [asdict(d) for d in self.decisions])

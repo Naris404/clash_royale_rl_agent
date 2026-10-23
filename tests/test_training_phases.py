@@ -50,3 +50,7 @@ class TestPhaseOpponents:
             "a.zip": 2, "b.zip": 1, "c.zip": 1, "logic": 6, "logic-eps": 1, "random": 1,
         }
         assert opponents[:4] == ["a.zip", "b.zip", "c.zip", "a.zip"]
+
+    def test_a_past_self_mix_without_a_pool_is_rejected(self):
+        with pytest.raises(ValueError, match="Past-self pool"):
+            phase_opponents(self.phase("self-play-mix"), 12)

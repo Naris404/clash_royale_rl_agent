@@ -356,9 +356,12 @@ was trained with the same values.
   60–100%) or `no-self-play` (warm-up 0–20%, scripted mix 20–100%); `PHASE_LAYOUTS` holds
   them. The two non-default layouts are the curriculum and self-play Ablation arms.
 - **Past-self pool** (`cr_rl/training/self_play.py`): holds 3 Past selves, checkpoint files
-  seeded at the start of the self-play phase from the last 3 selection checkpoints (the
-  model at that point is evaluated first, so it is among them). Every 100,000 steps
-  (`POOL_UPDATE_INTERVAL`, `pool_interval`) the current model is a candidate: it saves
+  seeded at the start of the self-play phase from the last 3 selection checkpoints. To
+  seed it, `train()` runs one extra selection round at the start of the self-play phase (the
+  model at that point is evaluated first, so it is among them); that round appears in
+  `selection.json` and in the curriculum metrics, and takes part in the final choice like any
+  other. Every 100,000 steps counted from the start of the self-play phase, not from step 0
+  (`POOL_UPDATE_INTERVAL`, `pool_interval`), the current model is a candidate: it saves
   itself to `models/pool/`, plays 50 matches (`ADMISSION_MATCHES`) against the pool, spread
   over the members in rotation, and replaces the oldest Past self only if it wins at least
   45% (`ADMISSION_WIN_RATE`; draws do not count). Past selves play deterministically as
@@ -377,7 +380,12 @@ was trained with the same values.
   highest win rate becomes the run's model, a tie going to the later checkpoint
   (`select_checkpoint()`): it is copied to `models/best_model.zip` and, for the main run, to
   `models/ppo_cr_best.zip`, the path the game loads by default. Shaped reward plays no part.
-  Selection seeds are never used for reported numbers.
+  Selection seeds are never used for reported numbers. Across the runs of a configuration, a
+  tie in selection win rate goes to the first run (`summarize_configuration()`).
+- **Step granularity:** SB3's `learn` rounds each call up to whole rollouts (12 envs x 256
+  steps = 3,072 steps), so phase boundaries and the 50,000 and 100,000 step cadences can
+  overshoot by up to one rollout. The step recorded for a checkpoint or pool check is the
+  actual `num_timesteps`.
 - **Final model:** saved to `models/ppo_cr_final.zip`.
 - **Logging:** TensorBoard in `models/tb/`.
   - `rollout/win_rate_vs_<opponent>`: player 0's win rate over the last 200 decisive
@@ -412,7 +420,8 @@ player)` and `reset()`.
 shuffles both players' starting card order and seeds the Board RNG (ε-`LogicAgent`,
 `RandomAgent`). An env built with a run seed gives every episode its own seed,
 `derive_episode_seed(run_seed, env_index, episode)` (a `numpy.random.SeedSequence` of
-the three), so consecutive episodes see different openings and a whole run is
+the three, taken modulo `TRAINING_SEED_LIMIT`, 1,000,000; the admission-check seeds are drawn
+below the same limit), so consecutive episodes see different openings and a whole run is
 reproducible from its run seed. `reset(seed=...)` overrides it, which evaluation uses for
 fixed seeds; `reset()` returns the episode's seed as `info["seed"]`. Envs built
 later in a run continue the env indices of the earlier ones, so no seed is replayed.
@@ -442,7 +451,9 @@ return and mean match length.
 Checkpoint selection during training uses `play_matches()` on the Selection seeds (see
 [Training setup](#training-setup)).
 
-**Seed sets.** Two fixed seed sets, disjoint from each other and from the training episode seeds:
+**Seed sets** (`cr_rl/training/seeds.py`). Training episode and admission seeds are always below
+`TRAINING_SEED_LIMIT` (1,000,000). Two fixed seed sets lie above it, disjoint from each other and
+from the training seeds:
 
 - *Selection seeds* (`SELECTION_SEEDS`, 100 seeds from 1,000,000) choose a run's checkpoint during
   training. They are never used for reported numbers.
@@ -530,7 +541,8 @@ a head-to-head is only approximately zero-sum and is not used.
   (20% of the steps; the no-curriculum arm is read at the same step);
 - *steps to 50%*: the first round with a selection win rate of at least 50%, counted from step 0
   so the warm-up counts; `null` if the run never gets there;
-- *report win rate*: the run's final win rate vs `LogicAgent` on the Report seeds.
+- *report win rate*: the win rate vs `LogicAgent` on the Report seeds of the run's selected
+  checkpoint.
 
 Rounds happen every 50,000 steps and a round's step is the rollout end after it, so a metric is
 resolved to about one selection interval. The ablations are judged by win rate, not shaped return.

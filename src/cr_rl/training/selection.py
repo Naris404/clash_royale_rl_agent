@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
 from stable_baselines3.common.callbacks import BaseCallback
 
+from cr_rl.jsonio import write_json
 from cr_rl.training.matches import play_matches, summarize_matches, wilson_interval
+from cr_rl.training.seeds import SELECTION_SEEDS
 
-# Selection seeds never overlap Report seeds or training episode seeds (which are ≥ 0 and
-# derived from the run seed); they are used to choose a checkpoint, never to report results.
-SELECTION_SEEDS = range(1_000_000, 1_000_100)
+logger = logging.getLogger(__name__)
+
 SELECTION_INTERVAL = 50_000  # env steps between selection rounds
 SELECTION_FILENAME = "selection.json"
 
@@ -38,7 +40,7 @@ def select_checkpoint(results: Sequence[CheckpointResult]) -> CheckpointResult:
 
 
 def save_selection(results: Sequence[CheckpointResult], path: Path) -> None:
-    path.write_text(json.dumps([asdict(result) for result in results], indent=2), encoding="utf-8")
+    write_json(path, [asdict(result) for result in results])
 
 
 def load_selection(path: Path) -> list[CheckpointResult]:
@@ -86,4 +88,5 @@ class SelectionCallback(BaseCallback):
         save_selection(self.results, self.model_dir / SELECTION_FILENAME)
         low, high = wilson_interval(result.wins, result.episodes)
         self.logger.record("selection/win_rate", result.win_rate)
-        print(f"Selection @ {step:,} steps: win rate {result.win_rate:.1%} (95% CI {low:.1%} to {high:.1%})")
+        logger.info("Selection @ %s steps: win rate %.1f%% (95%% CI %.1f%% to %.1f%%)",
+                    f"{step:,}", result.win_rate * 100, low * 100, high * 100)

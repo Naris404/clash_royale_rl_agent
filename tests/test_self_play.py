@@ -9,6 +9,7 @@ from sb3_contrib import MaskablePPO
 
 from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.training.matches import MatchResult
+from cr_rl.training.phases import PAST_SELF
 from cr_rl.training.self_play import (
     ADMISSION_MATCHES,
     PastSelfPool,
@@ -125,7 +126,7 @@ class TestPastSelfPlay:
 
         env = ClashRoyaleEnv(seed=0, opponent=Recorder(load_past_self(checkpoint)))
         env.reset()
-        assert env.opponent_name == "past-self"
+        assert env.opponent_name == PAST_SELF
         for _ in range(100):
             _, _, terminated, truncated, _ = env.step(0)
             if terminated or truncated:

@@ -8,7 +8,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
+import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,21 +16,21 @@ from typing import Any
 
 from sb3_contrib import MaskablePPO
 
-from cr_rl.experiments.arms import ARMS, run_arm
+from cr_rl.experiments.arms import ARMS, TRAINING_SEEDS, add_plan_arguments, plan_options, run_arm
+from cr_rl.jsonio import write_json
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
 from cr_rl.training.head_to_head import evaluate_head_to_head
+from cr_rl.training.phases import FULL, NO_SELF_PLAY
 from cr_rl.training.report import (
     REPORT_FILENAME,
     REPORT_SEEDS,
     configuration_rows,
     selected_checkpoint,
 )
-from cr_rl.training.train import DEFAULT_N_ENVS
 
 ABLATION_DIR = EXPERIMENT_RUNS_DIR / "ablations"
 ABLATION_TIMESTEPS = 500_000
-TRAINING_SEEDS = (0, 1, 2)
-HEAD_TO_HEAD = ("full", "no-self-play")  # what the Past-self pool adds beyond the scripted opponents
+HEAD_TO_HEAD = (FULL, NO_SELF_PLAY)  # what the Past-self pool adds beyond the scripted opponents
 
 
 def run_ablations(
@@ -70,7 +70,7 @@ def run_ablations(
         "head_to_head": asdict(head_to_head),
         "results": rows,
     }
-    (out_dir / REPORT_FILENAME).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(out_dir / REPORT_FILENAME, payload)
     overall = head_to_head.overall
     print(
         f"Head-to-head {name_a} vs {name_b}: win rate {overall.win_rate:.1%} "
@@ -81,17 +81,9 @@ def run_ablations(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ablation plan: 4 arms, 3 seeds, Report-seed evaluation")
-    parser.add_argument("--timesteps", type=int, default=ABLATION_TIMESTEPS)
-    parser.add_argument("--n-envs", type=int, default=DEFAULT_N_ENVS)
-    parser.add_argument("--out", type=Path, default=ABLATION_DIR)
-    parser.add_argument("--report-episodes", type=int, default=len(REPORT_SEEDS), help="Report seeds to play")
-    args = parser.parse_args()
-    run_ablations(
-        timesteps=args.timesteps,
-        n_envs=args.n_envs,
-        out_dir=args.out,
-        report_seeds=range(REPORT_SEEDS.start, REPORT_SEEDS.start + args.report_episodes),
-    )
+    add_plan_arguments(parser, timesteps=ABLATION_TIMESTEPS, out_dir=ABLATION_DIR)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    run_ablations(**plan_options(parser.parse_args()))
 
 
 if __name__ == "__main__":

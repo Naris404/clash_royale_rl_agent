@@ -10,6 +10,7 @@ import pytest
 
 from cr_rl.game.board import NUM_ACTIONS
 from cr_rl.training import train as training
+from cr_rl.training.phases import PAST_SELF
 from cr_rl.training.train import make_vec_training_env, train
 
 
@@ -42,7 +43,7 @@ def smoke_run(
     original = training.make_vec_training_env
 
     def spy(seed, opponents, **kwargs):
-        built.append(Counter("past-self" if isinstance(o, Path) else o for o in opponents))
+        built.append(Counter(PAST_SELF if isinstance(o, Path) else o for o in opponents))
         return original(seed, opponents, **kwargs)
 
     training.make_vec_training_env = spy
@@ -58,7 +59,7 @@ def smoke_run(
 
 
 SCRIPTED = {"logic": 8, "logic-eps": 2, "random": 2}
-SELF_PLAY = {"past-self": 4, "logic": 6, "logic-eps": 1, "random": 1}
+SELF_PLAY = {PAST_SELF: 4, "logic": 6, "logic-eps": 1, "random": 1}
 
 
 class TestFullLayoutRun:
@@ -89,4 +90,4 @@ def test_no_self_play_run_never_builds_a_past_self_env(tmp_path):
 
 def test_no_curriculum_run_starts_in_the_scripted_mix(tmp_path):
     built = smoke_run(tmp_path, "no-curriculum", n_envs=2, timesteps=1_000, pool_interval=300)
-    assert built[0] == {"logic": 2} and set(built[1]) == {"past-self"}
+    assert built[0] == {"logic": 2} and set(built[1]) == {PAST_SELF}

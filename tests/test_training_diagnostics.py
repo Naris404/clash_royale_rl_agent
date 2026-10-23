@@ -8,6 +8,7 @@ import pytest
 
 from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.experiments.sweep import CONFIGS
+from cr_rl.training.phases import PAST_SELF
 from cr_rl.training.train import LOG_INTERVAL, WinRateCallback
 
 
@@ -56,7 +57,7 @@ class TestWinRatePerOpponent:
         assert logged["rollout/win_rate_vs_random"] == pytest.approx(1.0)
         assert logged["rollout/win_rate_vs_logic"] == pytest.approx(1 / 3)
         assert logged["rollout/win_rate_vs_logic-eps"] == pytest.approx(0.0)
-        assert "rollout/win_rate_vs_past-self" not in logged
+        assert f"rollout/win_rate_vs_{PAST_SELF}" not in logged
 
     def test_draws_are_skipped(self):
         callback, logger, model = _callback()
@@ -74,7 +75,7 @@ class TestWinRatePerOpponent:
         assert opponent_in_step_info("logic-eps") == "logic-eps"
         assert opponent_in_step_info("random") == "random"
         frozen = SimpleNamespace(predict=lambda *args, **kwargs: (0, None))
-        assert opponent_in_step_info(frozen) == "past-self"
+        assert opponent_in_step_info(frozen) == PAST_SELF
 
 
 @pytest.mark.parametrize("n_envs", [1, 12])

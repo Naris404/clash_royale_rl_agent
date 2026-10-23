@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from cr_rl.training.phases import phase_steps
+from cr_rl.training.phases import FULL, phase_steps
 from cr_rl.training.selection import CheckpointResult
 
 HALF_WIN_RATE = 0.5  # target of the time-to-50% metric
@@ -35,7 +35,7 @@ class BudgetCheck:
 
 def warm_up_steps(timesteps: int) -> int:
     """Length of the full layout's warm-up; the no-curriculum arm is read at the same step."""
-    return phase_steps("full", timesteps)[0][1]
+    return phase_steps(FULL, timesteps)[0][1]
 
 
 def win_rate_after(results: Sequence[CheckpointResult], step: int) -> float | None:

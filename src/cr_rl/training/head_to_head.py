@@ -9,9 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from cr_rl.game.board import NUM_ACTIONS, OBS_DIM
 from cr_rl.training.matches import MatchResult, play_matches
-from cr_rl.training.report import ENV_VERSION, REPORT_SEEDS, OpponentReport, ReportMetadata, report_matches
+from cr_rl.training.report import REPORT_SEEDS, OpponentReport, ReportMetadata, report_matches, report_metadata
 
 
 @dataclass(frozen=True)
@@ -36,18 +35,8 @@ def evaluate_head_to_head(
     """Play A against B deterministically on every seed, with A and then B as player 0."""
     as_player_0 = play_matches(model_a, model_b, seeds)
     as_player_1 = [_from_other_side(result) for result in play_matches(model_b, model_a, seeds)]
-    metadata = ReportMetadata(
-        model=name_a,
-        seed_start=seeds.start,
-        episodes=len(seeds),
-        deterministic=True,
-        env_version=ENV_VERSION,
-        obs_dim=OBS_DIM,
-        num_actions=NUM_ACTIONS,
-        config=config,
-    )
     return HeadToHead(
-        metadata,
+        report_metadata(name_a, seeds, config),
         report_matches(name_b, as_player_0 + as_player_1),
         report_matches(name_b, as_player_0),
         report_matches(name_b, as_player_1),
