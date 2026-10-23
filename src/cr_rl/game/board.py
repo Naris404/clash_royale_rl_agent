@@ -110,17 +110,26 @@ NUM_ZONES = len(_P0_ZONES)
 HAND_SIZE = 4
 DECK_SIZE = len(DECK)
 NUM_ACTIONS = 1 + HAND_SIZE * NUM_ZONES  # noop + hand slot (0..3) × zone (44 plays)
-MAX_UNITS_OBS = 24
 
-# Observation vector segments — explicit offsets instead of "magic" indices.
-OBS_GLOBAL_FEATURES = 3  # P0 elixir, P1 elixir, time
-OBS_TOWER_FEATURES = 6  # HP of the 6 towers (layout: P0 L/R/King, P1 L/R/King)
-OBS_HAND_BASE = OBS_GLOBAL_FEATURES + OBS_TOWER_FEATURES
+# Observation layout v2 (ADR-0002). Every segment offset is pinned by tests/test_observation.py.
+UNIT_CARDS = tuple(c for c in DECK if cards_dic[c]["type"] != "spell")  # spells have no grid cells
+NUM_LANES = 2  # left / right of the board's center line
+DEPTH_BINS = 8  # 4 rows each along the observer's view of y; the river sits on a bin edge
+DEPTH_BIN_ROWS = ARENA_LENGTH / DEPTH_BINS
+PLAY_HISTORY_LEN = 4  # the opponent's last plays; the Cycle makes them their hand and next card
+NO_PLAY = DECK_SIZE  # "none" slot of a play one-hot: that play has not happened yet
+
+OBS_GLOBAL_FEATURES = 4  # own elixir, enemy elixir, elixir advantage, time
+OBS_TOWER_BASE = OBS_GLOBAL_FEATURES
+OBS_TOWER_FEATURES = 6  # HP of the 6 towers (layout: own L/R/King, enemy L/R/King)
+OBS_HAND_BASE = OBS_TOWER_BASE + OBS_TOWER_FEATURES
 OBS_HAND_FEATURES = HAND_SIZE * DECK_SIZE
 OBS_NEXT_BASE = OBS_HAND_BASE + OBS_HAND_FEATURES  # one-hot of the visible next card
-OBS_UNIT_BASE = OBS_NEXT_BASE + DECK_SIZE
-OBS_UNIT_FEATURES = MAX_UNITS_OBS * 5
-OBS_DIM = OBS_UNIT_BASE + OBS_UNIT_FEATURES
+OBS_PLAYS_BASE = OBS_NEXT_BASE + DECK_SIZE  # enemy's last plays, oldest first, each one-hot + none
+OBS_PLAYS_FEATURES = PLAY_HISTORY_LEN * (DECK_SIZE + 1)
+OBS_GRID_BASE = OBS_PLAYS_BASE + OBS_PLAYS_FEATURES  # [owner: own, enemy][lane][depth][unit card]
+OBS_GRID_FEATURES = 2 * NUM_LANES * DEPTH_BINS * len(UNIT_CARDS)
+OBS_DIM = OBS_GRID_BASE + OBS_GRID_FEATURES
 
 # Crowns a player holds once the enemy king tower is down (this ends the match at once).
 KING_CROWNS = 3
@@ -192,6 +201,7 @@ class Board:
         self._pending_play: dict[int, Optional[tuple[str, float, float]]] = {0: None, 1: None}
         self.hand: dict[int, list[str]] = {0: [], 1: []}
         self.hand_queue: dict[int, deque[str]] = {0: deque(), 1: deque()}
+        self.play_history: dict[int, list[str]] = {0: [], 1: []}  # every card played, oldest first
         self.spell_effects: list[SpellEffect] = []
         self.hit_events: list[HitEvent] = []
 
@@ -237,6 +247,7 @@ class Board:
             queue: deque[str] = deque(cards)
             self.hand[player] = [queue.popleft() for _ in range(HAND_SIZE)]
             self.hand_queue[player] = queue
+            self.play_history[player] = []
 
     def get_hand(self, player: int) -> list[str]:
         return list(self.hand[player])
@@ -253,6 +264,7 @@ class Board:
         if card_name not in hand:
             return
         hand.remove(card_name)
+        self.play_history[player].append(card_name)
         queue = self.hand_queue[player]
         queue.append(card_name)
         if queue:
@@ -778,39 +790,41 @@ class Board:
     def get_observation(self, player: int) -> np.ndarray:
         """State vector from `player`'s perspective.
 
-        For player=1 the view is mirrored: own towers at the start of the segment,
-        unit positions mirrored in y only (y' = L - y, x unchanged), the same way as the
-        deploy zones, so a model trained as P0 can also play as P1 and left stays left.
+        For player=1 the view is mirrored: own towers first and depth measured from its own
+        back edge (y' = L - y, x unchanged), the same way as the deploy zones, so a model
+        trained as P0 can also play as P1 and left stays left.
         """
         obs = np.zeros(OBS_DIM, dtype=np.float32)
         enemy = 1 - player
         obs[0] = self.elixir[player] / MAX_ELIXIR
         obs[1] = self.elixir[enemy] / MAX_ELIXIR
-        obs[2] = min(1.0, self.time / REGULATION_TIME)
+        obs[2] = (self.elixir[player] - self.elixir[enemy]) / MAX_ELIXIR
+        obs[3] = min(1.0, self.time / REGULATION_TIME)
 
         towers = [t for t in self.towers if t.owner == player]
         towers += [t for t in self.towers if t.owner == enemy]
-        idx = OBS_GLOBAL_FEATURES
-        for tower in towers:
-            obs[idx] = tower.hp / tower.max_hp if tower.max_hp else 0.0
-            idx += 1
+        for i, tower in enumerate(towers):
+            obs[OBS_TOWER_BASE + i] = tower.hp / tower.max_hp if tower.max_hp else 0.0
 
         for slot, card_name in enumerate(self.get_hand(player)):
             obs[OBS_HAND_BASE + slot * DECK_SIZE + CARD_TO_ID[card_name]] = 1.0
         obs[OBS_NEXT_BASE + CARD_TO_ID[self.get_next_card(player)]] = 1.0
 
-        enemy_kx, enemy_ky = TOWER_LAYOUT[enemy]["King_Tower"]
-        alive_troops = [t for t in self.troops if t.alive]
-        alive_troops.sort(key=lambda t: t.distance_to_xy(enemy_kx, enemy_ky))
+        recent = self.play_history[enemy][-PLAY_HISTORY_LEN:]
+        recent = [None] * (PLAY_HISTORY_LEN - len(recent)) + recent  # missing plays come first
+        for i, card_name in enumerate(recent):
+            card_id = NO_PLAY if card_name is None else CARD_TO_ID[card_name]
+            obs[OBS_PLAYS_BASE + i * (DECK_SIZE + 1) + card_id] = 1.0
 
-        for slot, troop in enumerate(alive_troops[:MAX_UNITS_OBS]):
-            base = OBS_UNIT_BASE + slot * 5
-            obs[base] = 1.0 if troop.owner == player else -1.0
-            obs[base + 1] = CARD_TO_ID.get(troop.name, 0) / max(1, DECK_SIZE - 1)
-            uy = troop.y if player == 0 else ARENA_LENGTH - troop.y
-            obs[base + 2] = troop.x / ARENA_WIDTH
-            obs[base + 3] = uy / ARENA_LENGTH
-            obs[base + 4] = troop.hp / troop.max_hp if troop.max_hp else 0.0
+        grid = obs[OBS_GRID_BASE:].reshape(2, NUM_LANES, DEPTH_BINS, len(UNIT_CARDS))
+        for troop in self.troops:
+            if not troop.alive or troop.name not in UNIT_CARDS:
+                continue
+            view_y = troop.y if player == 0 else ARENA_LENGTH - troop.y
+            lane = int(troop.x >= ARENA_WIDTH / 2)
+            depth = min(max(int(view_y // DEPTH_BIN_ROWS), 0), DEPTH_BINS - 1)
+            cell = (int(troop.owner != player), lane, depth, UNIT_CARDS.index(troop.name))
+            grid[cell] = min(1.0, grid[cell] + troop.hp / troop.max_hp)
 
         return obs
 
