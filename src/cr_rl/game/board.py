@@ -123,7 +123,7 @@ OBS_DIM = OBS_UNIT_BASE + OBS_UNIT_FEATURES
 # Crowns a player holds once the enemy king tower is down (this ends the match at once).
 KING_CROWNS = 3
 
-# Reward scale for tower HP loss (one player's total max HP: 2× princess + king).
+# One player's total max tower HP (2× princess + king); scales the tower-HP shaping potential.
 MAX_TOWER_HP_PER_PLAYER = (
     2 * float(cards_dic["Tower"]["hp"]) + float(cards_dic["King_Tower"]["hp"])
 )
@@ -132,7 +132,6 @@ MAX_TOWER_HP_PER_PLAYER = (
 @dataclass
 class StepResult:
     observation: np.ndarray
-    reward: float
     terminated: bool
     truncated: bool
     info: dict = field(default_factory=dict)
@@ -406,10 +405,9 @@ class Board:
     ) -> StepResult:
         if self.done:
             return StepResult(
-                self.get_observation(0), 0.0, True, False, {"winner": self.winner}
+                self.get_observation(0), True, False, {"winner": self.winner}
             )
 
-        towers_before = self._tower_hp_snapshot()
         self.hit_events = []
 
         if action_p1 is None:
@@ -421,10 +419,6 @@ class Board:
         self._regen_elixir()
         self._simulate_combat(TICK_DT)
 
-        tower_delta = self._tower_hp_delta(towers_before)
-        # Reward comes only from tower HP: enemy loss (+) minus own loss (-).
-        reward = (tower_delta[0] - tower_delta[1]) / MAX_TOWER_HP_PER_PLAYER
-
         self._remove_dead()
         self._tick_spell_effects(TICK_DT)
         self.time += TICK_DT
@@ -433,7 +427,6 @@ class Board:
 
         return StepResult(
             observation=self.get_observation(0),
-            reward=reward,
             terminated=terminated,
             truncated=truncated,
             info={
@@ -729,20 +722,6 @@ class Board:
     def _remove_dead(self) -> None:
         self.troops = [t for t in self.troops if t.alive]
 
-    def _tower_hp_snapshot(self) -> dict[int, float]:
-        snap: dict[int, float] = {0: 0.0, 1: 0.0}
-        for t in self.towers:
-            if t.alive:
-                snap[t.owner] += t.hp
-        return snap
-
-    def _tower_hp_delta(self, before: dict[int, float]) -> tuple[float, float]:
-        after = self._tower_hp_snapshot()
-        # (P0 gain, P1 gain) in terms of the opponent's HP loss
-        enemy_loss_p0 = before[1] - after[1]
-        enemy_loss_p1 = before[0] - after[0]
-        return enemy_loss_p0, enemy_loss_p1
-
     @property
     def crowns(self) -> list[int]:
         """Crowns per player: 1 per enemy princess tower destroyed, 3 once the enemy king is down."""
@@ -869,14 +848,12 @@ class Board:
 def run_random_episode(steps: int = 500, seed: int = 0) -> None:
     env = Board(seed=seed)
     obs = env.reset(seed=seed)
-    total_reward = 0.0
     for _ in range(steps):
         action = env.np_rng.integers(0, NUM_ACTIONS)
         result = env.step(action)
-        total_reward += result.reward
         if result.terminated or result.truncated:
             break
-    print(f"Match over: winner={env.winner}, reward={total_reward:.3f}, steps={env.time:.1f}s")
+    print(f"Match over: winner={env.winner}, steps={env.time:.1f}s")
 
 
 if __name__ == "__main__":

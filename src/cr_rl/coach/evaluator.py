@@ -35,7 +35,7 @@ GRADE_SCORE = {
     GRADE_UNKNOWN: 0.5,
 }
 
-# Classification thresholds — tuned to the reward scale (fraction of tower HP per match).
+# Classification thresholds — tuned to the old tower-HP reward scale; retuned once a v2 model exists.
 BLUNDER_PROB = 0.05
 INACCURACY_PROB = 0.20
 BLUNDER_DELTA_V = -0.02
