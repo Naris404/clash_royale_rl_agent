@@ -155,7 +155,7 @@ MAX_TOWER_HP_PER_PLAYER = (
 class StepResult:
     observation: np.ndarray
     terminated: bool
-    truncated: bool
+    truncated: bool  # always False: the rules decide every Match end, nothing is cut short
     info: dict = field(default_factory=dict)
 
 
@@ -491,14 +491,14 @@ class Board:
         self._tick_spell_effects(TICK_DT)
         self.time += TICK_DT
 
-        terminated, truncated = self._check_end()
+        terminated = self._check_end()
 
         return StepResult(
             observation=self.get_observation(0),
             terminated=terminated,
-            truncated=truncated,
+            truncated=False,
             info={
-                "winner": self.winner if (terminated or truncated) else None,
+                "winner": self.winner if terminated else None,
                 "time": self.time,
                 "elixir": self.elixir[0],
                 "troops_alive": sum(1 for t in self.troops if t.alive),
@@ -813,21 +813,19 @@ class Board:
         end = REGULATION_TIME + OVERTIME_TIME if self.phase == "overtime" else REGULATION_TIME
         return max(0.0, end - self.time)
 
-    def _check_end(self) -> tuple[bool, bool]:
+    def _check_end(self) -> bool:
+        """End the match when a king falls, regulation ends with unequal crowns, or overtime ends."""
         crowns = self.crowns
         if max(crowns) >= KING_CROWNS:
+            ended = True
+        elif self.time < REGULATION_TIME:
+            ended = False
+        else:
+            # End of regulation, the first crown of overtime (sudden death), or the end of overtime.
+            ended = crowns[0] != crowns[1] or self.time >= REGULATION_TIME + OVERTIME_TIME
+        if ended:
             self._end_match(crowns)
-            return True, False
-        if self.time < REGULATION_TIME:
-            return False, False
-        if crowns[0] != crowns[1]:
-            # End of regulation, or the first crown of overtime (sudden death).
-            self._end_match(crowns)
-            return False, True
-        if self.time >= REGULATION_TIME + OVERTIME_TIME:
-            self._end_match(crowns)
-            return False, True
-        return False, False
+        return ended
 
     def _end_match(self, crowns: list[int]) -> None:
         """More crowns wins; equal crowns fall to the tiebreak (weakest tower), then a draw."""

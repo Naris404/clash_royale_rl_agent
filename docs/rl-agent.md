@@ -55,12 +55,13 @@ ticks until the next Decision point or the end of the match. Every tick:
 4. Combat runs for one tick.
 5. Dead units are removed and the clock advances by 0.1 s.
 6. End check: **terminated** when a king tower is destroyed (3 crowns for its
-   destroyer). Otherwise nothing happens before 180 s; then **truncated** as soon as the
+   destroyer). Otherwise nothing happens before 180 s; then also **terminated** as soon as the
    crowns differ (end of regulation, or the first crown of the up-to-120 s overtime), so the
    player with more crowns wins (a princess tower is 1 crown). Tied crowns at 180 s start
    overtime; if it ends without a crown, the player whose weakest standing tower has less
    HP loses and equal weakest towers are a draw. 1800 ticks of 0.1 s accumulate to just
-   under 180.0 in floating point, so a regulation match lasts 1801 ticks.
+   under 180.0 in floating point, so a regulation match lasts 1801 ticks. Every Match end is a
+   termination, so `truncated` is always `False` and the value of a final state is 0 for PPO.
 
 The returned reward is computed once per step, from the position at the start and at the
 end of the step (see [Reward](#reward)). `reset()` also advances to the first Decision point.
@@ -328,7 +329,7 @@ was trained with the same values.
 | `gamma` | 0.995 | Applied per decision step. A play pays off only when units reach a tower: a Giant from back-L walks about 15 s (150 ticks, roughly 50 steps while the agent holds noop for 3 ticks) to the enemy princess tower. γ = 0.995 gives an effective horizon of 1/(1−γ) = 200 steps and still weights that payoff by 0.995^50 ≈ 0.78; the 0.99 default would weight it by 0.99^50 ≈ 0.61, and the match outcome even less. |
 | `gae_lambda` | 0.95 | SB3 default. Advantages still credit rewards some tens of decision steps after the action (λγ = 0.945 per step) while damping the variance of the return, which is dominated by the sparse match outcome. |
 | `clip_range` | 0.2 | SB3 default. Limits each update to a ±20% change in action probabilities, which keeps the rare card-play actions from being suppressed by one bad rollout. |
-| `ent_coef` | 0.02 | SB3 uses 0. Noop is legal on every tick and right most of the time, so without an entropy bonus the policy tends to collapse to waiting early; 0.02 keeps card plays explored. The sweep tests 0.005 and 0.05. |
+| `ent_coef` | 0.02 | SB3 uses 0. Noop is legal on every tick and right most of the time, so without an entropy bonus the policy tends to collapse to waiting early; 0.02 keeps card plays explored. The sweep tests 0.005, 0.01 and 0.05. |
 | `vf_coef` | 0.5 | SB3 default. With separate networks it only scales the value loss against the policy loss in the shared Adam step. |
 | `max_grad_norm` | 0.5 | SB3 default. Clips the rare large gradients from steps where a tower falls and the reward spikes. |
 | `net_arch` | pi [256, 256], vf [256, 256] | See [Network architecture](#network-architecture); the sweep tests 128 and 512 units. |
@@ -352,9 +353,18 @@ was trained with the same values.
   `models/ppo_cr_best.zip`, the path the game loads by default.
 - **Checkpoints:** every 100,000 steps to `models/checkpoints/`; the final model goes
   to `models/ppo_cr_final.zip`.
-- **Logging:** TensorBoard in `models/tb/`, including `rollout/win_rate_vs_logic`
-  (player 0 win rate over the last 200 decisive matches against the whole opponent mix of
-  the current phase, despite the name; draws skipped, logged every 5,000 steps).
+- **Logging:** TensorBoard in `models/tb/`.
+  - `rollout/win_rate_vs_<opponent>`: player 0's win rate over the last 200 decisive
+    matches (draws skipped) against each Training opponent type separately: `random`,
+    `logic`, `logic-eps` and, once self-play exists, `past-self`. Each env reports its
+    opponent in `info["opponent"]`. Logged once at least 5,000 env steps have passed since
+    the previous log, so the cadence does not depend on `--n-envs`. A pooled rate would
+    mix opponents of very different strength.
+  - Update-stability checks: watch SB3's `train/approx_kl` and `train/clip_fraction`.
+    Approximate KL that regularly exceeds about 0.02, or a clip fraction that stays
+    well above 0.2, means the 10 epochs per rollout move the policy too far. No
+    `target_kl` is set; the two metrics are only monitored, and `target_kl` or a lower
+    learning rate is the remedy if they drift.
 - **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--no-curriculum`,
   `--phase1-fraction`, `--resume`, and
   `--eval-only MODEL.zip --eval-episodes N`.
@@ -384,7 +394,7 @@ continue the env indices of phase 1, so no seed is replayed.
 **Experiments** (`src/cr_rl/experiments/`, results under `experiment_runs/`):
 
 - `cr-rl-sweep`: one training run per configuration (`baseline`, `low_lr`,
-  `high_lr`, `high_entropy`, `low_entropy`, `gamma_99`, `big_net`, `small_net`), each
+  `high_lr`, `high_entropy`, `mid_entropy` (`ent_coef` 0.01), `low_entropy`, `gamma_99`, `big_net`, `small_net`), each
   evaluated vs the rule-based bot.
 
 No sweep results are committed yet.

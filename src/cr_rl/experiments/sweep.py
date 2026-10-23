@@ -26,6 +26,7 @@ CONFIGS: dict[str, dict[str, Any]] = {
     "low_lr": {"learning_rate": 1e-4},
     "high_lr": {"learning_rate": 1e-3},
     "high_entropy": {"ent_coef": 0.05},
+    "mid_entropy": {"ent_coef": 0.01},
     "low_entropy": {"ent_coef": 0.005},
     "gamma_99": {"gamma": 0.99},
     "big_net": {"net_arch": (512, 512)},
