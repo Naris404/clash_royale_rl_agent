@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sb3_contrib import MaskablePPO
 
 from cr_rl.training import selection
 from cr_rl.training.selection import (
@@ -47,6 +48,10 @@ def test_records_survive_a_save_and_load(tmp_path):
     assert load_selection(tmp_path / "selection.json") == results
 
 
+def load_final_steps(model_dir) -> int:
+    return MaskablePPO.load(str(model_dir / "ppo_cr_final.zip")).num_timesteps
+
+
 class TestSmokeRun:
     @pytest.fixture(scope="class")
     def run(self, tmp_path_factory):
@@ -83,7 +88,7 @@ class TestSmokeRun:
     def test_the_final_model_is_evaluated_last(self, run):
         model_dir, _ = run
         results = load_selection(model_dir / "selection.json")
-        assert results[-1].step == 2048  # one 2 x 1024 step rollout
+        assert results[-1].step == load_final_steps(model_dir)
 
     def test_best_model_is_the_selected_checkpoint(self, run):
         model_dir, _ = run
