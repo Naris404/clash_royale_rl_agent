@@ -5,7 +5,8 @@ Gymnasium wrapper for Board — PPO training against LogicAgent (default).
 — enables a curriculum (random first) and self-play (an old checkpoint).
 
 The agent is asked only at Decision points (see `cr_rl.game.decisions`); the ticks in
-between are simulated inside `step()`.
+between are simulated inside `step()`. The reward is computed once per decision step
+(see `cr_rl.game.rewards`).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from gymnasium import spaces
 
 from cr_rl.game.board import MAX_ELIXIR, NUM_ACTIONS, OBS_DIM, Board
 from cr_rl.game.decisions import NOOP_HOLD_TICKS, DecisionSchedule
+from cr_rl.game.rewards import DEFAULT_GAMMA, RewardWeights, potential, step_reward
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.agents.rl import RandomAgent
 
@@ -33,8 +35,13 @@ class ClashRoyaleEnv(gym.Env):
         seed: Optional[int] = None,
         opponent: Union[str, Any] = "logic",
         hold_ticks: int = NOOP_HOLD_TICKS,
+        reward_weights: RewardWeights = RewardWeights(),
+        gamma: float = DEFAULT_GAMMA,
     ):
         super().__init__()
+        self.reward_weights = reward_weights
+        self.gamma = gamma
+        self._potential = 0.0
         self._seed = seed
         self.schedule = DecisionSchedule(hold_ticks)
         self.board = Board(seed=seed)
@@ -76,27 +83,27 @@ class ClashRoyaleEnv(gym.Env):
         self.schedule.reset()
         while not self.schedule.is_decision_point(self.board, 0):
             self._tick(0)
+        self._potential = potential(self.board, 0, self.reward_weights)
         return self.board.get_observation(0), {}
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         """Apply `action`, then advance to the next Decision point or the end of the match.
 
-        The reward of every simulated tick is summed into the returned reward.
+        The reward is the outcome plus the shaping over the whole step, not summed per tick.
         """
         self.schedule.record(int(action))
-        total_reward = 0.0
         result = self._tick(int(action))
-        total_reward += result.reward
         while not (
             result.terminated
             or result.truncated
             or self.schedule.is_decision_point(self.board, 0)
         ):
             result = self._tick(0)
-            total_reward += result.reward
+        reward = step_reward(self.board, 0, self.reward_weights, self.gamma, self._potential)
+        self._potential = potential(self.board, 0, self.reward_weights)
         info = dict(result.info)
         info["winner"] = self.board.winner
-        return result.observation, float(total_reward), result.terminated, result.truncated, info
+        return result.observation, float(reward), result.terminated, result.truncated, info
 
     def _tick(self, action: int):
         self.board.set_pending_play(0, None)

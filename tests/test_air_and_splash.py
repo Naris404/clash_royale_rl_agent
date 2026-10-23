@@ -153,7 +153,7 @@ def test_same_seed_air_and_splash_fight_is_deterministic():
         trace = []
         for _ in range(100):
             result = board.step(0, action_p1=0)
-            trace.append((result.observation.tobytes(), result.reward, len(board.hit_events)))
+            trace.append((result.observation.tobytes(), len(board.hit_events)))
         return trace
 
     assert run() == run()

@@ -487,7 +487,7 @@ def print_recommendation(results: list[ModelEvalResult]) -> None:
     print(f"Best model: {best.label}")
     print(f"  Path: {best.path}")
     print(f"  Win rate ({best.episodes} matches): {_fmt_pct(best.win_rate)}")
-    print(f"  Mean reward (tower HP): {_fmt_float(best.mean_reward)}")
+    print(f"  Mean return: {_fmt_float(best.mean_reward)}")
 
     if baseline and baseline.exists:
         delta = best.win_rate - baseline.win_rate
