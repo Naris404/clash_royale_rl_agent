@@ -13,7 +13,7 @@ mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 
 | | |
 |---|---|
-| Documented layout | 278-dim observation (version 2), 53 actions (13 deploy zones) |
+| Documented layout | 279-dim observation (version 2), 53 actions (13 deploy zones) |
 | Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested and signed off ([checklist](playtest-env-v1.md#env-v11-sign-off)); frozen, tagged `env-v1.1` |
 | Trained model for this layout | none yet; the **v2 model** is trained only on env-v1.1, after its sign-off (ADR-0005) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
@@ -42,7 +42,7 @@ Code: `src/cr_rl/game/board.py` (observation, actions, mask), `src/cr_rl/game/re
 ## Environment interface
 
 `ClashRoyaleEnv` wraps `Board` as a Gymnasium environment with
-`observation_space = Box(-1, 1, (278,), float32)` and `action_space = Discrete(53)`,
+`observation_space = Box(-1, 1, (279,), float32)` and `action_space = Discrete(53)`,
 and exposes `action_masks()` for MaskablePPO.
 
 One `step(action)` registers the action with the decision schedule and then simulates
@@ -55,12 +55,13 @@ ticks until the next Decision point or the end of the match. Every tick:
 4. Combat runs for one tick.
 5. Dead units are removed and the clock advances by 0.1 s.
 6. End check: **terminated** when a king tower is destroyed (3 crowns for its
-   destroyer). Otherwise nothing happens before 180 s; then **truncated** as soon as the
+   destroyer). Otherwise nothing happens before 180 s; then also **terminated** as soon as the
    crowns differ (end of regulation, or the first crown of the up-to-120 s overtime), so the
    player with more crowns wins (a princess tower is 1 crown). Tied crowns at 180 s start
    overtime; if it ends without a crown, the player whose weakest standing tower has less
    HP loses and equal weakest towers are a draw. 1800 ticks of 0.1 s accumulate to just
-   under 180.0 in floating point, so a regulation match lasts 1801 ticks.
+   under 180.0 in floating point, so a regulation match lasts 1801 ticks. Every Match end is a
+   termination, so `truncated` is always `False` and the value of a final state is 0 for PPO.
 
 The returned reward is computed once per step, from the position at the start and at the
 end of the step (see [Reward](#reward)). `reset()` also advances to the first Decision point.
@@ -88,10 +89,10 @@ it is `None` on every earlier step.
 
 ## Observation
 
-A flat `float32` vector of `OBS_DIM = 278` features (observation version 2), built by
+A flat `float32` vector of `OBS_DIM = 279` features (observation version 2), built by
 `Board.get_observation(player)`. Segment offsets are named constants in `board.py`
 (`OBS_GLOBAL_FEATURES`, `OBS_TOWER_BASE`, `OBS_HAND_BASE`, `OBS_NEXT_BASE`, `OBS_PLAYS_BASE`,
-`OBS_GRID_BASE`), pinned by `tests/test_observation.py`. Card identity is one-hot everywhere.
+`OBS_GRID_BASE`, `OBS_OVERTIME_INDEX`), pinned by `tests/test_observation.py`. Card identity is one-hot everywhere.
 No `VecNormalize` is applied; every feature is already scaled to [-1, 1].
 
 | Indices | Count | Feature | Encoding |
@@ -99,13 +100,14 @@ No `VecNormalize` is applied; every feature is already scaled to [-1, 1].
 | 0 | 1 | Own elixir | `elixir / 10` |
 | 1 | 1 | Enemy elixir | `elixir / 10` (visible, unlike the real game) |
 | 2 | 1 | Elixir advantage | `(own − enemy elixir) / 10` |
-| 3 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime) |
+| 3 | 1 | Match time | `min(1, time / 180)` (stays 1 during overtime; see overtime progress) |
 | 4–6 | 3 | Own towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
 | 7–9 | 3 | Enemy towers: left princess, right princess, king | `hp / max_hp`; 0 once destroyed |
 | 10–41 | 32 | Hand: 4 slots × 8 cards | one-hot per slot |
 | 42–49 | 8 | Next card | one-hot over the 8 Deck cards |
 | 50–85 | 36 | Opponent's last 4 plays: 4 × (8 cards + none) | one-hot per play, oldest first |
 | 86–277 | 192 | Unit grid: 2 owners × 2 lanes × 8 depth bins × 6 unit cards | see below |
+| 278 | 1 | Overtime progress | `clip((time − 180) / 120, 0, 1)`: 0 throughout Regulation, 1 at the end of Overtime |
 
 **Hand.** Slot `s` occupies indices `10 + 8·s … 17 + 8·s`; the hot index is the
 card ID in Deck order: Knight 0, Giant 1, Hog Rider 2, Musketeer 3, Cannon 4,
@@ -287,8 +289,8 @@ orthogonal initialization (SB3 defaults).
 
 ```mermaid
 flowchart LR
-    obs["Observation<br/>278"] --> p1["Linear 278→256<br/>Tanh"]
-    obs --> v1["Linear 278→256<br/>Tanh"]
+    obs["Observation<br/>279"] --> p1["Linear 279→256<br/>Tanh"]
+    obs --> v1["Linear 279→256<br/>Tanh"]
     subgraph policy["Policy network (actor)"]
         p1 --> p2["Linear 256→256<br/>Tanh"] --> logits["Linear 256→53<br/>action logits"]
     end
@@ -301,11 +303,11 @@ flowchart LR
 
 | Part | Parameters |
 |---|---|
-| Policy MLP (278→256→256) | 137,216 |
-| Value MLP (278→256→256) | 137,216 |
+| Policy MLP (279→256→256) | 137,472 |
+| Value MLP (279→256→256) | 137,472 |
 | Action head (256→53) | 13,621 |
 | Value head (256→1) | 257 |
-| **Total** | **288,310** |
+| **Total** | **288,822** |
 
 A flat MLP fits the problem size: the observation is small and fixed-length, and the
 network is small enough to train on a laptop CPU (ADR-0002 keeps it for v2).
@@ -322,16 +324,16 @@ was trained with the same values.
 | `learning_rate` | 3e-4, constant | Standard Adam step size for PPO (SB3 default); the sweep tests 1e-4 and 1e-3. |
 | `n_envs` | 12 | Twelve environments, one process each (`SubprocVecEnv`), use the 14-core CPU and decorrelate the samples in a rollout; the 8 / 2 / 2 opponent mix of phase 2 needs 12. |
 | `n_steps` (per env) | `max(2048 // n_envs, 256)` = 256 | The floor of 256 steps per environment keeps each segment longer than the discount horizon (3072 transitions per rollout with 12 envs). |
-| `batch_size` | 256 | 8 minibatches per epoch over the 2048-transition rollout: enough gradient steps per rollout while each minibatch still spans several environments and game phases. |
+| `batch_size` | 256 | 12 minibatches per epoch over the 3072-transition rollout (256 steps × 12 envs): enough gradient steps per rollout while each minibatch still spans several environments and game phases. |
 | `n_epochs` | 10 | SB3 default. Simulation steps are the expensive part, so each rollout is reused for 10 passes; the clipped objective keeps that reuse from moving the policy too far. |
 | `gamma` | 0.995 | Applied per decision step. A play pays off only when units reach a tower: a Giant from back-L walks about 15 s (150 ticks, roughly 50 steps while the agent holds noop for 3 ticks) to the enemy princess tower. γ = 0.995 gives an effective horizon of 1/(1−γ) = 200 steps and still weights that payoff by 0.995^50 ≈ 0.78; the 0.99 default would weight it by 0.99^50 ≈ 0.61, and the match outcome even less. |
 | `gae_lambda` | 0.95 | SB3 default. Advantages still credit rewards some tens of decision steps after the action (λγ = 0.945 per step) while damping the variance of the return, which is dominated by the sparse match outcome. |
 | `clip_range` | 0.2 | SB3 default. Limits each update to a ±20% change in action probabilities, which keeps the rare card-play actions from being suppressed by one bad rollout. |
-| `ent_coef` | 0.02 | SB3 uses 0. Noop is legal on every tick and right most of the time, so without an entropy bonus the policy tends to collapse to waiting early; 0.02 keeps card plays explored. The sweep tests 0.005 and 0.05. |
+| `ent_coef` | 0.02 | SB3 uses 0. Noop is legal on every tick and right most of the time, so without an entropy bonus the policy tends to collapse to waiting early; 0.02 keeps card plays explored. The sweep tests 0.005, 0.01 and 0.05. |
 | `vf_coef` | 0.5 | SB3 default. With separate networks it only scales the value loss against the policy loss in the shared Adam step. |
 | `max_grad_norm` | 0.5 | SB3 default. Clips the rare large gradients from steps where a tower falls and the reward spikes. |
 | `net_arch` | pi [256, 256], vf [256, 256] | See [Network architecture](#network-architecture); the sweep tests 128 and 512 units. |
-| `total_timesteps` | 1,000,000 | About 555 full-length matches; small enough that several variants fit a laptop budget. |
+| `total_timesteps` | 1,000,000 | Decision steps, not ticks: about 5,000 to 38,000 matches, depending on how often the policy waits (26 steps per match for random plays, 210 when it waits 90% of the time); small enough that several variants fit a laptop budget. |
 | `seed` | 42 | The run seed; every episode's seed is derived from it (see [Training setup](#training-setup)). |
 
 ## Training setup
@@ -340,22 +342,65 @@ was trained with the same values.
 
 - **Environments:** 12 `ClashRoyaleEnv`s in a `SubprocVecEnv`, one process each. Action
   masks come from the env's own `action_masks()`; there is no `ActionMasker` wrapper.
-- **Curriculum:** phase 1 (the first 20% of the steps, `--phase1-fraction`) runs every
-  env against `RandomAgent`. Phase 2 assigns the Training opponent by env index: 8
-  `LogicAgent`, 2 ε-`LogicAgent`, 2 `RandomAgent`. `--no-curriculum` skips phase 1, so a
-  run with the same step budget starts in phase 2's mix at step 0 (the curriculum
-  ablation).
-- **Evaluation callback:** `MaskableEvalCallback` every 25,000 steps on a separate
-  environment (run seed + 10,000): 50 deterministic episodes vs the rule-based bot. The best
-  mean reward is saved to `models/best_model.zip` and copied to
-  `models/ppo_cr_best.zip`, the path the game loads by default.
-- **Checkpoints:** every 100,000 steps to `models/checkpoints/`; the final model goes
-  to `models/ppo_cr_final.zip`.
-- **Logging:** TensorBoard in `models/tb/`, including `rollout/win_rate_vs_logic`
-  (player 0 win rate over the last 200 decisive matches against the whole opponent mix of
-  the current phase, despite the name; draws skipped, logged every 5,000 steps).
-- **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--no-curriculum`,
-  `--phase1-fraction`, `--resume`, and
+- **Training phases** (`cr_rl/training/phases.py`): the step budget is split into phases,
+  each with its own Training opponents, assigned by env index and fixed within the phase.
+
+  | Training phase | Steps | Training opponents (12 envs) |
+  |---|---|---|
+  | Warm-up | 0–20% | 12 `RandomAgent` |
+  | Scripted mix | 20–60% | 8 `LogicAgent`, 2 ε-`LogicAgent`, 2 `RandomAgent` |
+  | Self-play mix | 60–100% | 4 Past self, 6 `LogicAgent`, 1 ε-`LogicAgent`, 1 `RandomAgent` |
+
+  `--layout` (`train(layout=...)`, one setting) selects the arrangement:
+  `full` (the table), `no-curriculum` (no warm-up: scripted mix 0–60%, self-play mix
+  60–100%) or `no-self-play` (warm-up 0–20%, scripted mix 20–100%); `PHASE_LAYOUTS` holds
+  them. The two non-default layouts are the curriculum and self-play Ablation arms.
+- **Past-self pool** (`cr_rl/training/self_play.py`): holds 3 Past selves, checkpoint files
+  seeded at the start of the self-play phase from the last 3 selection checkpoints. To
+  seed it, `train()` runs one extra selection round at the start of the self-play phase (the
+  model at that point is evaluated first, so it is among them); that round appears in
+  `selection.json` and in the curriculum metrics, and takes part in the final choice like any
+  other. Every 100,000 steps counted from the start of the self-play phase, not from step 0
+  (`POOL_UPDATE_INTERVAL`, `pool_interval`), the current model is a candidate: it saves
+  itself to `models/pool/`, plays 50 matches (`ADMISSION_MATCHES`) against the pool, spread
+  over the members in rotation, and replaces the oldest Past self only if it wins at least
+  45% (`ADMISSION_WIN_RATE`; draws do not count). Past selves play deterministically as
+  player 1 at Decision points. The 4 self-play envs take pool members in rotation and the
+  envs are rebuilt after every check, each Past self loaded from its checkpoint file in the
+  env's own process. The admission seeds derive from the run seed and the step
+  (`admission_seeds()`), so the decisions follow from the run seed and the checkpoint files;
+  they are logged to `models/pool.json`.
+- **Checkpoint selection:** `SelectionCallback` (`cr_rl/training/selection.py`) plays the
+  current policy deterministically vs `LogicAgent` on the 100 Selection seeds
+  (`SELECTION_SEEDS`, `1_000_000 + i`, the same every round) every 50,000 steps
+  (`SELECTION_INTERVAL`) and once on the final model. Each evaluated checkpoint is kept in
+  `models/checkpoints/ppo_cr_<step>_steps.zip`; its win rate is logged with its 95% Wilson
+  interval (`selection/win_rate` in TensorBoard) and the list of `CheckpointResult(step,
+  wins, episodes, path)` is written to `models/selection.json` (`load_selection()`). The
+  highest win rate becomes the run's model, a tie going to the later checkpoint
+  (`select_checkpoint()`): it is copied to `models/best_model.zip` and, for the main run, to
+  `models/ppo_cr_best.zip`, the path the game loads by default. Shaped reward plays no part.
+  Selection seeds are never used for reported numbers. Across the runs of a configuration, a
+  tie in selection win rate goes to the first run (`summarize_configuration()`).
+- **Step granularity:** SB3's `learn` rounds each call up to whole rollouts (12 envs x 256
+  steps = 3,072 steps), so phase boundaries and the 50,000 and 100,000 step cadences can
+  overshoot by up to one rollout. The step recorded for a checkpoint or pool check is the
+  actual `num_timesteps`.
+- **Final model:** saved to `models/ppo_cr_final.zip`.
+- **Logging:** TensorBoard in `models/tb/`.
+  - `rollout/win_rate_vs_<opponent>`: player 0's win rate over the last 200 decisive
+    matches (draws skipped) against each Training opponent type separately: `random`,
+    `logic`, `logic-eps` and, once self-play exists, `past-self`. Each env reports its
+    opponent in `info["opponent"]`. Logged once at least 5,000 env steps have passed since
+    the previous log, so the cadence does not depend on `--n-envs`. A pooled rate would
+    mix opponents of very different strength.
+  - Update-stability checks: watch SB3's `train/approx_kl` and `train/clip_fraction`.
+    Approximate KL that regularly exceeds about 0.02, or a clip fraction that stays
+    well above 0.2, means the 10 epochs per rollout move the policy too far. No
+    `target_kl` is set; the two metrics are only monitored, and `target_kl` or a lower
+    learning rate is the remedy if they drift.
+- **CLI:** `--timesteps`, `--n-envs`, `--seed`, `--lr`, `--layout`,
+  `--resume`, and
   `--eval-only MODEL.zip --eval-episodes N`.
 
 **Training opponents.** `ClashRoyaleEnv(opponent=...)` takes `"logic"`, `"logic-eps"`,
@@ -366,7 +411,7 @@ player)` and `reset()`.
   ε = 0.2 it plays a random legal action (noop included) instead of the rule-based
   choice. It draws from the Board's seeded RNG, so it is reproducible under a fixed
   seed but differs from `LogicAgent` and across seeds.
-- *Frozen policy* (hook only; there is no snapshot pool): a loaded `MaskablePPO` plays as
+- *Frozen policy* (a Past self, see the Past-self pool above): a loaded `MaskablePPO` plays as
   player 1 through the fixed P1 view (observation mirrored in y only) and its action
   mask, and, like the Session RL opponent, is asked only at Decision points
   (`ScheduledAgent`).
@@ -375,20 +420,27 @@ player)` and `reset()`.
 shuffles both players' starting card order and seeds the Board RNG (ε-`LogicAgent`,
 `RandomAgent`). An env built with a run seed gives every episode its own seed,
 `derive_episode_seed(run_seed, env_index, episode)` (a `numpy.random.SeedSequence` of
-the three), so consecutive episodes see different openings and a whole run is
+the three, taken modulo `TRAINING_SEED_LIMIT`, 1,000,000; the admission-check seeds are drawn
+below the same limit), so consecutive episodes see different openings and a whole run is
 reproducible from its run seed. `reset(seed=...)` overrides it, which evaluation uses for
-fixed seeds; `reset()` returns the episode's seed as `info["seed"]`. Phase 2 envs
-continue the env indices of phase 1, so no seed is replayed.
+fixed seeds; `reset()` returns the episode's seed as `info["seed"]`. Envs built
+later in a run continue the env indices of the earlier ones, so no seed is replayed.
 
 **Experiments** (`src/cr_rl/experiments/`, results under `experiment_runs/`):
 
 - `cr-rl-sweep`: one training run per configuration (`baseline`, `low_lr`,
-  `high_lr`, `high_entropy`, `low_entropy`, `gamma_99`, `big_net`, `small_net`), each
+  `high_lr`, `high_entropy`, `mid_entropy` (`ent_coef` 0.01), `low_entropy`, `gamma_99`, `big_net`, `small_net`), each
   evaluated vs the rule-based bot.
+
+- `cr-rl-final` and `cr-rl-ablations`: the thesis run plans, see [Run plans](#run-plans).
 
 No sweep results are committed yet.
 
 ### Evaluation
+
+Every evaluation plays its matches through `play_matches()` (`cr_rl/training/matches.py`): a policy as player 0
+against any Training opponent on an explicit seed list, returning each match's seed, winner, return and
+length in decision steps. `wilson_interval()` gives the 95% Wilson interval of a win count.
 
 `evaluate_model()` (`cr-rl-evaluate`, `cr-rl-train --eval-only`; the reported match length is
 in agent steps) plays N matches as
@@ -396,9 +448,104 @@ player 0 vs the rule-based bot with the deterministic policy and seeds
 `seed, seed + 1, …, seed + N − 1`, and reports wins, losses, draws, win rate, mean
 return and mean match length.
 
-The protocol for the v2 model (ADR-0002, amended by ADR-0003): fixed seeds,
-200 matches vs the rule-based bot and 200 vs the random bot, reporting win rate, mean
-return and match length. The v1 model is not part of that comparison.
+Checkpoint selection during training uses `play_matches()` on the Selection seeds (see
+[Training setup](#training-setup)).
+
+**Seed sets** (`cr_rl/training/seeds.py`). Training episode and admission seeds are always below
+`TRAINING_SEED_LIMIT` (1,000,000). Two fixed seed sets lie above it, disjoint from each other and
+from the training seeds:
+
+- *Selection seeds* (`SELECTION_SEEDS`, 100 seeds from 1,000,000) choose a run's checkpoint during
+  training. They are never used for reported numbers.
+- *Report seeds* (`REPORT_SEEDS`, 200 seeds, `2_000_000 + i`) produce every reported number
+  and are never used in training or selection. The same 200 seeds are played against
+  `LogicAgent` and against `RandomAgent`.
+
+**Report evaluation** (`cr_rl/training/report.py`, `cr-rl-report RUN_DIR...`). `evaluate_report()`
+plays a model deterministically on the Report seeds against both opponents and returns a
+`ReportEvaluation`: a `ReportMetadata` (model, first seed and episode count, deterministic flag,
+`ENV_VERSION`, `OBS_DIM`, `NUM_ACTIONS` and the training configuration if known, so every
+number can be regenerated) and one `OpponentReport` per opponent (wins, losses, draws, win
+rate with its 95% Wilson interval, mean return, mean match length in decision steps).
+
+**Configurations and the Ship gate.** For the final configuration (3 training seeds),
+`evaluate_configuration()` evaluates the checkpoint each run selected (`select_checkpoint()`)
+and returns a `ConfigurationReport`: every run's `RunReport`, the per-opponent `Spread` (mean,
+sample standard deviation, min, max) of the runs' win rates, and the shipped run. The shipped
+run is the one with the best Selection win rate, never chosen by Report results. The *Ship
+gate* passes when the lower bound of the 95% Wilson interval of the shipped run's win rate vs
+`LogicAgent` on the Report seeds is above 50% (`ship_gate_passes()`); the verdict
+(`ship_gate_passed`) is stated on that run alone. `save_configuration_report()` writes
+`experiment_runs/report_evaluation/results.json`, whose `results` rows (one per run and
+opponent) `cr-rl-stats` reads like the other experiment results. The v1 model is not part of
+this comparison.
+
+**Head-to-head** (`cr_rl/training/head_to_head.py`). `evaluate_head_to_head(model_a, model_b)`
+compares two selected models directly, e.g. the full arm against the no-self-play arm, which a
+win rate vs `LogicAgent` cannot do. Every Report seed is played twice, once with each model as
+player 0 (the other plays as the frozen policy through the P1 view), 400 matches in total. The
+`HeadToHead` result holds model A's `overall` report (wins, losses, draws, win rate with its 95%
+Wilson interval; `opponent` names model B) and the split `as_player_0` and `as_player_1`, plus
+the same `ReportMetadata` as the Report-seed evaluation. Matches played from B's side are
+converted to A's: winner swapped, return negated (only approximately zero-sum, so do not rely on it). A model
+against itself gives `wins == losses`, because both sides replay the same deterministic match.
+
+### Run plans
+
+Two commands run the thesis experiments end to end. Each trains its runs, evaluates every run's
+selected checkpoint on the Report seeds (`evaluate_configuration()`), and writes one
+`results.json` that `cr-rl-stats` reads: `results` holds a row per run and opponent (the
+ablation file adds an `arm` field and a head-to-head row), next to the per-run `curriculum`
+metrics and the full report. A run's `manifest.json` (arm, seed, steps, layout, reward weights,
+environment version) becomes the `config` of its evaluation metadata. Runs are named
+`<arm>-seed<N>`; a run that already has `ppo_cr_final.zip` is not trained again, so an
+interrupted plan continues where it stopped. Both commands take `--timesteps`, `--n-envs`,
+`--out` and `--report-episodes` (fewer Report seeds, for a quick check only; for example
+`--timesteps 20000 --n-envs 2 --report-episodes 10`).
+
+| Plan | Command | Runs | Output | Expected CPU time |
+|---|---|---|---|---|
+| Final configuration | `cr-rl-final` | `full` x 3 seeds x 1M steps | `experiment_runs/final_configuration/` | about 3.3 h |
+| Ablations | `cr-rl-ablations` | 4 arms x 3 seeds x 500k steps | `experiment_runs/ablations/` | about 7 h |
+
+The times are the 12-env estimate on the 14-core CPU (about 3M and 6M steps in total).
+
+**Final configuration** (`cr_rl/experiments/final_configuration.py`). The `ConfigurationReport`
+gives the shipped run and the Ship gate verdict. The *budget rule* (`budget_rule()` in
+`cr_rl/experiments/curriculum.py`) compares the first run's final selection win rate with its
+last round at or before 80% of the steps; a rise of more than 10 percentage points means the run
+is still learning, and the output says to move all final runs to 3M steps
+(`cr-rl-final --timesteps 3000000`, into a fresh `--out`). `budget_rule` in `results.json` holds
+the two win rates, the rise and `extend`.
+
+**Ablations** (`cr_rl/experiments/ablations.py`). `ARMS` (`cr_rl/experiments/arms.py`) defines
+the four arms; each differs from `full` in exactly one setting, a test pins this:
+
+| Ablation arm | Warm-up | Scripted mix | Self-play mix | Shaping |
+|---|---|---|---|---|
+| Full | 0-20% | 20-60% | 60-100% | on |
+| No-shaping | 0-20% | 20-60% | 60-100% | off (`RewardWeights(crown=0, hp=0)`) |
+| No-curriculum | none | 0-60% | 60-100% | on |
+| No-self-play | 0-20% | 20-100% | none | on |
+
+Each arm's `ConfigurationReport` is in `arms` (per-seed runs, the shipped run and the `Spread` of
+the win rates per opponent). The plan then plays the shipped `full` run against the shipped
+`no-self-play` run with `evaluate_head_to_head()` on the Report seeds, each seed from both sides.
+Judge the head-to-head by wins, losses and the win rate with its interval; the `mean_return` of
+a head-to-head is only approximately zero-sum and is not used.
+
+**Curriculum metrics** (`curriculum_metrics()`), read from each run's `selection.json`
+(`curriculum` in `results.json`, keyed by run):
+
+- *jumpstart*: selection win rate of the first round at or after the end of the warm-up
+  (20% of the steps; the no-curriculum arm is read at the same step);
+- *steps to 50%*: the first round with a selection win rate of at least 50%, counted from step 0
+  so the warm-up counts; `null` if the run never gets there;
+- *report win rate*: the win rate vs `LogicAgent` on the Report seeds of the run's selected
+  checkpoint.
+
+Rounds happen every 50,000 steps and a round's step is the rollout end after it, so a metric is
+resolved to about one selection interval. The ablations are judged by win rate, not shaped return.
 
 ## Results
 
@@ -485,3 +632,10 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Push Spell zones (#39, ADR-0002): zones 11 and 12 (spell-push-L / -R) aim a spell at the best enemy cluster in a lane and are legal only while that lane holds an enemy unit or building. `NUM_ZONES` 11 → 13, `NUM_ACTIONS` 45 → 53, `divmod(action − 1, 13)`; the observation is unchanged. A model trained on the 45-action layout is not valid. |
 | 2026-10-23 | Observation v2 (#40, ADR-0002): `OBS_DIM` 169 → 278. The 24 distance-sorted unit slots are replaced by a permutation-invariant grid (2 owners × 2 lanes × 8 depth bins × 6 unit cards, summed HP / max HP capped at 1); an elixir-advantage feature and the opponent's last 4 plays (from the Board's per-player play history) are added. Actions are unchanged. v1 and 169-dim checkpoints are ignored at load. |
 | 2026-10-23 | Training opponents, curriculum and seeds (#42, ADR-0002): `"logic-eps"` (ε-`LogicAgent`, ε = 0.2) and frozen-policy opponents; `cr-rl-train` runs 12 `SubprocVecEnv` envs with env-side masks, phase 1 vs `RandomAgent` then phase 2 with 8 / 2 / 2 `LogicAgent` / ε-`LogicAgent` / `RandomAgent` (`--no-curriculum` starts in phase 2); every episode gets a seed derived from the run seed, env index and episode counter, which removes the fixed-seed limitation. The separate `cr-rl-curriculum` experiment is removed. Observation and action layout unchanged. |
+| 2026-10-23 | Overtime progress (#59, ADR-0002): one feature appended as the last observation element, `clip((time − 180) / 120, 0, 1)`, so the agent can tell how much Overtime is left; `OBS_DIM` 278 → 279, match time keeps its meaning. 278-dim checkpoints are ignored at load. |
+| 2026-10-23 | Checkpoint selection (#62, ADR-0002): a run picks its model by win rate vs `LogicAgent` on 100 fixed Selection seeds every 50k steps and on the final model, ties to the later checkpoint; every evaluated checkpoint and its win rate are kept (`models/checkpoints/`, `models/selection.json`). The shaped-reward `MaskableEvalCallback` and the 100k `CheckpointCallback` are removed. Observation and action layout unchanged. |
+| 2026-10-23 | Self-play Training phase (#64, ADR-0002): a run has three Training phases (warm-up, scripted mix, self-play mix) selected by `--layout full / no-curriculum / no-self-play`, which replaces `--no-curriculum` and `--phase1-fraction`. The self-play mix trains against a pool of 3 Past selves seeded from the last 3 selection checkpoints; every 100k steps the current model joins by winning at least 45% of 50 matches against the pool. Decisions are logged to `models/pool.json`. Observation and action layout unchanged. |
+| 2026-10-23 | Report-seed evaluation and the Ship gate (#63, ADR-0002): `cr-rl-report` plays each run's selected checkpoint on 200 Report seeds (`2_000_000 + i`) vs `LogicAgent` and `RandomAgent` with Wilson intervals, mean return, length and reproducibility metadata, ships the run with the best Selection win rate and states the Ship gate verdict on its Report results. Observation and action layout unchanged. |
+| 2026-10-23 | Head-to-head (#65, ADR-0002): `evaluate_head_to_head()` plays two models on every Report seed from both sides (400 matches) and reports A's wins, losses and draws with a 95% Wilson interval, the per-side split and the Report-seed metadata. Observation and action layout unchanged. |
+| 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
+| 2026-10-23 | Run plans (#66, ADR-0002): `cr-rl-final` (3 seeds x 1M steps, shipped run, Ship gate and budget rule) and `cr-rl-ablations` (full, no-shaping, no-curriculum, no-self-play x 3 seeds x 500k steps, per-arm aggregation, full vs no-self-play head-to-head), each with curriculum metrics per run; `train()` takes `reward_weights`. Observation and action layout unchanged. |

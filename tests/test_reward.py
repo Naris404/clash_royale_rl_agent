@@ -161,3 +161,20 @@ class TestSymmetry:
         rewards = [step_reward(board, p, weights, gamma, before[p]) for p in (0, 1)]
         assert rewards[0] == pytest.approx(1.0)
         assert rewards[0] == pytest.approx(-rewards[1])
+
+
+class TestEnvTermination:
+    def test_a_regulation_time_win_is_terminated_not_truncated(self):
+        env = _env(OUTCOME_ONLY)
+        _destroy(env.board, 1, "Tower", "L")
+        env.board.time = REGULATION_TIME - TICK_DT
+        _, _, terminated, truncated, info = env.step(0)
+        assert terminated and not truncated
+        assert info["winner"] == 0
+
+    def test_a_tiebreak_draw_is_terminated_not_truncated(self):
+        env = _env(OUTCOME_ONLY)
+        env.board.time = REGULATION_TIME + OVERTIME_TIME - TICK_DT
+        _, _, terminated, truncated, info = env.step(0)
+        assert terminated and not truncated
+        assert info["winner"] is None

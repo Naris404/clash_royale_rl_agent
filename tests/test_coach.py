@@ -36,9 +36,9 @@ def untrained_model_path(tmp_path_factory):
     from sb3_contrib import MaskablePPO
     from sb3_contrib.common.wrappers import ActionMasker
 
-    from cr_rl.training.train import make_training_env
+    from cr_rl.env.gym_env import ClashRoyaleEnv
 
-    env = make_training_env(0)
+    env = ClashRoyaleEnv(seed=0)
     model = MaskablePPO("MlpPolicy", env, n_steps=64, n_epochs=1, batch_size=64, verbose=0)
     path = tmp_path_factory.mktemp("models") / "untrained.zip"
     model.save(str(path))

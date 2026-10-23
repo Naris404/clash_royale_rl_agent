@@ -28,6 +28,7 @@ def _save_model(path, obs_dim: int) -> None:
     [
         153,  # 6-card layout: 3 + 6 + 4 x 6 cards + 24 x 5
         169,  # 8-card layout with 24 distance-sorted unit slots (before observation v2)
+        278,  # observation v2 without the overtime-progress feature
     ],
 )
 def test_checkpoint_from_an_older_observation_layout_is_ignored(tmp_path, old_obs_dim):
