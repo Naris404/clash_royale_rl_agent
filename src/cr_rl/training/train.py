@@ -14,7 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +35,7 @@ DEFAULT_CHECKPOINT_PREFIX = DEFAULT_MODEL_DIR / "ppo_cr_checkpoint"
 
 DEFAULT_N_ENVS = 12
 DEFAULT_PHASE1_FRACTION = 0.2  # share of the step budget spent against RandomAgent
+LOG_INTERVAL = 5_000  # env steps between per-opponent win-rate logs
 PHASE2_OPPONENTS = ("logic",) * 8 + ("logic-eps",) * 2 + ("random",) * 2
 
 
@@ -69,28 +70,23 @@ def make_vec_training_env(
 
 
 class WinRateCallback(BaseCallback):
-    """Logs P0's win % over recent matches (from the env info buffer)."""
+    """Logs P0's win % per Training opponent type over its last `window` decisive matches."""
 
     def __init__(self, window: int = 200, verbose: int = 0):
         super().__init__(verbose)
         self.window = window
-        self._outcomes: list[int] = []
+        self._outcomes: dict[str, deque[int]] = defaultdict(lambda: deque(maxlen=window))
+        self._last_logged = 0
 
     def _on_step(self) -> bool:
-        dones = self.locals.get("dones", [])
-        infos = self.locals.get("infos", [])
-        for done, info in zip(dones, infos):
-            if not done:
-                continue
-            winner = info.get("winner")
-            if winner is None:
-                continue
-            self._outcomes.append(1 if winner == 0 else 0)
-            if len(self._outcomes) > self.window:
-                self._outcomes.pop(0)
-        if self._outcomes and self.num_timesteps % 5000 == 0:
-            rate = sum(self._outcomes) / len(self._outcomes)
-            self.logger.record("rollout/win_rate_vs_logic", rate)
+        for done, info in zip(self.locals.get("dones", []), self.locals.get("infos", [])):
+            if done and info.get("winner") is not None:
+                self._outcomes[info["opponent"]].append(1 if info["winner"] == 0 else 0)
+        # Env steps advance num_timesteps by n_envs, so test the interval, not a multiple.
+        if self.num_timesteps - self._last_logged >= LOG_INTERVAL:
+            self._last_logged = self.num_timesteps
+            for opponent, outcomes in self._outcomes.items():
+                self.logger.record(f"rollout/win_rate_vs_{opponent}", sum(outcomes) / len(outcomes))
         return True
 
 
