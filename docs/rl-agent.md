@@ -423,6 +423,8 @@ later in a run continue the env indices of the earlier ones, so no seed is repla
   `high_lr`, `high_entropy`, `mid_entropy` (`ent_coef` 0.01), `low_entropy`, `gamma_99`, `big_net`, `small_net`), each
   evaluated vs the rule-based bot.
 
+- `cr-rl-final` and `cr-rl-ablations`: the thesis run plans, see [Run plans](#run-plans).
+
 No sweep results are committed yet.
 
 ### Evaluation
@@ -474,8 +476,64 @@ player 0 (the other plays as the frozen policy through the P1 view), 400 matches
 `HeadToHead` result holds model A's `overall` report (wins, losses, draws, win rate with its 95%
 Wilson interval; `opponent` names model B) and the split `as_player_0` and `as_player_1`, plus
 the same `ReportMetadata` as the Report-seed evaluation. Matches played from B's side are
-converted to A's: winner swapped, return negated (the shaped reward is zero-sum by design). A model
+converted to A's: winner swapped, return negated (only approximately zero-sum, so do not rely on it). A model
 against itself gives `wins == losses`, because both sides replay the same deterministic match.
+
+### Run plans
+
+Two commands run the thesis experiments end to end. Each trains its runs, evaluates every run's
+selected checkpoint on the Report seeds (`evaluate_configuration()`), and writes one
+`results.json` that `cr-rl-stats` reads: `results` holds a row per run and opponent (the
+ablation file adds an `arm` field and a head-to-head row), next to the per-run `curriculum`
+metrics and the full report. A run's `manifest.json` (arm, seed, steps, layout, reward weights,
+environment version) becomes the `config` of its evaluation metadata. Runs are named
+`<arm>-seed<N>`; a run that already has `ppo_cr_final.zip` is not trained again, so an
+interrupted plan continues where it stopped. Both commands take `--timesteps`, `--n-envs`,
+`--out` and `--report-episodes` (fewer Report seeds, for a quick check only; for example
+`--timesteps 20000 --n-envs 2 --report-episodes 10`).
+
+| Plan | Command | Runs | Output | Expected CPU time |
+|---|---|---|---|---|
+| Final configuration | `cr-rl-final` | `full` x 3 seeds x 1M steps | `experiment_runs/final_configuration/` | about 3.3 h |
+| Ablations | `cr-rl-ablations` | 4 arms x 3 seeds x 500k steps | `experiment_runs/ablations/` | about 7 h |
+
+The times are the 12-env estimate on the 14-core CPU (about 3M and 6M steps in total).
+
+**Final configuration** (`cr_rl/experiments/final_configuration.py`). The `ConfigurationReport`
+gives the shipped run and the Ship gate verdict. The *budget rule* (`budget_rule()` in
+`cr_rl/experiments/curriculum.py`) compares the first run's final selection win rate with its
+last round at or before 80% of the steps; a rise of more than 10 percentage points means the run
+is still learning, and the output says to move all final runs to 3M steps
+(`cr-rl-final --timesteps 3000000`, into a fresh `--out`). `budget_rule` in `results.json` holds
+the two win rates, the rise and `extend`.
+
+**Ablations** (`cr_rl/experiments/ablations.py`). `ARMS` (`cr_rl/experiments/arms.py`) defines
+the four arms; each differs from `full` in exactly one setting, a test pins this:
+
+| Ablation arm | Warm-up | Scripted mix | Self-play mix | Shaping |
+|---|---|---|---|---|
+| Full | 0-20% | 20-60% | 60-100% | on |
+| No-shaping | 0-20% | 20-60% | 60-100% | off (`RewardWeights(crown=0, hp=0)`) |
+| No-curriculum | none | 0-60% | 60-100% | on |
+| No-self-play | 0-20% | 20-100% | none | on |
+
+Each arm's `ConfigurationReport` is in `arms` (per-seed runs, the shipped run and the `Spread` of
+the win rates per opponent). The plan then plays the shipped `full` run against the shipped
+`no-self-play` run with `evaluate_head_to_head()` on the Report seeds, each seed from both sides.
+Judge the head-to-head by wins, losses and the win rate with its interval; the `mean_return` of
+a head-to-head is only approximately zero-sum and is not used.
+
+**Curriculum metrics** (`curriculum_metrics()`), read from each run's `selection.json`
+(`curriculum` in `results.json`, keyed by run):
+
+- *jumpstart*: selection win rate of the first round at or after the end of the warm-up
+  (20% of the steps; the no-curriculum arm is read at the same step);
+- *steps to 50%*: the first round with a selection win rate of at least 50%, counted from step 0
+  so the warm-up counts; `null` if the run never gets there;
+- *report win rate*: the run's final win rate vs `LogicAgent` on the Report seeds.
+
+Rounds happen every 50,000 steps and a round's step is the rollout end after it, so a metric is
+resolved to about one selection interval. The ablations are judged by win rate, not shaped return.
 
 ## Results
 
@@ -568,3 +626,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Report-seed evaluation and the Ship gate (#63, ADR-0002): `cr-rl-report` plays each run's selected checkpoint on 200 Report seeds (`2_000_000 + i`) vs `LogicAgent` and `RandomAgent` with Wilson intervals, mean return, length and reproducibility metadata, ships the run with the best Selection win rate and states the Ship gate verdict on its Report results. Observation and action layout unchanged. |
 | 2026-10-23 | Head-to-head (#65, ADR-0002): `evaluate_head_to_head()` plays two models on every Report seed from both sides (400 matches) and reports A's wins, losses and draws with a 95% Wilson interval, the per-side split and the Report-seed metadata. Observation and action layout unchanged. |
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
+| 2026-10-23 | Run plans (#66, ADR-0002): `cr-rl-final` (3 seeds x 1M steps, shipped run, Ship gate and budget rule) and `cr-rl-ablations` (full, no-shaping, no-curriculum, no-self-play x 3 seeds x 500k steps, per-arm aggregation, full vs no-self-play head-to-head), each with curriculum metrics per run; `train()` takes `reward_weights`. Observation and action layout unchanged. |

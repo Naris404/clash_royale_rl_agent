@@ -33,6 +33,7 @@ ENV_VERSION = "env-v1.1"
 SHIP_GATE_OPPONENT = "logic"
 SHIP_GATE_THRESHOLD = 0.5  # the Wilson lower bound vs LogicAgent must be above this
 REPORT_FILENAME = "results.json"
+MANIFEST_FILENAME = "manifest.json"  # what trained a run; becomes the config of its evaluation
 DEFAULT_REPORT_PATH = EXPERIMENT_RUNS_DIR / "report_evaluation" / REPORT_FILENAME
 
 
@@ -171,11 +172,20 @@ def summarize_configuration(runs: Sequence[RunReport]) -> ConfigurationReport:
     return ConfigurationReport(tuple(runs), shipped.name, shipped.evaluation.passes_ship_gate, spread)
 
 
+def selected_checkpoint(run_dir: Path) -> tuple[CheckpointResult, Path]:
+    """The checkpoint a run selected on its Selection seeds, and its file."""
+    selected = select_checkpoint(load_selection(run_dir / SELECTION_FILENAME))
+    return selected, run_dir / "checkpoints" / selected.path
+
+
 def evaluate_run(run_dir: Path, *, seeds: range = REPORT_SEEDS) -> RunReport:
     """Evaluate the checkpoint a run selected on its Selection seeds."""
-    selected = select_checkpoint(load_selection(run_dir / SELECTION_FILENAME))
-    checkpoint = run_dir / "checkpoints" / selected.path
-    evaluation = evaluate_report(MaskablePPO.load(str(checkpoint)), model=str(checkpoint), seeds=seeds)
+    selected, checkpoint = selected_checkpoint(run_dir)
+    manifest = run_dir / MANIFEST_FILENAME
+    config = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else None
+    evaluation = evaluate_report(
+        MaskablePPO.load(str(checkpoint)), model=str(checkpoint), config=config, seeds=seeds
+    )
     return RunReport(run_dir.name, selected, evaluation)
 
 
@@ -183,14 +193,24 @@ def evaluate_configuration(run_dirs: Sequence[Path], *, seeds: range = REPORT_SE
     return summarize_configuration([evaluate_run(run_dir, seeds=seeds) for run_dir in run_dirs])
 
 
-def save_configuration_report(report: ConfigurationReport, path: Path) -> None:
-    """Write the report; `results` holds one row per run and opponent for `load_experiment_results`."""
-    rows = [
+def configuration_rows(report: ConfigurationReport) -> list[dict[str, Any]]:
+    """One row per run and opponent, the shape `load_experiment_results` reads."""
+    return [
         {**asdict(opponent), "config": f"{run.name} vs {opponent.opponent}", "run": run.name}
         for run in report.runs
         for opponent in run.evaluation.opponents
     ]
-    payload = {"experiment": "report_evaluation", **asdict(report), "results": rows}
+
+
+def save_configuration_report(
+    report: ConfigurationReport,
+    path: Path,
+    *,
+    experiment: str = "report_evaluation",
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Write the report, with `extra` entries beside it; `results` holds `configuration_rows`."""
+    payload = {"experiment": experiment, **asdict(report), **(extra or {}), "results": configuration_rows(report)}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
