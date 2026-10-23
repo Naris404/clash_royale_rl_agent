@@ -43,5 +43,8 @@ class TestSubprocessEnvs:
 
 @pytest.mark.parametrize("curriculum", [True, False])
 def test_smoke_run_trains_and_saves_a_model(tmp_path, curriculum):
-    train(timesteps=1024, n_envs=2, seed=0, curriculum=curriculum, model_dir=tmp_path)
+    train(
+        timesteps=1024, n_envs=2, seed=0, curriculum=curriculum, model_dir=tmp_path,
+        selection_seeds=range(1_000_000, 1_000_001),
+    )
     assert (tmp_path / "ppo_cr_final.zip").is_file()

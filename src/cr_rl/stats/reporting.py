@@ -328,8 +328,7 @@ def print_training_curves(series: list[ScalarSeries]) -> None:
     interesting = [
         "rollout/ep_rew_mean",
         "rollout/win_rate_vs_logic",
-        "eval/mean_reward",
-        "eval/mean_ep_length",
+        "selection/win_rate",
         "train/explained_variance",
         "train/value_loss",
         "train/entropy_loss",
@@ -506,7 +505,7 @@ def save_plots(
         saved.append(path)
 
     _plot_series(
-        ["rollout/ep_rew_mean", "eval/mean_reward"],
+        ["rollout/ep_rew_mean"],
         "Mean reward during training",
         "Reward",
         "reward_curve.png",
