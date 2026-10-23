@@ -8,6 +8,8 @@ the live policy plays at the timing it was trained with.
 
 from __future__ import annotations
 
+from typing import Any
+
 from cr_rl.game.board import Board
 
 NOOP_HOLD_TICKS = 3  # 0.3 s at 10 Hz
@@ -35,3 +37,26 @@ class DecisionSchedule:
 
     def advance(self) -> None:
         self._hold_left = max(0, self._hold_left - 1)
+
+
+class ScheduledAgent:
+    """Asks the wrapped agent only at Decision points and plays noop on every other tick.
+
+    Call `choose_action` once per simulated tick, before the Board step.
+    """
+
+    def __init__(self, agent: Any, hold_ticks: int = NOOP_HOLD_TICKS):
+        self.agent = agent
+        self.schedule = DecisionSchedule(hold_ticks)
+
+    def choose_action(self, board: Board, player: int) -> int:
+        action = 0
+        if self.schedule.is_decision_point(board, player):
+            action = self.agent.choose_action(board, player)
+            self.schedule.record(action)
+        self.schedule.advance()
+        return action
+
+    def reset(self) -> None:
+        self.agent.reset()
+        self.schedule.reset()

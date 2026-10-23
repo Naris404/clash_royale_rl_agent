@@ -33,7 +33,6 @@ cr-rl-stats = "cr_rl.stats.reporting:main"
 cr-rl-coach-validate = "cr_rl.coach.validate:main"
 cr-rl-server = "cr_rl.server.app:main"
 cr-rl-sweep = "cr_rl.experiments.sweep:main"
-cr-rl-curriculum = "cr_rl.experiments.curriculum:main"
 cr-rl-prepare-model = "cr_rl.deploy.prepare_model:main"
 
 [tool.setuptools.packages.find]
