@@ -104,11 +104,7 @@ class ClashRoyaleEnv(gym.Env):
         """
         self.schedule.record(int(action))
         result = self._tick(int(action))
-        while not (
-            result.terminated
-            or result.truncated
-            or self.schedule.is_decision_point(self.board, 0)
-        ):
+        while not (result.terminated or self.schedule.is_decision_point(self.board, 0)):
             result = self._tick(0)
         reward = step_reward(self.board, 0, self.reward_weights, self.gamma, self._potential)
         self._potential = potential(self.board, 0, self.reward_weights)
