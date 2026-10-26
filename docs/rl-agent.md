@@ -434,6 +434,10 @@ later in a run continue the env indices of the earlier ones, so no seed is repla
 
 - `cr-rl-final` and `cr-rl-ablations`: the thesis run plans, see [Run plans](#run-plans).
 - `cr-rl-results`: a read-only summary of the run plans' results, see [Run plans](#run-plans).
+- `cr-rl-arrows --model M --frozen F`: the Arrows experiment (ADR-0007). Records every Report-seed decision of `M` whose
+  top choice is Arrows on a tower (zone, time, both elixirs, probabilities, V(s), outcome), then replays the seeds
+  with that play blocked against LogicAgent and the frozen model `F`; writes
+  `experiment_runs/arrows/results.json`.
 
 No sweep results are committed yet.
 

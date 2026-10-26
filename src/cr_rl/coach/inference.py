@@ -9,7 +9,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 
@@ -38,12 +38,13 @@ class PolicyInspector:
         model_path: str | Path | None = DEFAULT_MODEL_PATH,
         *,
         top_k: int = 3,
+        model=None,
     ):
         self.top_k = top_k
         self._lock = threading.Lock()
-        self._model = None
+        self._model = model  # an already loaded policy takes precedence over model_path
         self._model_path: Path | None = None
-        if model_path is not None:
+        if model is None and model_path is not None:
             path = Path(model_path)
             if path.is_file():
                 self._load(path)
@@ -65,8 +66,13 @@ class PolicyInspector:
     def model_path(self) -> Path | None:
         return self._model_path
 
-    def estimate(self, board: Board, player: int = 0) -> Optional[PolicyEstimate]:
-        """Policy distribution + V(s) for the state from `player`'s perspective; None without a model."""
+    def estimate(
+        self, board: Board, player: int = 0, *, blocked: Sequence[int] = ()
+    ) -> Optional[PolicyEstimate]:
+        """Policy distribution + V(s) for the state from `player`'s perspective; None without a model.
+
+        Actions in `blocked` are masked out like illegal ones, so the distribution renormalises without them.
+        """
         if self._model is None:
             return None
 
@@ -74,6 +80,7 @@ class PolicyInspector:
 
         obs = board.get_observation(player)
         mask = board.valid_action_mask(player)
+        mask[list(blocked)] = False
 
         with self._lock, torch.no_grad():
             device = self._model.policy.device
