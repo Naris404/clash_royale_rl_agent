@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -36,7 +37,7 @@ class TestSubprocessEnvs:
 
 
 def smoke_run(
-    model_dir: Path, layout: str, *, n_envs: int, timesteps: int, pool_interval: int
+    model_dir: Path, layout: str, *, n_envs: int, timesteps: int, pool_interval: int, **train_kwargs
 ) -> list[Counter]:
     """Train a tiny run and return the opponent mix of every env set built along the way."""
     built = []
@@ -51,7 +52,7 @@ def smoke_run(
         train(
             timesteps=timesteps, n_envs=n_envs, seed=0, layout=layout, model_dir=model_dir,
             n_steps=256 * n_envs, selection_seeds=range(1_000_000, 1_000_001),
-            pool_interval=pool_interval, pool_matches=2,
+            pool_interval=pool_interval, pool_matches=2, **train_kwargs,
         )
     finally:
         training.make_vec_training_env = original
@@ -94,3 +95,37 @@ def test_no_self_play_run_never_builds_a_past_self_env(tmp_path):
 def test_no_curriculum_run_starts_in_the_scripted_mix(tmp_path):
     built = smoke_run(tmp_path, "no-curriculum", n_envs=2, timesteps=1_000, pool_interval=300)
     assert built[0] == {"logic": 2} and set(built[1]) == {PAST_SELF}
+
+
+@pytest.mark.slow
+class TestFineTuneRun:
+    @pytest.fixture(scope="class")
+    def run(self, tmp_path_factory, untrained_model_path):
+        model_dir = tmp_path_factory.mktemp("fine-tune")
+        exploiter = model_dir / "exploiter.zip"
+        shutil.copy(untrained_model_path, exploiter)
+        built = smoke_run(
+            model_dir, "fine-tune", n_envs=12, timesteps=2_000, pool_interval=1_000,
+            resume=untrained_model_path, permanent_members=[exploiter],
+        )
+        return model_dir, built
+
+    def test_continues_the_given_model_in_the_fine_tuning_mix(self, run):
+        model_dir, built = run
+        assert built == [{PAST_SELF: 10, "logic": 2}] * 2
+        assert (model_dir / "ppo_cr_final.zip").is_file()
+
+    def test_it_logs_to_its_own_run_directory(self, run, untrained_model_path):
+        model_dir, _ = run
+        assert any((model_dir / "tb").glob("MaskablePPO_*"))
+
+    def test_the_pool_holds_the_source_model_and_the_permanent_member_and_logs_win_rates(self, run):
+        model_dir, _ = run
+        (decision,) = json.loads((model_dir / "pool.json").read_text(encoding="utf-8"))
+        assert decision["members"][0] == "ppo_cr_0_steps.zip" and decision["members"][-1] == "exploiter.zip"
+        assert set(decision["member_win_rates"]) == {"ppo_cr_0_steps.zip", "exploiter.zip"}
+
+
+def test_a_pool_layout_cannot_start_without_a_model_to_resume(tmp_path):
+    with pytest.raises(ValueError, match="resume"):
+        train(timesteps=1_000, n_envs=2, layout="fine-tune", model_dir=tmp_path)

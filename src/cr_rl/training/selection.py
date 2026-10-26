@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
+from sb3_contrib import MaskablePPO
 from stable_baselines3.common.callbacks import BaseCallback
 
 from cr_rl.jsonio import write_json
@@ -50,8 +51,9 @@ def load_selection(path: Path) -> list[CheckpointResult]:
 class SelectionCallback(BaseCallback):
     """Plays the current policy vs LogicAgent on the Selection seeds and keeps the checkpoint.
 
-    A round runs every `interval` env steps; `evaluate()` runs one more for the final model.
-    Rounds are logged with their Wilson interval and recorded in `selection.json`.
+    A round runs every `interval` env steps; `evaluate(model)` runs one more for a model outside
+    `learn` (a resumed one, the final one). Rounds are logged with their Wilson interval and
+    recorded in `selection.json`.
     """
 
     def __init__(
@@ -70,23 +72,24 @@ class SelectionCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.num_timesteps - self._last_round >= self.interval:
-            self.evaluate()
+            self.logger.record("selection/win_rate", self.evaluate().win_rate)
         return True
 
-    def evaluate(self) -> None:
-        """Evaluate and keep the current model, unless this step was already evaluated."""
-        step = self.model.num_timesteps
+    def evaluate(self, model: MaskablePPO | None = None) -> CheckpointResult:
+        """Evaluate and keep a model (default: the one being trained), unless its step was already evaluated."""
+        model = model or self.model
+        step = model.num_timesteps
         self._last_round = step
         if self.results and self.results[-1].step == step:
-            return
-        stats = summarize_matches(play_matches(self.model, "logic", self.seeds))
+            return self.results[-1]
+        stats = summarize_matches(play_matches(model, "logic", self.seeds))
         checkpoint = Path("checkpoints") / f"ppo_cr_{step}_steps.zip"
         (self.model_dir / checkpoint.parent).mkdir(exist_ok=True)
-        self.model.save(str(self.model_dir / checkpoint))
+        model.save(str(self.model_dir / checkpoint))
         result = CheckpointResult(step, int(stats["wins"]), int(stats["episodes"]), checkpoint.name)
         self.results.append(result)
         save_selection(self.results, self.model_dir / SELECTION_FILENAME)
         low, high = wilson_interval(result.wins, result.episodes)
-        self.logger.record("selection/win_rate", result.win_rate)
         logger.info("Selection @ %s steps: win rate %.1f%% (95%% CI %.1f%% to %.1f%%)",
                     f"{step:,}", result.win_rate * 100, low * 100, high * 100)
+        return result

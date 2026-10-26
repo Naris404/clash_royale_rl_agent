@@ -23,6 +23,9 @@ class TestLayouts:
     def test_no_self_play_stretches_the_scripted_mix_to_the_end(self):
         assert layout("no-self-play") == [("warm-up", 200), ("scripted-mix", 800)]
 
+    def test_fine_tune_is_a_single_phase(self):
+        assert layout("fine-tune") == [("fine-tune-mix", 1000)]
+
     def test_the_steps_always_add_up_to_the_budget(self):
         for name in PHASE_LAYOUTS:
             assert sum(steps for _, steps in layout(name, 12_345)) == 12_345
@@ -54,3 +57,22 @@ class TestPhaseOpponents:
     def test_a_past_self_mix_without_a_pool_is_rejected(self):
         with pytest.raises(ValueError, match="Past-self pool"):
             phase_opponents(self.phase("self-play-mix"), 12)
+
+
+class TestFineTuneMix:
+    phase = phase_steps("fine-tune", 1000)[0][0]
+
+    def test_ten_pool_envs_and_two_logic_agents_and_nothing_else(self):
+        opponents = phase_opponents(self.phase, 12, ["a.zip"] * 10)
+        assert Counter(opponents) == {"a.zip": 10, "logic": 2}
+
+    def test_it_counts_its_pool_envs(self):
+        assert self.phase.past_self_envs(12) == 10
+
+    def test_it_draws_its_pool_envs_by_pfsp(self):
+        assert self.phase.pfsp
+
+    def test_the_v2_phases_keep_their_rotation(self):
+        phases = [phase for name in ("full", "no-curriculum", "no-self-play") for phase, _ in phase_steps(name, 1000)]
+        assert not any(phase.pfsp for phase in phases)
+        assert [p.past_self_envs(12) for p in phases if p.uses_pool] == [4, 4]
