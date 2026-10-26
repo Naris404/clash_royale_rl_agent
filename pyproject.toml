@@ -30,6 +30,7 @@ test = ["pytest>=8.0", "httpx>=0.27"]
 cr-rl-train = "cr_rl.training.train:main"
 cr-rl-evaluate = "cr_rl.training.evaluate:main"
 cr-rl-report = "cr_rl.training.report:main"
+cr-rl-reference-select = "cr_rl.training.reference_selection:main"
 cr-rl-final = "cr_rl.experiments.final_configuration:main"
 cr-rl-ablations = "cr_rl.experiments.ablations:main"
 cr-rl-arrows = "cr_rl.experiments.arrows:main"
