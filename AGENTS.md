@@ -42,7 +42,7 @@ The Python backend owns simulation state and is the single source of truth. The 
 - Keep simulation logic deterministic and side effects explicit. Use named constants for observation/action layouts and update tests whenever those contracts change.
 - TypeScript: strict types, functional React components, double quotes, semicolons, and shared protocol types matching the Pydantic WebSocket models.
 - Keep rendering separate from game rules: React handles interface state, PixiJS renders the arena, and FastAPI validates all authoritative actions.
-- Add focused pytest coverage for Python behavior and run `python -m pytest`; run `npm run build --prefix web` after frontend changes.
+- Add focused pytest coverage for Python behavior. While iterating run `python -m pytest -m "not slow"` (seconds); run the full `python -m pytest` (about 6 min) before committing. Run `npm run build --prefix web` after frontend changes.
 - Follow existing PL/EN behavior: user-facing web copy must remain translatable; code identifiers stay in English.
 - KEEP CLEAN AND SIMPLE SOURCE CODE.
 

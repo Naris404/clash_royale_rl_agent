@@ -31,6 +31,7 @@ def read(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+@pytest.mark.slow
 class TestFinalConfigurationPlan:
     @pytest.fixture(scope="class")
     def run(self, tmp_path_factory):
@@ -94,6 +95,7 @@ class TestFinalConfigurationPlan:
         assert len([row for row in rows if row["experiment"] == "final_configuration"]) == 2
 
 
+@pytest.mark.slow
 class TestAblationPlan:
     @pytest.fixture(scope="class")
     def run(self, tmp_path_factory):

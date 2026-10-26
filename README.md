@@ -55,7 +55,8 @@ clash_royale_rl_agent/
 ├── tests/             # pytest tests
 ├── scripts/           # development utilities
 ├── docs/              # project docs and thesis material (docs/thesis)
-├── models/            # models and results (gitignored)
+├── models/            # models (gitignored); stats/coach_validation.json is committed
+├── experiment_runs/   # training runs (gitignored); each plan's results.json is committed
 └── pyproject.toml      # package and cr-rl-* commands
 ```
 
