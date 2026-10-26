@@ -62,6 +62,7 @@ SCRIPTED = {"logic": 8, "logic-eps": 2, "random": 2}
 SELF_PLAY = {PAST_SELF: 4, "logic": 6, "logic-eps": 1, "random": 1}
 
 
+@pytest.mark.slow
 class TestFullLayoutRun:
     @pytest.fixture(scope="class")
     def run(self, tmp_path_factory):
@@ -82,12 +83,14 @@ class TestFullLayoutRun:
         assert len(list((model_dir / "pool").glob("*.zip"))) == 1
 
 
+@pytest.mark.slow
 def test_no_self_play_run_never_builds_a_past_self_env(tmp_path):
     built = smoke_run(tmp_path, "no-self-play", n_envs=2, timesteps=1_000, pool_interval=300)
     assert built == [{"random": 2}, {"logic": 2}]
     assert not (tmp_path / "pool.json").exists()
 
 
+@pytest.mark.slow
 def test_no_curriculum_run_starts_in_the_scripted_mix(tmp_path):
     built = smoke_run(tmp_path, "no-curriculum", n_envs=2, timesteps=1_000, pool_interval=300)
     assert built[0] == {"logic": 2} and set(built[1]) == {PAST_SELF}
