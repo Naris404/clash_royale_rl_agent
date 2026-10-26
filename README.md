@@ -161,6 +161,9 @@ cr-rl-sweep --timesteps 1000000 --eval-episodes 200
 
 # summary report and plots for the experiments chapter
 cr-rl-stats --experiments --plot
+
+# read the run plans' results (final configuration, ablations) without playing any match
+cr-rl-results
 ```
 
 Short runs with fewer steps are only a smoke test; thesis results should use
