@@ -54,10 +54,21 @@ htmlcov/
 *.log
 _preview.png
 *.gif
-models/
+# Model files stay local; the Coach validation summary is a thesis result (docs/rl-agent.md).
+models/*
+!models/stats/
+models/stats/*
+!models/stats/coach_validation.json
 checkpoints/
 runs/
-experiment_runs/
+# Runs stay local; the run plans' results.json files are the thesis numbers (docs/rl-agent.md).
+experiment_runs/*
+!experiment_runs/final_configuration/
+!experiment_runs/ablations/
+experiment_runs/final_configuration/*
+experiment_runs/ablations/*
+!experiment_runs/final_configuration/results.json
+!experiment_runs/ablations/results.json
 wandb/
 
 # Web

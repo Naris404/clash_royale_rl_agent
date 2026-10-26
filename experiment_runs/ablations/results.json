@@ -1,0 +1,1721 @@
+{
+  "experiment": "ablations",
+  "generated_at": "2026-10-26T10:07:02.429431+00:00",
+  "timesteps": 500000,
+  "training_seeds": [
+    0,
+    1,
+    2
+  ],
+  "arms": {
+    "full": {
+      "runs": [
+        {
+          "name": "full-seed0",
+          "selection": {
+            "step": 450774,
+            "wins": 76,
+            "episodes": 100,
+            "path": "ppo_cr_450774_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\full-seed0\\checkpoints\\ppo_cr_450774_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "full",
+                "seed": 0,
+                "timesteps": 500000,
+                "layout": "full",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T11:35:00.131504+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 153,
+                "losses": 47,
+                "draws": 0,
+                "win_rate": 0.765,
+                "ci_low": 0.7015863111723746,
+                "ci_high": 0.8184256658476741,
+                "mean_return": 0.524669762079063,
+                "mean_length": 41.345
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 189,
+                "losses": 11,
+                "draws": 0,
+                "win_rate": 0.945,
+                "ci_low": 0.9042130012276914,
+                "ci_high": 0.9690146582965411,
+                "mean_return": 0.8671157213122254,
+                "mean_length": 35.32
+              }
+            ]
+          }
+        },
+        {
+          "name": "full-seed1",
+          "selection": {
+            "step": 400770,
+            "wins": 82,
+            "episodes": 100,
+            "path": "ppo_cr_400770_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\full-seed1\\checkpoints\\ppo_cr_400770_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "full",
+                "seed": 1,
+                "timesteps": 500000,
+                "layout": "full",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T12:13:17.027267+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 152,
+                "losses": 48,
+                "draws": 0,
+                "win_rate": 0.76,
+                "ci_low": 0.6962665902079583,
+                "ci_high": 0.8139338400758631,
+                "mean_return": 0.5201943022510982,
+                "mean_length": 33.755
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 191,
+                "losses": 9,
+                "draws": 0,
+                "win_rate": 0.955,
+                "ci_low": 0.9167032959981803,
+                "ci_high": 0.976147456998507,
+                "mean_return": 0.8899609587756223,
+                "mean_length": 34.32
+              }
+            ]
+          }
+        },
+        {
+          "name": "full-seed2",
+          "selection": {
+            "step": 501270,
+            "wins": 82,
+            "episodes": 100,
+            "path": "ppo_cr_501270_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\full-seed2\\checkpoints\\ppo_cr_501270_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "full",
+                "seed": 2,
+                "timesteps": 500000,
+                "layout": "full",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T12:57:56.349727+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 160,
+                "losses": 40,
+                "draws": 0,
+                "win_rate": 0.8,
+                "ci_low": 0.7391448134346212,
+                "ci_high": 0.8495479907390189,
+                "mean_return": 0.5938168747712298,
+                "mean_length": 38.905
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 195,
+                "losses": 5,
+                "draws": 0,
+                "win_rate": 0.975,
+                "ci_low": 0.942821659593358,
+                "ci_high": 0.9892752803482386,
+                "mean_return": 0.9271395950768668,
+                "mean_length": 31.175
+              }
+            ]
+          }
+        }
+      ],
+      "shipped": "full-seed1",
+      "ship_gate_passed": true,
+      "spread": {
+        "logic": {
+          "mean": 0.775,
+          "std": 0.021794494717703387,
+          "min": 0.76,
+          "max": 0.8
+        },
+        "random": {
+          "mean": 0.9583333333333334,
+          "std": 0.01527525231651948,
+          "min": 0.945,
+          "max": 0.975
+        }
+      }
+    },
+    "no-shaping": {
+      "runs": [
+        {
+          "name": "no-shaping-seed0",
+          "selection": {
+            "step": 501270,
+            "wins": 80,
+            "episodes": 100,
+            "path": "ppo_cr_501270_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-shaping-seed0\\checkpoints\\ppo_cr_501270_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-shaping",
+                "seed": 0,
+                "timesteps": 500000,
+                "layout": "full",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.0,
+                  "hp": 0.0
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T13:46:36.910878+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 151,
+                "losses": 49,
+                "draws": 0,
+                "win_rate": 0.755,
+                "ci_low": 0.6909575644379659,
+                "ci_high": 0.8094313191096282,
+                "mean_return": 0.5010698929355784,
+                "mean_length": 33.475
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 189,
+                "losses": 11,
+                "draws": 0,
+                "win_rate": 0.945,
+                "ci_low": 0.9042130012276914,
+                "ci_high": 0.9690146582965411,
+                "mean_return": 0.866853362920937,
+                "mean_length": 33.655
+              }
+            ]
+          }
+        },
+        {
+          "name": "no-shaping-seed1",
+          "selection": {
+            "step": 300762,
+            "wins": 77,
+            "episodes": 100,
+            "path": "ppo_cr_300762_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-shaping-seed1\\checkpoints\\ppo_cr_300762_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-shaping",
+                "seed": 1,
+                "timesteps": 500000,
+                "layout": "full",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.0,
+                  "hp": 0.0
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T14:23:37.774247+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 163,
+                "losses": 37,
+                "draws": 0,
+                "win_rate": 0.815,
+                "ci_low": 0.7554293723884824,
+                "ci_high": 0.8626980719938395,
+                "mean_return": 0.6276091977031478,
+                "mean_length": 38.72
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 181,
+                "losses": 19,
+                "draws": 0,
+                "win_rate": 0.905,
+                "ci_low": 0.8563983883518006,
+                "ci_high": 0.9383368972826135,
+                "mean_return": 0.7932720955344069,
+                "mean_length": 37.815
+              }
+            ]
+          }
+        },
+        {
+          "name": "no-shaping-seed2",
+          "selection": {
+            "step": 300762,
+            "wins": 78,
+            "episodes": 100,
+            "path": "ppo_cr_300762_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-shaping-seed2\\checkpoints\\ppo_cr_300762_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-shaping",
+                "seed": 2,
+                "timesteps": 500000,
+                "layout": "full",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.0,
+                  "hp": 0.0
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T15:11:27.400764+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 166,
+                "losses": 34,
+                "draws": 0,
+                "win_rate": 0.83,
+                "ci_low": 0.7718411637168737,
+                "ci_high": 0.8757209208741302,
+                "mean_return": 0.662729154694363,
+                "mean_length": 34.38
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 187,
+                "losses": 13,
+                "draws": 0,
+                "win_rate": 0.935,
+                "ci_low": 0.8919809207009312,
+                "ci_high": 0.961623645350847,
+                "mean_return": 0.8563555799322841,
+                "mean_length": 32.83
+              }
+            ]
+          }
+        }
+      ],
+      "shipped": "no-shaping-seed0",
+      "ship_gate_passed": true,
+      "spread": {
+        "logic": {
+          "mean": 0.7999999999999999,
+          "std": 0.03968626966596883,
+          "min": 0.755,
+          "max": 0.83
+        },
+        "random": {
+          "mean": 0.9283333333333333,
+          "std": 0.020816659994661302,
+          "min": 0.905,
+          "max": 0.945
+        }
+      }
+    },
+    "no-curriculum": {
+      "runs": [
+        {
+          "name": "no-curriculum-seed0",
+          "selection": {
+            "step": 300762,
+            "wins": 82,
+            "episodes": 100,
+            "path": "ppo_cr_300762_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-curriculum-seed0\\checkpoints\\ppo_cr_300762_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-curriculum",
+                "seed": 0,
+                "timesteps": 500000,
+                "layout": "no-curriculum",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T16:11:37.449382+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 169,
+                "losses": 31,
+                "draws": 0,
+                "win_rate": 0.845,
+                "ci_low": 0.7883930940765792,
+                "ci_high": 0.8886036307231068,
+                "mean_return": 0.6794794173224744,
+                "mean_length": 38.795
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 172,
+                "losses": 28,
+                "draws": 0,
+                "win_rate": 0.86,
+                "ci_low": 0.8051011913429243,
+                "ci_high": 0.9013301736654437,
+                "mean_return": 0.7078960974103221,
+                "mean_length": 36.185
+              }
+            ]
+          }
+        },
+        {
+          "name": "no-curriculum-seed1",
+          "selection": {
+            "step": 350766,
+            "wins": 82,
+            "episodes": 100,
+            "path": "ppo_cr_350766_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-curriculum-seed1\\checkpoints\\ppo_cr_350766_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-curriculum",
+                "seed": 1,
+                "timesteps": 500000,
+                "layout": "no-curriculum",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T17:11:42.861679+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 149,
+                "losses": 51,
+                "draws": 0,
+                "win_rate": 0.745,
+                "ci_low": 0.6803707417954529,
+                "ci_high": 0.8003950482796865,
+                "mean_return": 0.4883197925054905,
+                "mean_length": 45.25
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 182,
+                "losses": 18,
+                "draws": 0,
+                "win_rate": 0.91,
+                "ci_low": 0.8622342812328346,
+                "ci_high": 0.9423125511378069,
+                "mean_return": 0.8013857837664715,
+                "mean_length": 40.37
+              }
+            ]
+          }
+        },
+        {
+          "name": "no-curriculum-seed2",
+          "selection": {
+            "step": 300024,
+            "wins": 86,
+            "episodes": 100,
+            "path": "ppo_cr_300024_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-curriculum-seed2\\checkpoints\\ppo_cr_300024_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-curriculum",
+                "seed": 2,
+                "timesteps": 500000,
+                "layout": "no-curriculum",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T18:11:52.492577+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 173,
+                "losses": 27,
+                "draws": 0,
+                "win_rate": 0.865,
+                "ci_low": 0.8107086162924745,
+                "ci_high": 0.9055342954521209,
+                "mean_return": 0.7103517780014641,
+                "mean_length": 31.86
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 179,
+                "losses": 21,
+                "draws": 0,
+                "win_rate": 0.895,
+                "ci_low": 0.8448196800887696,
+                "ci_high": 0.9302925120731899,
+                "mean_return": 0.773340548590776,
+                "mean_length": 35.8
+              }
+            ]
+          }
+        }
+      ],
+      "shipped": "no-curriculum-seed2",
+      "ship_gate_passed": true,
+      "spread": {
+        "logic": {
+          "mean": 0.8183333333333334,
+          "std": 0.06429100507328636,
+          "min": 0.745,
+          "max": 0.865
+        },
+        "random": {
+          "mean": 0.8883333333333333,
+          "std": 0.025658007197234444,
+          "min": 0.86,
+          "max": 0.91
+        }
+      }
+    },
+    "no-self-play": {
+      "runs": [
+        {
+          "name": "no-self-play-seed0",
+          "selection": {
+            "step": 500040,
+            "wins": 89,
+            "episodes": 100,
+            "path": "ppo_cr_500040_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-self-play-seed0\\checkpoints\\ppo_cr_500040_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-self-play",
+                "seed": 0,
+                "timesteps": 500000,
+                "layout": "no-self-play",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T19:21:40.441667+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 172,
+                "losses": 28,
+                "draws": 0,
+                "win_rate": 0.86,
+                "ci_low": 0.8051011913429243,
+                "ci_high": 0.9013301736654437,
+                "mean_return": 0.6979716668191801,
+                "mean_length": 35.075
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 177,
+                "losses": 23,
+                "draws": 0,
+                "win_rate": 0.885,
+                "ci_low": 0.8333528310151243,
+                "ci_high": 0.9221362676743804,
+                "mean_return": 0.7566901949121524,
+                "mean_length": 35.815
+              }
+            ]
+          }
+        },
+        {
+          "name": "no-self-play-seed1",
+          "selection": {
+            "step": 500040,
+            "wins": 85,
+            "episodes": 100,
+            "path": "ppo_cr_500040_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-self-play-seed1\\checkpoints\\ppo_cr_500040_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-self-play",
+                "seed": 1,
+                "timesteps": 500000,
+                "layout": "no-self-play",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T20:18:33.741130+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 169,
+                "losses": 31,
+                "draws": 0,
+                "win_rate": 0.845,
+                "ci_low": 0.7883930940765792,
+                "ci_high": 0.8886036307231068,
+                "mean_return": 0.6924221325951685,
+                "mean_length": 37.655
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 179,
+                "losses": 21,
+                "draws": 0,
+                "win_rate": 0.895,
+                "ci_low": 0.8448196800887696,
+                "ci_high": 0.9302925120731899,
+                "mean_return": 0.7772943978770133,
+                "mean_length": 36.625
+              }
+            ]
+          }
+        },
+        {
+          "name": "no-self-play-seed2",
+          "selection": {
+            "step": 501270,
+            "wins": 90,
+            "episodes": 100,
+            "path": "ppo_cr_501270_steps.zip"
+          },
+          "evaluation": {
+            "metadata": {
+              "model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\ablations\\no-self-play-seed2\\checkpoints\\ppo_cr_501270_steps.zip",
+              "seed_start": 2000000,
+              "episodes": 200,
+              "deterministic": true,
+              "env_version": "env-v1.1",
+              "obs_dim": 279,
+              "num_actions": 53,
+              "config": {
+                "arm": "no-self-play",
+                "seed": 2,
+                "timesteps": 500000,
+                "layout": "no-self-play",
+                "reward_weights": {
+                  "win": 1.0,
+                  "crown": 0.2,
+                  "hp": 0.5
+                },
+                "env_version": "env-v1.1",
+                "generated_at": "2026-10-24T21:11:32.402660+00:00"
+              }
+            },
+            "opponents": [
+              {
+                "opponent": "logic",
+                "episodes": 200,
+                "wins": 173,
+                "losses": 27,
+                "draws": 0,
+                "win_rate": 0.865,
+                "ci_low": 0.8107086162924745,
+                "ci_high": 0.9055342954521209,
+                "mean_return": 0.7197301239934114,
+                "mean_length": 29.1
+              },
+              {
+                "opponent": "random",
+                "episodes": 200,
+                "wins": 184,
+                "losses": 16,
+                "draws": 0,
+                "win_rate": 0.92,
+                "ci_low": 0.874010511732856,
+                "ci_high": 0.9501594141102401,
+                "mean_return": 0.8253277427251098,
+                "mean_length": 31.475
+              }
+            ]
+          }
+        }
+      ],
+      "shipped": "no-self-play-seed2",
+      "ship_gate_passed": true,
+      "spread": {
+        "logic": {
+          "mean": 0.8566666666666666,
+          "std": 0.010408329997330672,
+          "min": 0.845,
+          "max": 0.865
+        },
+        "random": {
+          "mean": 0.9,
+          "std": 0.018027756377319962,
+          "min": 0.885,
+          "max": 0.92
+        }
+      }
+    }
+  },
+  "curriculum": {
+    "full-seed0": {
+      "jumpstart": 0.48,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.765
+    },
+    "full-seed1": {
+      "jumpstart": 0.43,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.76
+    },
+    "full-seed2": {
+      "jumpstart": 0.39,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.8
+    },
+    "no-shaping-seed0": {
+      "jumpstart": 0.43,
+      "steps_to_half": 200016,
+      "report_win_rate": 0.755
+    },
+    "no-shaping-seed1": {
+      "jumpstart": 0.47,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.815
+    },
+    "no-shaping-seed2": {
+      "jumpstart": 0.41,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.83
+    },
+    "no-curriculum-seed0": {
+      "jumpstart": 0.63,
+      "steps_to_half": 100008,
+      "report_win_rate": 0.845
+    },
+    "no-curriculum-seed1": {
+      "jumpstart": 0.65,
+      "steps_to_half": 50004,
+      "report_win_rate": 0.745
+    },
+    "no-curriculum-seed2": {
+      "jumpstart": 0.78,
+      "steps_to_half": 50004,
+      "report_win_rate": 0.865
+    },
+    "no-self-play-seed0": {
+      "jumpstart": 0.48,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.86
+    },
+    "no-self-play-seed1": {
+      "jumpstart": 0.43,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.845
+    },
+    "no-self-play-seed2": {
+      "jumpstart": 0.39,
+      "steps_to_half": 150012,
+      "report_win_rate": 0.865
+    }
+  },
+  "head_to_head": {
+    "metadata": {
+      "model": "full-seed1",
+      "seed_start": 2000000,
+      "episodes": 200,
+      "deterministic": true,
+      "env_version": "env-v1.1",
+      "obs_dim": 279,
+      "num_actions": 53,
+      "config": null
+    },
+    "overall": {
+      "opponent": "no-self-play-seed2",
+      "episodes": 400,
+      "wins": 256,
+      "losses": 144,
+      "draws": 0,
+      "win_rate": 0.64,
+      "ci_low": 0.591834465196668,
+      "ci_high": 0.685502092389729,
+      "mean_return": 0.2777164404511347,
+      "mean_length": 40.2675
+    },
+    "as_player_0": {
+      "opponent": "no-self-play-seed2",
+      "episodes": 200,
+      "wins": 121,
+      "losses": 79,
+      "draws": 0,
+      "win_rate": 0.605,
+      "ci_low": 0.5358834915928536,
+      "ci_high": 0.6701589898679203,
+      "mean_return": 0.20822205275439237,
+      "mean_length": 42.93
+    },
+    "as_player_1": {
+      "opponent": "no-self-play-seed2",
+      "episodes": 200,
+      "wins": 135,
+      "losses": 65,
+      "draws": 0,
+      "win_rate": 0.675,
+      "ci_low": 0.6073198511602996,
+      "ci_high": 0.7360842846076571,
+      "mean_return": 0.347210828147877,
+      "mean_length": 37.605
+    }
+  },
+  "head_to_head_matrix": [
+    {
+      "metadata": {
+        "model": "full-seed0",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 400,
+        "wins": 337,
+        "losses": 63,
+        "draws": 0,
+        "win_rate": 0.8425,
+        "ci_low": 0.8035652075632727,
+        "ci_high": 0.8749188708177342,
+        "mean_return": 0.6705811138817717,
+        "mean_length": 40.0925
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 200,
+        "wins": 167,
+        "losses": 33,
+        "draws": 0,
+        "win_rate": 0.835,
+        "ci_low": 0.7773421846094045,
+        "ci_high": 0.8800314467178268,
+        "mean_return": 0.6547266135157395,
+        "mean_length": 44.825
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 200,
+        "wins": 170,
+        "losses": 30,
+        "draws": 0,
+        "win_rate": 0.85,
+        "ci_low": 0.7939442071583334,
+        "ci_high": 0.89286406437758,
+        "mean_return": 0.6864356142478037,
+        "mean_length": 35.36
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed0",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 400,
+        "wins": 312,
+        "losses": 88,
+        "draws": 0,
+        "win_rate": 0.78,
+        "ci_low": 0.7368470079068086,
+        "ci_high": 0.8178261072659854,
+        "mean_return": 0.5497211173133236,
+        "mean_length": 39.7325
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 200,
+        "wins": 156,
+        "losses": 44,
+        "draws": 0,
+        "win_rate": 0.78,
+        "ci_low": 0.7176120008170632,
+        "ci_high": 0.8318346164116674,
+        "mean_return": 0.5493402006314055,
+        "mean_length": 39.175
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 200,
+        "wins": 156,
+        "losses": 44,
+        "draws": 0,
+        "win_rate": 0.78,
+        "ci_low": 0.7176120008170632,
+        "ci_high": 0.8318346164116674,
+        "mean_return": 0.5501020339952416,
+        "mean_length": 40.29
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed0",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 400,
+        "wins": 283,
+        "losses": 117,
+        "draws": 0,
+        "win_rate": 0.7075,
+        "ci_low": 0.6611144240081159,
+        "ci_high": 0.7499379738431511,
+        "mean_return": 0.40716293900988293,
+        "mean_length": 42.2125
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 200,
+        "wins": 136,
+        "losses": 64,
+        "draws": 0,
+        "win_rate": 0.68,
+        "ci_low": 0.6124810156588646,
+        "ci_high": 0.7407346668453195,
+        "mean_return": 0.35175674437225474,
+        "mean_length": 47.765
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 200,
+        "wins": 147,
+        "losses": 53,
+        "draws": 0,
+        "win_rate": 0.735,
+        "ci_low": 0.6698242380737758,
+        "ci_high": 0.7913184585289088,
+        "mean_return": 0.462569133647511,
+        "mean_length": 36.66
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed1",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 400,
+        "wins": 267,
+        "losses": 132,
+        "draws": 1,
+        "win_rate": 0.6675,
+        "ci_low": 0.6199313395835853,
+        "ci_high": 0.7118820418144254,
+        "mean_return": 0.3327371097181552,
+        "mean_length": 42.5125
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 200,
+        "wins": 137,
+        "losses": 62,
+        "draws": 1,
+        "win_rate": 0.685,
+        "ci_low": 0.6176504391426966,
+        "ci_high": 0.745376790097715,
+        "mean_return": 0.3694134066160322,
+        "mean_length": 44.425
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 200,
+        "wins": 130,
+        "losses": 70,
+        "draws": 0,
+        "win_rate": 0.65,
+        "ci_low": 0.5816346433604008,
+        "ci_high": 0.7127117587264192,
+        "mean_return": 0.29606081282027824,
+        "mean_length": 40.6
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed1",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 400,
+        "wins": 316,
+        "losses": 84,
+        "draws": 0,
+        "win_rate": 0.79,
+        "ci_low": 0.7474205944599498,
+        "ci_high": 0.8270622748261584,
+        "mean_return": 0.5705667389961566,
+        "mean_length": 39.4725
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 200,
+        "wins": 159,
+        "losses": 41,
+        "draws": 0,
+        "win_rate": 0.795,
+        "ci_low": 0.7337430194757748,
+        "ci_high": 0.8451382379616379,
+        "mean_return": 0.5809256542825768,
+        "mean_length": 39.41
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 200,
+        "wins": 157,
+        "losses": 43,
+        "draws": 0,
+        "win_rate": 0.785,
+        "ci_low": 0.7229769265100339,
+        "ci_high": 0.8362812374549242,
+        "mean_return": 0.5602078237097365,
+        "mean_length": 39.535
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed1",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 400,
+        "wins": 256,
+        "losses": 144,
+        "draws": 0,
+        "win_rate": 0.64,
+        "ci_low": 0.591834465196668,
+        "ci_high": 0.685502092389729,
+        "mean_return": 0.2777164404511347,
+        "mean_length": 40.2675
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 200,
+        "wins": 121,
+        "losses": 79,
+        "draws": 0,
+        "win_rate": 0.605,
+        "ci_low": 0.5358834915928536,
+        "ci_high": 0.6701589898679203,
+        "mean_return": 0.20822205275439237,
+        "mean_length": 42.93
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 200,
+        "wins": 135,
+        "losses": 65,
+        "draws": 0,
+        "win_rate": 0.675,
+        "ci_low": 0.6073198511602996,
+        "ci_high": 0.7360842846076571,
+        "mean_return": 0.347210828147877,
+        "mean_length": 37.605
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed2",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 400,
+        "wins": 311,
+        "losses": 89,
+        "draws": 0,
+        "win_rate": 0.7775,
+        "ci_low": 0.7342089511162986,
+        "ci_high": 0.8155117255281668,
+        "mean_return": 0.5461235230600292,
+        "mean_length": 36.5
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 200,
+        "wins": 150,
+        "losses": 50,
+        "draws": 0,
+        "win_rate": 0.75,
+        "ci_low": 0.6856590168795417,
+        "ci_high": 0.8049183199318249,
+        "mean_return": 0.4918416013909224,
+        "mean_length": 36.835
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed0",
+        "episodes": 200,
+        "wins": 161,
+        "losses": 39,
+        "draws": 0,
+        "win_rate": 0.805,
+        "ci_low": 0.7445595562538726,
+        "ci_high": 0.8539447946559949,
+        "mean_return": 0.600405444729136,
+        "mean_length": 36.165
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed2",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 400,
+        "wins": 305,
+        "losses": 95,
+        "draws": 0,
+        "win_rate": 0.7625,
+        "ci_low": 0.7184235572819022,
+        "ci_high": 0.8015824881925919,
+        "mean_return": 0.5119420283903733,
+        "mean_length": 39.8075
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 200,
+        "wins": 157,
+        "losses": 43,
+        "draws": 0,
+        "win_rate": 0.785,
+        "ci_low": 0.7229769265100339,
+        "ci_high": 0.8362812374549242,
+        "mean_return": 0.5576260415904098,
+        "mean_length": 39.74
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed1",
+        "episodes": 200,
+        "wins": 148,
+        "losses": 52,
+        "draws": 0,
+        "win_rate": 0.74,
+        "ci_low": 0.6750925439746589,
+        "ci_high": 0.7958616993642531,
+        "mean_return": 0.46625801519033677,
+        "mean_length": 39.875
+      }
+    },
+    {
+      "metadata": {
+        "model": "full-seed2",
+        "seed_start": 2000000,
+        "episodes": 200,
+        "deterministic": true,
+        "env_version": "env-v1.1",
+        "obs_dim": 279,
+        "num_actions": 53,
+        "config": null
+      },
+      "overall": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 400,
+        "wins": 290,
+        "losses": 110,
+        "draws": 0,
+        "win_rate": 0.725,
+        "ci_low": 0.6792581922605757,
+        "ci_high": 0.7664612752889909,
+        "mean_return": 0.44065237943814056,
+        "mean_length": 37.46
+      },
+      "as_player_0": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 200,
+        "wins": 138,
+        "losses": 62,
+        "draws": 0,
+        "win_rate": 0.69,
+        "ci_low": 0.6228282243374195,
+        "ci_high": 0.750010551639219,
+        "mean_return": 0.3711254962024158,
+        "mean_length": 38.825
+      },
+      "as_player_1": {
+        "opponent": "no-self-play-seed2",
+        "episodes": 200,
+        "wins": 152,
+        "losses": 48,
+        "draws": 0,
+        "win_rate": 0.76,
+        "ci_low": 0.6962665902079583,
+        "ci_high": 0.8139338400758631,
+        "mean_return": 0.5101792626738653,
+        "mean_length": 36.095
+      }
+    }
+  ],
+  "results": [
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 153,
+      "losses": 47,
+      "draws": 0,
+      "win_rate": 0.765,
+      "ci_low": 0.7015863111723746,
+      "ci_high": 0.8184256658476741,
+      "mean_return": 0.524669762079063,
+      "mean_length": 41.345,
+      "config": "full-seed0 vs logic",
+      "run": "full-seed0",
+      "arm": "full"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 189,
+      "losses": 11,
+      "draws": 0,
+      "win_rate": 0.945,
+      "ci_low": 0.9042130012276914,
+      "ci_high": 0.9690146582965411,
+      "mean_return": 0.8671157213122254,
+      "mean_length": 35.32,
+      "config": "full-seed0 vs random",
+      "run": "full-seed0",
+      "arm": "full"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 152,
+      "losses": 48,
+      "draws": 0,
+      "win_rate": 0.76,
+      "ci_low": 0.6962665902079583,
+      "ci_high": 0.8139338400758631,
+      "mean_return": 0.5201943022510982,
+      "mean_length": 33.755,
+      "config": "full-seed1 vs logic",
+      "run": "full-seed1",
+      "arm": "full"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 191,
+      "losses": 9,
+      "draws": 0,
+      "win_rate": 0.955,
+      "ci_low": 0.9167032959981803,
+      "ci_high": 0.976147456998507,
+      "mean_return": 0.8899609587756223,
+      "mean_length": 34.32,
+      "config": "full-seed1 vs random",
+      "run": "full-seed1",
+      "arm": "full"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 160,
+      "losses": 40,
+      "draws": 0,
+      "win_rate": 0.8,
+      "ci_low": 0.7391448134346212,
+      "ci_high": 0.8495479907390189,
+      "mean_return": 0.5938168747712298,
+      "mean_length": 38.905,
+      "config": "full-seed2 vs logic",
+      "run": "full-seed2",
+      "arm": "full"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 195,
+      "losses": 5,
+      "draws": 0,
+      "win_rate": 0.975,
+      "ci_low": 0.942821659593358,
+      "ci_high": 0.9892752803482386,
+      "mean_return": 0.9271395950768668,
+      "mean_length": 31.175,
+      "config": "full-seed2 vs random",
+      "run": "full-seed2",
+      "arm": "full"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 151,
+      "losses": 49,
+      "draws": 0,
+      "win_rate": 0.755,
+      "ci_low": 0.6909575644379659,
+      "ci_high": 0.8094313191096282,
+      "mean_return": 0.5010698929355784,
+      "mean_length": 33.475,
+      "config": "no-shaping-seed0 vs logic",
+      "run": "no-shaping-seed0",
+      "arm": "no-shaping"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 189,
+      "losses": 11,
+      "draws": 0,
+      "win_rate": 0.945,
+      "ci_low": 0.9042130012276914,
+      "ci_high": 0.9690146582965411,
+      "mean_return": 0.866853362920937,
+      "mean_length": 33.655,
+      "config": "no-shaping-seed0 vs random",
+      "run": "no-shaping-seed0",
+      "arm": "no-shaping"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 163,
+      "losses": 37,
+      "draws": 0,
+      "win_rate": 0.815,
+      "ci_low": 0.7554293723884824,
+      "ci_high": 0.8626980719938395,
+      "mean_return": 0.6276091977031478,
+      "mean_length": 38.72,
+      "config": "no-shaping-seed1 vs logic",
+      "run": "no-shaping-seed1",
+      "arm": "no-shaping"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 181,
+      "losses": 19,
+      "draws": 0,
+      "win_rate": 0.905,
+      "ci_low": 0.8563983883518006,
+      "ci_high": 0.9383368972826135,
+      "mean_return": 0.7932720955344069,
+      "mean_length": 37.815,
+      "config": "no-shaping-seed1 vs random",
+      "run": "no-shaping-seed1",
+      "arm": "no-shaping"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 166,
+      "losses": 34,
+      "draws": 0,
+      "win_rate": 0.83,
+      "ci_low": 0.7718411637168737,
+      "ci_high": 0.8757209208741302,
+      "mean_return": 0.662729154694363,
+      "mean_length": 34.38,
+      "config": "no-shaping-seed2 vs logic",
+      "run": "no-shaping-seed2",
+      "arm": "no-shaping"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 187,
+      "losses": 13,
+      "draws": 0,
+      "win_rate": 0.935,
+      "ci_low": 0.8919809207009312,
+      "ci_high": 0.961623645350847,
+      "mean_return": 0.8563555799322841,
+      "mean_length": 32.83,
+      "config": "no-shaping-seed2 vs random",
+      "run": "no-shaping-seed2",
+      "arm": "no-shaping"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 169,
+      "losses": 31,
+      "draws": 0,
+      "win_rate": 0.845,
+      "ci_low": 0.7883930940765792,
+      "ci_high": 0.8886036307231068,
+      "mean_return": 0.6794794173224744,
+      "mean_length": 38.795,
+      "config": "no-curriculum-seed0 vs logic",
+      "run": "no-curriculum-seed0",
+      "arm": "no-curriculum"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 172,
+      "losses": 28,
+      "draws": 0,
+      "win_rate": 0.86,
+      "ci_low": 0.8051011913429243,
+      "ci_high": 0.9013301736654437,
+      "mean_return": 0.7078960974103221,
+      "mean_length": 36.185,
+      "config": "no-curriculum-seed0 vs random",
+      "run": "no-curriculum-seed0",
+      "arm": "no-curriculum"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 149,
+      "losses": 51,
+      "draws": 0,
+      "win_rate": 0.745,
+      "ci_low": 0.6803707417954529,
+      "ci_high": 0.8003950482796865,
+      "mean_return": 0.4883197925054905,
+      "mean_length": 45.25,
+      "config": "no-curriculum-seed1 vs logic",
+      "run": "no-curriculum-seed1",
+      "arm": "no-curriculum"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 182,
+      "losses": 18,
+      "draws": 0,
+      "win_rate": 0.91,
+      "ci_low": 0.8622342812328346,
+      "ci_high": 0.9423125511378069,
+      "mean_return": 0.8013857837664715,
+      "mean_length": 40.37,
+      "config": "no-curriculum-seed1 vs random",
+      "run": "no-curriculum-seed1",
+      "arm": "no-curriculum"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 173,
+      "losses": 27,
+      "draws": 0,
+      "win_rate": 0.865,
+      "ci_low": 0.8107086162924745,
+      "ci_high": 0.9055342954521209,
+      "mean_return": 0.7103517780014641,
+      "mean_length": 31.86,
+      "config": "no-curriculum-seed2 vs logic",
+      "run": "no-curriculum-seed2",
+      "arm": "no-curriculum"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 179,
+      "losses": 21,
+      "draws": 0,
+      "win_rate": 0.895,
+      "ci_low": 0.8448196800887696,
+      "ci_high": 0.9302925120731899,
+      "mean_return": 0.773340548590776,
+      "mean_length": 35.8,
+      "config": "no-curriculum-seed2 vs random",
+      "run": "no-curriculum-seed2",
+      "arm": "no-curriculum"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 172,
+      "losses": 28,
+      "draws": 0,
+      "win_rate": 0.86,
+      "ci_low": 0.8051011913429243,
+      "ci_high": 0.9013301736654437,
+      "mean_return": 0.6979716668191801,
+      "mean_length": 35.075,
+      "config": "no-self-play-seed0 vs logic",
+      "run": "no-self-play-seed0",
+      "arm": "no-self-play"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 177,
+      "losses": 23,
+      "draws": 0,
+      "win_rate": 0.885,
+      "ci_low": 0.8333528310151243,
+      "ci_high": 0.9221362676743804,
+      "mean_return": 0.7566901949121524,
+      "mean_length": 35.815,
+      "config": "no-self-play-seed0 vs random",
+      "run": "no-self-play-seed0",
+      "arm": "no-self-play"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 169,
+      "losses": 31,
+      "draws": 0,
+      "win_rate": 0.845,
+      "ci_low": 0.7883930940765792,
+      "ci_high": 0.8886036307231068,
+      "mean_return": 0.6924221325951685,
+      "mean_length": 37.655,
+      "config": "no-self-play-seed1 vs logic",
+      "run": "no-self-play-seed1",
+      "arm": "no-self-play"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 179,
+      "losses": 21,
+      "draws": 0,
+      "win_rate": 0.895,
+      "ci_low": 0.8448196800887696,
+      "ci_high": 0.9302925120731899,
+      "mean_return": 0.7772943978770133,
+      "mean_length": 36.625,
+      "config": "no-self-play-seed1 vs random",
+      "run": "no-self-play-seed1",
+      "arm": "no-self-play"
+    },
+    {
+      "opponent": "logic",
+      "episodes": 200,
+      "wins": 173,
+      "losses": 27,
+      "draws": 0,
+      "win_rate": 0.865,
+      "ci_low": 0.8107086162924745,
+      "ci_high": 0.9055342954521209,
+      "mean_return": 0.7197301239934114,
+      "mean_length": 29.1,
+      "config": "no-self-play-seed2 vs logic",
+      "run": "no-self-play-seed2",
+      "arm": "no-self-play"
+    },
+    {
+      "opponent": "random",
+      "episodes": 200,
+      "wins": 184,
+      "losses": 16,
+      "draws": 0,
+      "win_rate": 0.92,
+      "ci_low": 0.874010511732856,
+      "ci_high": 0.9501594141102401,
+      "mean_return": 0.8253277427251098,
+      "mean_length": 31.475,
+      "config": "no-self-play-seed2 vs random",
+      "run": "no-self-play-seed2",
+      "arm": "no-self-play"
+    },
+    {
+      "opponent": "no-self-play-seed2",
+      "episodes": 400,
+      "wins": 256,
+      "losses": 144,
+      "draws": 0,
+      "win_rate": 0.64,
+      "ci_low": 0.591834465196668,
+      "ci_high": 0.685502092389729,
+      "mean_return": 0.2777164404511347,
+      "mean_length": 40.2675,
+      "config": "full-seed1 vs no-self-play-seed2 (head-to-head)",
+      "run": "full-seed1",
+      "arm": "full"
+    }
+  ]
+}
