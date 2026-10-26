@@ -194,7 +194,8 @@ _Avoid_: snapshot (that is the per-tick client state), old model
 
 **Past-self pool**:
 The small set of past selves the agent plays during the self-play phase; a new past
-self joins only by beating the pool.
+self joins only by beating the pool. In v3 fine-tuning it holds up to 6 past selves plus
+permanent members (Exploiters), and its envs are drawn by PFSP, hardest members first.
 _Avoid_: snapshot pool, league
 
 **Exploiter**:
