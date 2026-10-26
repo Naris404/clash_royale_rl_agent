@@ -614,7 +614,8 @@ Trained on env-v1.1 (279-dim observation, 53 actions) with the code at `5b0a361`
 Every number below is on the 200 Report seeds with the deterministic policy and a 95% Wilson
 interval; models were chosen on the Selection seeds only. Regenerate with `cr-rl-final` and
 `cr-rl-ablations` (finished runs are not trained again; results land in
-`experiment_runs/final_configuration/results.json` and `experiment_runs/ablations/results.json`).
+`experiment_runs/final_configuration/results.json` and `experiment_runs/ablations/results.json`,
+which are committed; the runs and checkpoints stay local).
 
 **Final configuration** (`full`, 3 seeds x 1M steps). The budget rule did not trigger (selection win
 rate 0.81 at 80% of the steps, 0.80 at the end), so the runs stay at 1M steps.
