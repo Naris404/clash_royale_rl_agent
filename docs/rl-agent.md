@@ -15,7 +15,7 @@ mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 |---|---|
 | Documented layout | 279-dim observation (version 2), 53 actions (13 deploy zones) |
 | Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested and signed off ([checklist](playtest-env-v1.md#env-v11-sign-off)); frozen, tagged `env-v1.1` |
-| Trained model for this layout | none yet; the **v2 model** is trained only on env-v1.1, after its sign-off (ADR-0005) |
+| Trained model for this layout | the **v2 model**: run `full-seed0` of the final configuration, checkpoint at 601,524 steps, trained on env-v1.1; passes the Ship gate and is the web RL Opponent (`models/ppo_cr_best.zip`), see [Results](#v2-model) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
 The observation and action layout above is the contract: the observation is pinned by
@@ -278,8 +278,8 @@ it ended, so a step spanning several ticks pays the net change.
   potentials already give a dense signal and those terms are not potential-based.
   Ablations are judged by win rate, not shaped return.
 
-The Coach's blunder and Key moment thresholds were tuned to the old tower-HP reward
-scale and are retuned once a v2 model exists.
+The Coach grades moves and flags Key moments on this outcome scale; its thresholds are
+in [Coach thresholds](#coach-thresholds).
 
 ## Network architecture
 
@@ -518,6 +518,13 @@ is still learning, and the output says to move all final runs to 3M steps
 (`cr-rl-final --timesteps 3000000`, into a fresh `--out`). `budget_rule` in `results.json` holds
 the two win rates, the rise and `extend`.
 
+If the shipped run passes the Ship gate, `ship_run()` copies its selected checkpoint to
+`models/ppo_cr_best.zip` (`run_final_configuration(ship_to=...)`), the model
+the web game and the Coach load; a failing run leaves that file alone. `selected_vs_final()` then
+plays each run's selected checkpoint against its own final model (`ppo_cr_final.zip`) head-to-head
+on the Report seeds; `selected_vs_final` in `results.json` holds one head-to-head per run. It shows
+what the steps after the selected checkpoint did, which a win rate vs `LogicAgent` cannot.
+
 **Ablations** (`cr_rl/experiments/ablations.py`). `ARMS` (`cr_rl/experiments/arms.py`) defines
 the four arms; each differs from `full` in exactly one setting, a test pins this:
 
@@ -530,8 +537,10 @@ the four arms; each differs from `full` in exactly one setting, a test pins this
 
 Each arm's `ConfigurationReport` is in `arms` (per-seed runs, the shipped run and the `Spread` of
 the win rates per opponent). The plan then plays the shipped `full` run against the shipped
-`no-self-play` run with `evaluate_head_to_head()` on the Report seeds, each seed from both sides.
-Judge the head-to-head by wins, losses and the win rate with its interval; the `mean_return` of
+`no-self-play` run with `evaluate_head_to_head()` on the Report seeds, each seed from both sides
+(`head_to_head`), and every `full` run against every `no-self-play` run the same way
+(`head_to_head_matrix`, 3 × 3 pairs; the shipped pair is one of them), so the comparison does not
+rest on one pair of models. Judge the head-to-head by wins, losses and the win rate with its interval; the `mean_return` of
 a head-to-head is only approximately zero-sum and is not used.
 
 **Curriculum metrics** (`curriculum_metrics()`), read from each run's `selection.json`
@@ -600,12 +609,119 @@ weights behind the 70% result.
 
 ### v2 model
 
-Not trained yet. It is trained on env-v1 and evaluated against the rule-based and
-random bots under the protocol above.
+Trained on env-v1.1 (279-dim observation, 53 actions) with the code at `5b0a361`, 12 envs on the
+14-core CPU, October 2026: the final configuration took 3 h 48 min and the ablations 10 h 30 min.
+Every number below is on the 200 Report seeds with the deterministic policy and a 95% Wilson
+interval; models were chosen on the Selection seeds only. Regenerate with `cr-rl-final` and
+`cr-rl-ablations` (finished runs are not trained again; results land in
+`experiment_runs/final_configuration/results.json` and `experiment_runs/ablations/results.json`).
+
+**Final configuration** (`full`, 3 seeds x 1M steps). The budget rule did not trigger (selection win
+rate 0.81 at 80% of the steps, 0.80 at the end), so the runs stay at 1M steps.
+
+| Run | Selected step | Selection wins | vs `LogicAgent` | vs `RandomAgent` | Mean return / length vs logic |
+|---|---|---|---|---|---|
+| **full-seed0** (shipped) | 601,524 | 98/100 | **93.5%** [89.2, 96.2] | 92.5% [88.0, 95.4] | 0.851 / 28.4 |
+| full-seed1 | 600,048 | 91/100 | 89.0% [83.9, 92.6] | 89.5% [84.5, 93.0] | 0.764 / 29.4 |
+| full-seed2 | 601,524 | 87/100 | 80.5% [74.5, 85.4] | 95.5% [91.7, 97.6] | 0.602 / 37.5 |
+
+Spread over the 3 runs: 87.7% ± 6.6% vs `LogicAgent` (80.5–93.5%), 92.5% ± 3.0% vs `RandomAgent`.
+No match was drawn. **The shipped run passes the Ship gate** (lower bound 89.2% > 50%), so
+`models/ppo_cr_best.zip` is its selected checkpoint and the web RL Opponent and the Coach use it.
+
+**Selected checkpoint vs final model.** In all three runs selection picked the checkpoint at the
+start of the self-play phase (about 600k steps): the selection win rate vs `LogicAgent` fell during
+self-play, to 80, 69 and 75 at 1M steps. **The shipped model therefore had no self-play training.**
+Played head-to-head against its own final model (400 matches, each Report seed from both sides), the
+selected checkpoint loses clearly:
+
+| Run | Selected checkpoint's win rate vs its 1M final model |
+|---|---|
+| full-seed0 | 22.5% [18.7, 26.8] |
+| full-seed1 | 16.0% [12.7, 19.9] (2 draws) |
+| full-seed2 | 24.8% [20.8, 29.2] |
+
+The 400k self-play steps made each run much stronger against a learned opponent while lowering its
+win rate vs `LogicAgent`. Checkpoint selection vs `LogicAgent` (ADR-0002) did what it was set up to
+do, picking the model that beats the rule-based bot most often, and the protocol was not changed
+after the fact; see [Known limitations](#known-limitations).
+
+**Ablations** (3 seeds x 500k steps per arm). Win rate vs `LogicAgent` per run:
+
+| Ablation arm | seed 0 | seed 1 | seed 2 | Mean ± sd | vs `RandomAgent`, mean | Selected steps |
+|---|---|---|---|---|---|---|
+| Full | 76.5% | 76.0% | 80.0% | 77.5% ± 2.2% | 95.8% | 450k, 400k, 501k |
+| No-shaping | 75.5% | 81.5% | 83.0% | 80.0% ± 4.0% | 92.8% | 501k, 301k, 301k |
+| No-curriculum | 84.5% | 74.5% | 86.5% | 81.8% ± 6.4% | 88.8% | 301k, 351k, 300k |
+| No-self-play | 86.0% | 84.5% | 86.5% | 85.7% ± 1.0% | 90.0% | 500k, 500k, 501k |
+
+Every run's interval half-width is about ±5–6 points. The self-play phase starts at 300k (60%);
+a selected step at 301k is the round at its start.
+
+Curriculum metrics: the arms with a warm-up reach a 50% selection win rate after 150k steps (one
+no-shaping run 200k) with a jumpstart of 0.39–0.48; no-curriculum gets there after 50–100k with a
+jumpstart of 0.63–0.78. The no-curriculum jumpstart is read after 100k steps vs `LogicAgent`, where the
+other arms have only played `RandomAgent`, so it is not evidence for or against the curriculum.
+
+**Full vs no-self-play head-to-head.** The shipped pair (full-seed1 vs no-self-play-seed2): full wins
+**64.0%** [59.2, 68.6], 256/144/0, 60.5% as player 0 and 67.5% as player 1. Every `full` run against
+every `no-self-play` run (`head_to_head_matrix`), win rate of the `full` run:
+
+| | vs no-self-play-seed0 | vs no-self-play-seed1 | vs no-self-play-seed2 |
+|---|---|---|---|
+| full-seed0 | 84.3% [80.4, 87.5] | 78.0% [73.7, 81.8] | 70.8% [66.1, 75.0] |
+| full-seed1 | 66.8% [62.0, 71.2] (1 draw) | 79.0% [74.7, 82.7] | 64.0% [59.2, 68.6] |
+| full-seed2 | 77.8% [73.4, 81.6] | 76.2% [71.8, 80.2] | 72.5% [67.9, 76.6] |
+
+Mean 74.4%; all 9 lower bounds are above 59%, and `full` wins from both sides in every pair.
+
+How to read the result:
+
+- **Self-play trades win rate vs `LogicAgent` for strength against learned opponents.** At 500k the
+  no-self-play arm beats `LogicAgent` about 8 points more often than full (the per-seed ranges do not
+  overlap), yet every full run beats every no-self-play run head-to-head, and each final run's 1M
+  model beats its own pre-self-play checkpoint about 4 to 1.
+- **No evidence that shaping or the curriculum helps** at 500k with 3 seeds: no-shaping (80.0%) and
+  no-curriculum (81.8%) are within the seed spread of full (77.5%), and no-curriculum reaches 50%
+  sooner. This is a null result, not evidence that they hurt. Selection also landed at the start of
+  self-play in 2 no-shaping runs and 2 no-curriculum runs, so those models had less self-play than
+  the full ones, which the win rate vs `LogicAgent` rewards.
+- **The win rate vs one scripted bot partly measures specialisation against it.** The share of
+  training steps against `LogicAgent` (full and no-shaping 47%, no-self-play 53%, no-curriculum 60%)
+  tracks the arms' win rates. Within the full arm the Selection win rate does not predict
+  head-to-head strength: full-seed1 (82/100, the shipped run of the arm) averages 69.9% against the
+  no-self-play runs, full-seed0 (76/100) 77.7%. Within the no-self-play arm the two orders agree.
+
+#### Coach thresholds
+
+V(s) is on the outcome scale (V ≈ 2 · P(win) − 1 at the start of the match, so a drop of 0.2 is about
+10 points of win chance). The Coach grades a player's move by the value change ΔV it causes and
+flags a Key moment when V moves by at least the threshold between two Hints (every 0.5 s):
+
+| Constant | env-v1 (tower-HP scale) | v2 |
+|---|---|---|
+| `BLUNDER_DELTA_V` | −0.02 | **−0.20** |
+| `INACCURACY_DELTA_V` | −0.005 | **−0.10** |
+| `KEY_MOMENT_DELTA_V` | 0.01 | **0.20** |
+| `BLUNDER_PROB` / `INACCURACY_PROB` | 0.05 / 0.20 | removed |
+
+A move the policy would play itself is still *best*. The policy-probability cutoffs are removed: the v2
+policy puts almost all its mass on one or two of 53 actions, so the median `LogicAgent` move gets
+probability 0.002 and 82% of them would have been blunders by probability alone.
+
+Measured with `cr-rl-coach-validate --games 50 --model models/ppo_cr_best.zip` (`LogicAgent` as the
+human proxy vs `LogicAgent`, seeds 0–49, 969 graded moves; `signal_quantiles` in
+`models/stats/coach_validation.json`): ΔV of a move has p5 −0.275, p20 −0.127, median −0.002,
+p95 +0.269, and the V swing between Hints has median 0.007 and p95 0.158. With the v2 thresholds the
+proxy's moves grade 9.7% blunder, 15.1% inaccuracy, 69.3% good and 5.9% best (the old ones flagged 45%
+of moves as blunders by ΔV alone), and a match has about 12.7 Key moments instead of about 160.
+Mean move quality is 0.653 in won and 0.605 in lost matches (pairwise win/loss accuracy 66.1%,
+point-biserial correlation +0.28): the grades agree with the outcome more often than not, on a proxy,
+not human-labelled, benchmark.
 
 ## Known limitations
 
-Facts about the current code that the v2 work should address:
+Facts about the current code and the v2 results that limit what they show:
 
 - **No pocket for agents.** After an enemy princess tower falls, humans can deploy in a
   4 × 9 pocket on that side (ADR-0006); agents and the rule-based bot cannot, because the
@@ -613,6 +729,16 @@ Facts about the current code that the v2 work should address:
 - **Partial observation.** No unit cooldown or deploy state, and opponent elixir is
   visible. The opponent's hand is unknown until its 4th play (then it follows from the
   last 4 plays).
+- **Selection against one scripted bot.** Checkpoints are selected, and the Ship gate is judged,
+  by win rate vs `LogicAgent`. That rewards specialising against it: the arms' win rates track
+  their share of training steps against `LogicAgent`, the Selection win rate does not predict
+  head-to-head strength within the full arm, and in the final configuration selection kept the
+  checkpoint from the start of the self-play phase in all three runs, so the shipped model loses
+  about 3 in 4 matches against its own 1M final model (see [Results](#v2-model)). A selection that
+  also plays learned opponents (for example the Past-self pool) would not discard the self-play
+  phase.
+- **No human evaluation.** Every reported number is against scripted bots or other models; the
+  Coach's grades are checked on a `LogicAgent` proxy, not on human-labelled moves.
 
 ## Change log
 
@@ -639,3 +765,4 @@ Facts about the current code that the v2 work should address:
 | 2026-10-23 | Head-to-head (#65, ADR-0002): `evaluate_head_to_head()` plays two models on every Report seed from both sides (400 matches) and reports A's wins, losses and draws with a 95% Wilson interval, the per-side split and the Report-seed metadata. Observation and action layout unchanged. |
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
 | 2026-10-23 | Run plans (#66, ADR-0002): `cr-rl-final` (3 seeds x 1M steps, shipped run, Ship gate and budget rule) and `cr-rl-ablations` (full, no-shaping, no-curriculum, no-self-play x 3 seeds x 500k steps, per-arm aggregation, full vs no-self-play head-to-head), each with curriculum metrics per run; `train()` takes `reward_weights`. Observation and action layout unchanged. |
+| 2026-10-26 | v2 results (#44): final configuration and ablations trained and evaluated (see [Results](#v2-model)); the shipped run passes the Ship gate and is the web RL Opponent. `cr-rl-final` copies a passing shipped run to `models/ppo_cr_best.zip` and plays each run's selected checkpoint against its final model; `cr-rl-ablations` adds the 3 × 3 full vs no-self-play head-to-head. Coach thresholds retuned to the outcome scale and the policy-probability cutoffs removed; `cr-rl-coach-validate` reports the quantiles they come from. Observation and action layout unchanged. |

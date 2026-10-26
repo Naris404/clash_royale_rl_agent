@@ -35,12 +35,13 @@ GRADE_SCORE = {
     GRADE_UNKNOWN: 0.5,
 }
 
-# Classification thresholds — tuned to the old tower-HP reward scale; retuned once a v2 model exists.
-BLUNDER_PROB = 0.05
-INACCURACY_PROB = 0.20
-BLUNDER_DELTA_V = -0.02
-INACCURACY_DELTA_V = -0.005
-KEY_MOMENT_DELTA_V = 0.01
+# Thresholds on the v2 outcome scale, where V is about 2 * P(win) - 1: a drop of 0.2 loses about
+# 10 points of win chance. Measured with `cr-rl-coach-validate` (see docs/rl-agent.md, Results).
+BLUNDER_DELTA_V = -0.20
+INACCURACY_DELTA_V = -0.10
+KEY_MOMENT_DELTA_V = 0.20
+
+HINT_EVERY_TICKS = 5  # a hint (and a Key moment check) every 0.5 s at 10 Hz
 
 
 def nearest_zone(board: Board, player: int, card: str, x: float, y: float) -> int:
@@ -245,7 +246,7 @@ class CoachEngine:
         value_after = self._simulate_value_after(board, player, card, x, y)
         delta_v = (value_after - estimate.value) if value_after is not None else None
 
-        grade = self._classify(human_action, estimate, human_prob, delta_v)
+        grade = self._classify(human_action, estimate, delta_v)
         best_card, _, best_zone = decode_action(board, player, estimate.action)
         return MoveGrade(
             grade=grade,
@@ -299,18 +300,15 @@ class CoachEngine:
         self,
         human_action: Optional[int],
         estimate: PolicyEstimate,
-        human_prob: float,
         delta_v: Optional[float],
     ) -> str:
+        # Only the value change grades a non-best move: the policy puts almost all its mass on one or
+        # two of 53 actions, so a low probability does not mean a bad move.
         if human_action is not None and human_action == estimate.action:
             return GRADE_BEST
         if delta_v is not None and delta_v <= BLUNDER_DELTA_V:
             return GRADE_BLUNDER
-        if human_prob <= BLUNDER_PROB:
-            return GRADE_BLUNDER
         if delta_v is not None and delta_v <= INACCURACY_DELTA_V:
-            return GRADE_INACCURACY
-        if human_prob <= INACCURACY_PROB:
             return GRADE_INACCURACY
         return GRADE_GOOD
 

@@ -6,7 +6,7 @@ import pytest
 
 from cr_rl.coach.evaluator import CoachEngine
 from cr_rl.coach.inference import PolicyInspector
-from cr_rl.coach.validate import pairwise_outcome_accuracy, play_graded_match
+from cr_rl.coach.validate import pairwise_outcome_accuracy, play_graded_match, run_validation
 from cr_rl.experiments.coach_accuracy import (
     checkpoint_metadata,
     pairwise_ranking_accuracy,
@@ -35,6 +35,25 @@ def test_graded_replay_exposes_accuracy_counts() -> None:
     assert result["moves"] >= 0
     assert 0 <= result["card_agreements"] <= result["moves"]
     assert 0 <= result["exact_agreements"] <= result["card_agreements"]
+
+
+def test_graded_replay_records_the_raw_grading_signals(untrained_model_path) -> None:
+    coach = CoachEngine(PolicyInspector(untrained_model_path))
+    result = play_graded_match(coach, seed=3)
+    assert result["moves"] > 0
+    assert len(result["human_probs"]) == result["moves"]
+    assert all(0.0 <= prob <= 1.0 for prob in result["human_probs"])
+    assert 0 < len(result["delta_values"]) <= result["moves"]
+    assert result["value_swings"] and all(swing >= 0.0 for swing in result["value_swings"])
+
+
+def test_validation_summary_reports_the_quantiles_the_thresholds_come_from(untrained_model_path) -> None:
+    summary = run_validation(games=1, model_path=str(untrained_model_path), seed=3)
+    quantiles = summary["signal_quantiles"]
+    assert set(quantiles) == {"delta_value", "human_prob", "value_swing"}
+    for values in quantiles.values():
+        assert list(values) == ["p1", "p5", "p10", "p20", "p50", "p80", "p90", "p95", "p99"]
+        assert list(values.values()) == sorted(values.values())
 
 
 def test_load_experiment_results_normalizes_schemas(tmp_path) -> None:

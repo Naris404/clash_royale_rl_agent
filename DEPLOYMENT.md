@@ -7,7 +7,8 @@ origin as the REST API.
 ## Build and test locally
 
 Place the trained policy at `models/ppo_cr_best.zip` before building if it
-should be bundled into the image:
+should be bundled into the image. `cr-rl-final` puts the shipped run there when it
+passes the Ship gate (see `docs/rl-agent.md`):
 
 ```bash
 docker build -t clash-royale-rl-coach .
