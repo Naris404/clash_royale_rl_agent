@@ -16,21 +16,28 @@ class TrainingPhase:
     name: str
     mix: tuple[str, ...]
     end: float
+    pfsp: bool = False  # pool envs are drawn by PFSP instead of taken from the pool in rotation
 
     @property
     def uses_pool(self) -> bool:
         return PAST_SELF in self.mix
 
+    def past_self_envs(self, n_envs: int) -> int:
+        """How many of the first `n_envs` envs play a pool member."""
+        return sum(self.mix[index % len(self.mix)] == PAST_SELF for index in range(n_envs))
+
 
 WARM_UP_MIX = ("random",) * 12
 SCRIPTED_MIX = ("logic",) * 8 + ("logic-eps",) * 2 + ("random",) * 2
 SELF_PLAY_MIX = (PAST_SELF,) * 4 + ("logic",) * 6 + ("logic-eps",) + ("random",)
+FINE_TUNE_MIX = (PAST_SELF,) * 10 + ("logic",) * 2
 
 # One setting selects a layout: FULL is the main configuration, the other two are the
-# no-curriculum and no-self-play Ablation arms.
+# no-curriculum and no-self-play Ablation arms. FINE_TUNE continues a Final model against the pool.
 FULL = "full"
 NO_CURRICULUM = "no-curriculum"
 NO_SELF_PLAY = "no-self-play"
+FINE_TUNE = "fine-tune"
 
 PHASE_LAYOUTS: dict[str, tuple[TrainingPhase, ...]] = {
     FULL: (
@@ -46,6 +53,7 @@ PHASE_LAYOUTS: dict[str, tuple[TrainingPhase, ...]] = {
         TrainingPhase("warm-up", WARM_UP_MIX, 0.2),
         TrainingPhase("scripted-mix", SCRIPTED_MIX, 1.0),
     ),
+    FINE_TUNE: (TrainingPhase("fine-tune-mix", FINE_TUNE_MIX, 1.0, pfsp=True),),
 }
 
 
