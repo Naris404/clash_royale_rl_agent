@@ -15,13 +15,15 @@ from cr_rl.server.model_catalogue import CATALOGUE, DEFAULT_MODEL_ID, ModelCatal
 
 SELF_PLAY_ID = "v2-self-play"
 SELF_PLAY_FILE = "ppo_cr_self_play.zip"
+V2_SHIPPED_ID = "v2-shipped"
+V2_SHIPPED_FILE = "ppo_cr_v2_shipped.zip"
 SHIPPED_FILE = "ppo_cr_best.zip"
 
 
 @pytest.fixture()
 def models_dir(tmp_path, untrained_model_path):
     """A models/ folder holding both catalogue files."""
-    for filename in (SHIPPED_FILE, SELF_PLAY_FILE):
+    for filename in (SHIPPED_FILE, V2_SHIPPED_FILE, SELF_PLAY_FILE):
         shutil.copy(untrained_model_path, tmp_path / filename)
     return tmp_path
 
@@ -59,7 +61,7 @@ class TestCatalogueEndpoint:
         with TestClient(create_app(inspector, models_dir=models_dir)) as client:
             availability = {m["id"]: m["available"] for m in client.get("/api/models").json()["models"]}
 
-        assert availability == {DEFAULT_MODEL_ID: True, SELF_PLAY_ID: False}
+        assert availability == {DEFAULT_MODEL_ID: True, V2_SHIPPED_ID: True, SELF_PLAY_ID: False}
 
     def test_health_reports_no_file_path(self, client):
         body = client.get("/api/health").json()
@@ -126,7 +128,16 @@ class TestSessionModel:
                 _create(client, model=SELF_PLAY_ID)
                 _create(client)
 
-        assert loads == [models_dir / SELF_PLAY_FILE]  # the Shipped model comes from the inspector
+        assert loads == [models_dir / V2_SHIPPED_FILE, models_dir / SELF_PLAY_FILE]  # the Shipped model comes from the inspector
+
+
+def test_the_v2_shipped_model_is_its_own_entry_that_does_not_follow_the_shipped_model_path(models_dir):
+    """Once a v3 model is shipped, the previous Shipped model stays selectable from its own file."""
+    catalogue = ModelCatalogue(shipped_model="v3", models_dir=models_dir)
+
+    assert catalogue.resolve(None) == (DEFAULT_MODEL_ID, "v3")
+    model_id, model = catalogue.resolve(V2_SHIPPED_ID)
+    assert model_id == V2_SHIPPED_ID and model not in (None, "v3")
 
 
 def test_resolve_rejects_unknown_ids(tmp_path):

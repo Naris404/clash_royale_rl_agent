@@ -24,17 +24,26 @@ class CatalogueEntry:
     filename: Optional[str]  # under models/; None for the Shipped model, which follows MODEL_PATH
 
 
-DEFAULT_MODEL_ID = "v2-shipped"
+DEFAULT_MODEL_ID = "shipped"
 
 CATALOGUE = (
     CatalogueEntry(
         id=DEFAULT_MODEL_ID,
         label={"en": "Shipped model", "pl": "Model wdrożony"},
         description={
-            "en": "Wins 93.5% of matches against the rule-based bot.",
-            "pl": "Wygrywa 93,5% meczów z botem regułowym.",
+            "en": "The strongest model: the default opponent, and the model the Coach uses.",
+            "pl": "Najsilniejszy model: domyślny przeciwnik i model, z którego korzysta Trener.",
         },
         filename=None,
+    ),
+    CatalogueEntry(
+        id="v2-shipped",
+        label={"en": "v2 model", "pl": "Model v2"},
+        description={
+            "en": "The first shipped model: wins 93.5% of matches against the rule-based bot.",
+            "pl": "Pierwszy model wdrożony: wygrywa 93,5% meczów z botem regułowym.",
+        },
+        filename="ppo_cr_v2_shipped.zip",
     ),
     CatalogueEntry(
         id="v2-self-play",
