@@ -433,6 +433,7 @@ later in a run continue the env indices of the earlier ones, so no seed is repla
   evaluated vs the rule-based bot.
 
 - `cr-rl-final` and `cr-rl-ablations`: the thesis run plans, see [Run plans](#run-plans).
+- `cr-rl-v3`: the v3 plan (ADR-0007), see [v3 plan](#v3-plan).
 - `cr-rl-results`: a read-only summary of the run plans' results, see [Run plans](#run-plans).
 - `cr-rl-arrows --model M --frozen F`: the Arrows experiment (ADR-0007). Records every Report-seed decision of `M` whose
   top choice is Arrows on a tower (zone, time, both elixirs, probabilities, V(s), outcome), then replays the seeds
@@ -587,6 +588,32 @@ mix. Each run's `selection.json` and `manifest.json` are committed for the two t
 run without them (a local plan) the phase, curve and self-play check are unavailable, and the
 command says so under Warnings.
 
+### v3 plan
+
+`cr-rl-v3` (`cr_rl/experiments/v3.py`) runs the whole v3 plan, see ADR-0007. For each training seed it
+starts from `experiment_runs/final_configuration/full-seed<N>/ppo_cr_final.zip` and runs two generations:
+an Exploiter against the current main agent (`exploiter<G>-seed<N>`, stops at a 70% rolling win rate or
+300k steps), then a 500k-step fine-tune (`gen<G>-seed<N>`) with every Exploiter of that seed so far as a
+permanent Past-self pool member. Fine-tunes save a checkpoint every 100k steps.
+
+Then, per seed, the generation-2 checkpoints (the model the generation started from is left out) are scored
+on the Selection seeds against the reference pool: LogicAgent, the v2 Shipped model and the 3 v2 Final
+models (`reference_selection.json` in the run). The best average is the run's Selected model, which plays
+the Report seeds vs LogicAgent and RandomAgent and head-to-head vs the v2 Shipped model. The run with the
+best reference score is checked against the target: win rate vs LogicAgent of at least 90% and a
+head-to-head win rate above 50%. Only then is its Selected model copied to `models/ppo_cr_best.zip`. The
+Arrows experiment runs on that model against the v2 Shipped model (`arrows.json`). Everything lands in
+`experiment_runs/v3/results.json`, which `cr-rl-results` reads (the `target` and the Exploiters' stop
+records are shown there).
+
+A rerun skips every Exploiter and fine-tune that already finished (only the evaluation is repeated).
+Options: `--timesteps` (per generation), `--exploiter-steps`, `--seeds`, `--n-envs`, `--workers` (processes
+scoring checkpoints), `--selection-episodes`, `--report-episodes`, `--v2-dir`, `--models-dir`, `--out`.
+
+`cr-rl-v3 --smoke --out DIR` runs every step with tiny step and match counts (about 10 minutes, one seed)
+on a copy of the Shipped model in `DIR/models`, so it never changes the real Shipped model or the Model
+catalogue files; use it to check the pipeline before the long run.
+
 ## Model catalogue
 
 The home screen lets the player choose which model plays the RL Opponent in a match vs RL. The
@@ -595,7 +622,8 @@ by id, never a file. The Coach always uses the Shipped model, whatever is picked
 
 | id | File | Model |
 |---|---|---|
-| `v2-shipped` (default) | `models/ppo_cr_best.zip` (follows `MODEL_PATH`) | the Shipped model: full-seed0 at 601,524 steps, no self-play training |
+| `shipped` (default) | `models/ppo_cr_best.zip` (follows `MODEL_PATH`) | the Shipped model: v2 until a v3 model is shipped, then v3 |
+| `v2-shipped` | `models/ppo_cr_v2_shipped.zip` | the v2 Shipped model: full-seed0 at 601,524 steps, no self-play training |
 | `v2-self-play` | `models/ppo_cr_self_play.zip` | full-seed0's final model at 1M steps, with 400k steps of self-play |
 
 `GET /api/models` lists each entry's id, PL/EN label and description, and whether it is available;
@@ -606,7 +634,9 @@ without a `model`, whose Shipped model is unavailable, plays the rule-based `Log
 
 **Adding a model:** put its file in `models/`, add a `CatalogueEntry` to `CATALOGUE` (stable id, PL/EN
 label and description, file name) and bundle the file in the Docker image (see `DEPLOYMENT.md`).
-`cr-rl-final` still writes only the Shipped model.
+`cr-rl-final` still writes only the Shipped model. `cr-rl-v3` first copies the current Shipped model to
+`models/ppo_cr_v2_shipped.zip` (if that file is missing), so a shipped v3 model never replaces the only
+copy of v2; to add it by hand: `cp models/ppo_cr_best.zip models/ppo_cr_v2_shipped.zip`.
 
 The self-play model is a copy of the final model of run `full-seed0` of the final configuration
 (1M steps, SHA-256 `38b6b575cf90b40deb7c5b7c3de31e0207b3a5137b71bc43882ad56a37d733a4`):
@@ -840,4 +870,5 @@ Facts about the current code and the v2 results that limit what they show:
 | 2026-10-23 | Run plans (#66, ADR-0002): `cr-rl-final` (3 seeds x 1M steps, shipped run, Ship gate and budget rule) and `cr-rl-ablations` (full, no-shaping, no-curriculum, no-self-play x 3 seeds x 500k steps, per-arm aggregation, full vs no-self-play head-to-head), each with curriculum metrics per run; `train()` takes `reward_weights`. Observation and action layout unchanged. |
 | 2026-10-26 | v2 results (#44): final configuration and ablations trained and evaluated (see [Results](#v2-model)); the shipped run passes the Ship gate and is the web RL Opponent. `cr-rl-final` copies a passing shipped run to `models/ppo_cr_best.zip` and plays each run's selected checkpoint against its final model; `cr-rl-ablations` adds the 3 × 3 full vs no-self-play head-to-head. Coach thresholds retuned to the outcome scale and the policy-probability cutoffs removed; `cr-rl-coach-validate` reports the quantiles they come from. Observation and action layout unchanged. |
 | 2026-10-26 | Run-plan summary (#70): `cr-rl-results` prints the plans' results from `results.json`, `manifest.json` and `selection.json` without loading a model: per-run selected step and Training phase, Report win rates, per-arm mean ± sd and curriculum metrics, head-to-head grid with row and column means, selection curves, and a warning when a run selected a checkpoint from before self-play; `--json` prints the same summary. Each thesis run's `manifest.json` and `selection.json` are now committed. Observation and action layout unchanged. |
+| 2026-10-26 | v3 plan driver (#79, ADR-0007): `cr-rl-v3` runs two generations of Exploiter + self-play fine-tuning per seed from the v2 Final models, selects generation-2 checkpoints by the reference pool, evaluates on the Report seeds, ships only if the target is met and runs the Arrows experiment. The Model catalogue gains `v2-shipped` (`models/ppo_cr_v2_shipped.zip`); its default entry is now `shipped`. `cr-rl-results` shows the target verdict and Exploiter records. Observation and action layout unchanged. |
 | 2026-10-26 | Model picker (#69): the Model catalogue (`v2-shipped`, `v2-self-play`) lets the player choose the RL Opponent's model; `GET /api/models` lists the catalogue without file paths, `POST /api/sessions` takes a catalogue `model` id, each model is loaded once at startup, and `/api/health` reports `shipped_model_available` instead of a file path. The Coach and `cr-rl-final` keep the Shipped model. `models/ppo_cr_self_play.zip` is the full-seed0 1M final model, evaluated on the Report seeds. Observation and action layout unchanged. |

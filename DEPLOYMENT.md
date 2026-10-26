@@ -12,6 +12,8 @@ into the image (see the Model catalogue in `docs/rl-agent.md`):
 - `models/ppo_cr_best.zip` — the Shipped model, the default RL Opponent and the
   only model the Coach uses. `cr-rl-final` puts it there when the shipped run
   passes the Ship gate.
+- `models/ppo_cr_v2_shipped.zip` — the v2 Shipped model, kept as its own choice
+  once a v3 model is shipped (`cr-rl-v3` writes it).
 - `models/ppo_cr_self_play.zip` — the self-play model, an optional second choice
   for the RL Opponent.
 
