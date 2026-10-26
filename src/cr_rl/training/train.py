@@ -50,6 +50,7 @@ from cr_rl.training.self_play import (
     load_past_self,
 )
 from cr_rl.training.selection import (
+    CHECKPOINTS_DIR,
     SELECTION_INTERVAL,
     SELECTION_SEEDS,
     SelectionCallback,
@@ -57,6 +58,8 @@ from cr_rl.training.selection import (
 )
 
 logger = logging.getLogger(__name__)
+
+FINAL_MODEL_FILENAME = "ppo_cr_final.zip"
 
 DEFAULT_MODEL_DIR = MODELS_DIR
 DEFAULT_BEST_PATH = DEFAULT_MODEL_DIR / "ppo_cr_best.zip"
@@ -150,7 +153,9 @@ def train(
     callbacks = [selection, WinRateCallback()]
 
     model = None
-    resumed = MaskablePPO.load(str(resume)) if resume else None  # stands in for the model until the first env set
+    # Until the first env set exists `resumed` stands in for the model. It is loaded again with the env
+    # (`set_env` would refuse a different number of envs than the model was saved with).
+    resumed = MaskablePPO.load(str(resume)) if resume else None
     env_offset = 0  # env indices are unique across the run, so no episode seed is replayed
     for phase, steps in phase_steps(layout, timesteps):
         pool = None
@@ -160,14 +165,15 @@ def train(
                 raise ValueError(f"Phase {phase.name!r} plays Past selves and needs a model to resume from")
             selection.evaluate(current)  # the model so far joins the checkpoints the pool is seeded from
             pool = PastSelfPool.from_selection(
-                selection.results, model_dir / "checkpoints", run_seed=seed, matches=pool_matches,
+                selection.results, model_dir / CHECKPOINTS_DIR, run_seed=seed, matches=pool_matches,
                 size=pool_size, permanent=permanent_members,
             )
         remaining = steps
         while remaining > 0:
             # The envs are rebuilt after every pool check, so a chunk ends at each check.
             chunk = min(remaining, pool_interval) if pool else remaining
-            opponents = phase_opponents(phase, n_envs, _pool_envs(pool, phase, n_envs, (model or resumed).num_timesteps) if pool else ())
+            past_selves = _pool_envs(pool, phase, n_envs, (model or resumed).num_timesteps) if pool else ()
+            opponents = phase_opponents(phase, n_envs, past_selves)
             train_env = make_vec_training_env(
                 seed, opponents, gamma=gamma, index_offset=env_offset, reward_weights=reward_weights
             )
@@ -205,13 +211,13 @@ def train(
             if pool and remaining > 0:
                 _check_pool(pool, model, model_dir)
 
-    final_path = model_dir / "ppo_cr_final.zip"
+    final_path = model_dir / FINAL_MODEL_FILENAME
     model.save(str(final_path))
     logger.info("Saved final model: %s", final_path)
 
     selection.evaluate()  # the final model takes part in the selection too
     selected = select_checkpoint(selection.results)
-    selected_path = model_dir / "checkpoints" / selected.path
+    selected_path = model_dir / CHECKPOINTS_DIR / selected.path
     shutil.copy2(selected_path, model_dir / "best_model.zip")
     logger.info("Selected checkpoint: %s (win rate %.1f%%)", selected.path, selected.win_rate * 100)
     if model_dir == DEFAULT_MODEL_DIR:

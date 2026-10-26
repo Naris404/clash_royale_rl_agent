@@ -22,7 +22,7 @@ import argparse
 import json
 import logging
 import shutil
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -33,9 +33,8 @@ from cr_rl.coach.inference import DEFAULT_MODEL_PATH
 from cr_rl.experiments.arms import TRAINING_SEEDS, add_plan_arguments, plan_options
 from cr_rl.experiments.arrows import run_arrows_experiment, save_arrows_results
 from cr_rl.experiments.exploiter import EXPLOITER_FILENAME, EXPLOITER_LOG_FILENAME, MAX_STEPS, train_exploiter
-from cr_rl.experiments.final_configuration import FINAL_DIR
+from cr_rl.experiments.final_configuration import FINAL_DIR, ship_checkpoint
 from cr_rl.experiments.fine_tune import fine_tune
-from cr_rl.jsonio import write_json
 from cr_rl.paths import EXPERIMENT_RUNS_DIR, MODELS_DIR
 from cr_rl.training.head_to_head import HeadToHead, evaluate_head_to_head
 from cr_rl.training.reference_selection import (
@@ -43,21 +42,23 @@ from cr_rl.training.reference_selection import (
     REFERENCE_FILENAME,
     Opponent,
     ReferenceScore,
+    evaluate_selected,
     save_scores,
     score_checkpoints,
     select_reference,
 )
 from cr_rl.training.report import (
-    MANIFEST_FILENAME,
     REPORT_FILENAME,
     REPORT_SEEDS,
+    ConfigurationReport,
     RunReport,
-    evaluate_report,
+    Target,
     save_configuration_report,
     summarize_configuration,
 )
 from cr_rl.training.seeds import SELECTION_SEEDS
 from cr_rl.training.selection import SELECTION_FILENAME, load_selection
+from cr_rl.training.train import FINAL_MODEL_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -85,17 +86,6 @@ SMOKE_OPTIONS: dict[str, Any] = dict(
     pool_matches=4,
     workers=2,
 )
-
-
-@dataclass(frozen=True)
-class Target:
-    """The ship decision: the best run's Report-seed results against the v3 target."""
-
-    run: str
-    logic_win_rate: float
-    head_to_head_win_rate: float  # against the v2 Shipped model, both sides together
-    logic_threshold: float
-    met: bool
 
 
 def exploiter_dir(out_dir: Path, generation: int, seed: int) -> Path:
@@ -135,7 +125,7 @@ def train_seed(
             selection_interval=selection_interval,
             **train_kwargs,
         )
-        source = run_dir / "ppo_cr_final.zip"
+        source = run_dir / FINAL_MODEL_FILENAME
     return run_dir
 
 
@@ -150,34 +140,26 @@ def reference_pool(v2_dir: Path, v2_shipped_path: Path) -> dict[str, Opponent]:
     """LogicAgent, the v2 Shipped model and the v2 Final models, by name."""
     pool: dict[str, Opponent] = {LOGIC_OPPONENT: LOGIC_OPPONENT, V2_SHIPPED: v2_shipped_path}
     for seed in TRAINING_SEEDS:
-        pool[f"v2-final-seed{seed}"] = v2_dir / f"full-seed{seed}" / "ppo_cr_final.zip"
+        pool[f"v2-final-seed{seed}"] = v2_dir / f"full-seed{seed}" / FINAL_MODEL_FILENAME
     return pool
 
 
 def select_generation_checkpoint(
     run_dir: Path, opponents: dict[str, Opponent], *, seeds: Sequence[int], workers: int
 ) -> ReferenceScore:
-    """The run's Selected model: the best reference-pool score among the checkpoints the run itself trained.
-
-    The first checkpoint of the run is the model it started from, the previous generation's, so it is left out.
-    """
-    started_at = min(result.step for result in load_selection(run_dir / SELECTION_FILENAME))
-    scores = score_checkpoints(run_dir, opponents, seeds, min_step=started_at + 1, workers=workers)
+    """The run's Selected model: the best reference-pool score among the checkpoints the run itself trained."""
+    # The run's first selection row is the model it started from (the previous generation's), not its own.
+    start_step = min(result.step for result in load_selection(run_dir / SELECTION_FILENAME))
+    scores = score_checkpoints(run_dir, opponents, seeds, min_step=start_step + 1, workers=workers)
     save_scores(scores, run_dir / REFERENCE_FILENAME)
     selected = select_reference(scores)
     logger.info("%s selected: %s (average %.1f%%)", run_dir.name, selected.path, selected.average * 100)
     return selected
 
 
-def evaluate_selected(run_dir: Path, selected: ReferenceScore, *, report_seeds: range) -> RunReport:
+def report_run(run_dir: Path, selected: ReferenceScore, *, report_seeds: range) -> RunReport:
     """The Selected model on the Report seeds against LogicAgent and RandomAgent."""
-    checkpoint = run_dir / "checkpoints" / selected.path
-    evaluation = evaluate_report(
-        MaskablePPO.load(str(checkpoint), device="cpu"),
-        model=str(checkpoint),
-        config=json.loads((run_dir / MANIFEST_FILENAME).read_text(encoding="utf-8")),
-        seeds=report_seeds,
-    )
+    evaluation = evaluate_selected(run_dir, selected, seeds=report_seeds)
     selection = next(result for result in load_selection(run_dir / SELECTION_FILENAME) if result.path == selected.path)
     return RunReport(run_dir.name, selection, evaluation)
 
@@ -188,10 +170,73 @@ def check_target(run: RunReport, head_to_head: HeadToHead) -> Target:
     return Target(run.name, logic, versus_v2, TARGET_LOGIC_WIN_RATE, logic >= TARGET_LOGIC_WIN_RATE and versus_v2 > 0.5)
 
 
-def ship_model(checkpoint: Path, target: Path) -> None:
-    """Copy the Selected checkpoint to `target`, the model the web game and the Coach load."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(checkpoint, target)
+def head_to_head_matrix(
+    runs: Sequence[RunReport], checkpoints: dict[str, Path], v2_shipped_path: Path, *, seeds: range
+) -> list[HeadToHead]:
+    """Each run's Selected model against the v2 Shipped model."""
+    v2_shipped = MaskablePPO.load(str(v2_shipped_path), device="cpu")
+    return [
+        evaluate_head_to_head(
+            MaskablePPO.load(str(checkpoints[run.name]), device="cpu"), v2_shipped,
+            name_a=run.name, name_b=V2_SHIPPED, seeds=seeds,
+        )
+        for run in runs
+    ]
+
+
+def run_arrows(checkpoint: Path, v2_shipped_path: Path, *, name: str, seeds: range, out_dir: Path) -> None:
+    """The Arrows experiment on a Selected model, against the v2 Shipped model."""
+    arrows = run_arrows_experiment(
+        MaskablePPO.load(str(checkpoint), device="cpu"), MaskablePPO.load(str(v2_shipped_path), device="cpu"),
+        seeds=seeds, model_name=f"v3 {name}", frozen_name=V2_SHIPPED,
+    )
+    save_arrows_results(arrows, out_dir / ARROWS_FILENAME)
+
+
+def save_results(
+    out_dir: Path,
+    report: ConfigurationReport,
+    *,
+    head_to_head: HeadToHead,
+    matrix: Sequence[HeadToHead],
+    target: Target,
+    opponents: Sequence[str],
+    timesteps: int,
+    seeds: Sequence[int],
+) -> None:
+    save_configuration_report(
+        report,
+        out_dir / REPORT_FILENAME,
+        experiment="v3",
+        extra={
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "timesteps": timesteps,
+            "generations": GENERATIONS,
+            "training_seeds": list(seeds),
+            "arms": {"v3": asdict(report)},
+            "head_to_head": asdict(head_to_head),
+            "head_to_head_matrix": [asdict(pair) for pair in matrix],
+            "target": asdict(target),
+            "reference_pool": list(opponents),
+            "exploiters": [
+                {"run": path.parent.name, **json.loads(path.read_text(encoding="utf-8"))}
+                for path in sorted(out_dir.glob(f"exploiter*-seed*/{EXPLOITER_LOG_FILENAME}"))
+            ],
+        },
+    )
+
+
+def ship_if_met(target: Target, checkpoint: Path, shipped_path: Path, v2_shipped_path: Path) -> None:
+    """Ship the best Selected model if it meets the target, and say what happened."""
+    print(
+        f"Best run {target.run}: {target.logic_win_rate:.1%} vs LogicAgent (target {TARGET_LOGIC_WIN_RATE:.0%}), "
+        f"{target.head_to_head_win_rate:.1%} vs the v2 Shipped model -> target {'MET' if target.met else 'NOT met'}"
+    )
+    if target.met:
+        ship_checkpoint(checkpoint, shipped_path)
+        print(f"Shipped as the RL Opponent model: {shipped_path} (v2 Shipped model kept at {v2_shipped_path})")
+    else:
+        print(f"Not shipped; the RL Opponent model is unchanged: {shipped_path}")
 
 
 def run_v3(
@@ -219,7 +264,7 @@ def run_v3(
     opponents = reference_pool(v2_dir, v2_shipped_path)
     run_dirs = [
         train_seed(
-            v2_dir / f"full-seed{seed}" / "ppo_cr_final.zip",
+            v2_dir / f"full-seed{seed}" / FINAL_MODEL_FILENAME,
             seed=seed,
             timesteps=timesteps,
             out_dir=out_dir,
@@ -232,60 +277,25 @@ def run_v3(
         for seed in seeds
     ]
 
-    selected = {run_dir: select_generation_checkpoint(run_dir, opponents, seeds=selection_seeds, workers=workers) for run_dir in run_dirs}
-    runs = [evaluate_selected(run_dir, score, report_seeds=report_seeds) for run_dir, score in selected.items()]
-    best_dir = max(selected, key=lambda run_dir: selected[run_dir].average)
-    report = summarize_configuration(runs)
-    best = next(run for run in runs if run.name == best_dir.name)
-    report = replace(report, shipped=best.name, ship_gate_passed=best.evaluation.passes_ship_gate)
+    selected = {
+        run_dir: select_generation_checkpoint(run_dir, opponents, seeds=selection_seeds, workers=workers)
+        for run_dir in run_dirs
+    }
+    checkpoints = {run_dir.name: score.checkpoint(run_dir) for run_dir, score in selected.items()}
+    averages = {run_dir.name: score.average for run_dir, score in selected.items()}
+    runs = [report_run(run_dir, score, report_seeds=report_seeds) for run_dir, score in selected.items()]
+    best = max(runs, key=lambda run: averages[run.name])  # by reference score, never by Report results
+    report = replace(summarize_configuration(runs), shipped=best.name, ship_gate_passed=best.evaluation.passes_ship_gate)
 
-    v2_shipped = MaskablePPO.load(str(v2_shipped_path), device="cpu")
-    checkpoints = {run_dir.name: run_dir / "checkpoints" / score.path for run_dir, score in selected.items()}
-    matrix = [
-        evaluate_head_to_head(
-            MaskablePPO.load(str(checkpoints[run.name]), device="cpu"), v2_shipped,
-            name_a=run.name, name_b=V2_SHIPPED, seeds=report_seeds,
-        )
-        for run in runs
-    ]
+    matrix = head_to_head_matrix(runs, checkpoints, v2_shipped_path, seeds=report_seeds)
     head_to_head = next(pair for pair in matrix if pair.metadata.model == best.name)
     target = check_target(best, head_to_head)
-
-    arrows = run_arrows_experiment(
-        MaskablePPO.load(str(checkpoints[best.name]), device="cpu"), v2_shipped,
-        seeds=report_seeds, model_name=f"v3 {best.name}", frozen_name=V2_SHIPPED,
+    run_arrows(checkpoints[best.name], v2_shipped_path, name=best.name, seeds=report_seeds, out_dir=out_dir)
+    save_results(
+        out_dir, report, head_to_head=head_to_head, matrix=matrix, target=target,
+        opponents=list(opponents), timesteps=timesteps, seeds=seeds,
     )
-    save_arrows_results(arrows, out_dir / ARROWS_FILENAME)
-
-    save_configuration_report(
-        report,
-        out_dir / REPORT_FILENAME,
-        experiment="v3",
-        extra={
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "timesteps": timesteps,
-            "generations": GENERATIONS,
-            "training_seeds": list(seeds),
-            "arms": {"v3": asdict(report)},
-            "head_to_head": asdict(head_to_head),
-            "head_to_head_matrix": [asdict(pair) for pair in matrix],
-            "target": asdict(target),
-            "reference_pool": list(opponents),
-            "exploiters": [
-                {"run": path.parent.name, **json.loads(path.read_text(encoding="utf-8"))}
-                for path in sorted(out_dir.glob(f"exploiter*-seed*/{EXPLOITER_LOG_FILENAME}"))
-            ],
-        },
-    )
-    print(
-        f"Best run {target.run}: {target.logic_win_rate:.1%} vs LogicAgent (target {TARGET_LOGIC_WIN_RATE:.0%}), "
-        f"{target.head_to_head_win_rate:.1%} vs the v2 Shipped model -> target {'MET' if target.met else 'NOT met'}"
-    )
-    if target.met:
-        ship_model(checkpoints[best.name], shipped_path)
-        print(f"Shipped as the RL Opponent model: {shipped_path} (v2 Shipped model kept at {v2_shipped_path})")
-    else:
-        print(f"Not shipped; the RL Opponent model is unchanged: {shipped_path}")
+    ship_if_met(target, checkpoints[best.name], shipped_path, v2_shipped_path)
     print(f"Saved: {out_dir / REPORT_FILENAME}")
 
 

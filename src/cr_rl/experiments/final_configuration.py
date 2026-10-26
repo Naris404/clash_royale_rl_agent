@@ -34,10 +34,15 @@ FINAL_DIR = EXPERIMENT_RUNS_DIR / "final_configuration"
 FINAL_TIMESTEPS = 1_000_000
 
 
-def ship_run(run_dir: Path, target: Path) -> None:
-    """Copy the run's selected checkpoint to `target`, the model the web game and the Coach load."""
+def ship_checkpoint(checkpoint: Path, target: Path) -> None:
+    """Copy a checkpoint to `target`, the model the web game and the Coach load."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(selected_checkpoint(run_dir)[1], target)
+    shutil.copyfile(checkpoint, target)
+
+
+def ship_run(run_dir: Path, target: Path) -> None:
+    """Copy the run's selected checkpoint to `target`."""
+    ship_checkpoint(selected_checkpoint(run_dir)[1], target)
 
 
 def selected_vs_final(run_dir: Path, *, seeds: range) -> HeadToHead:
