@@ -135,6 +135,11 @@ The rewritten RL agent, trained only on env-v1.1 and evaluated against the rule-
 and random bots.
 _Avoid_: new model
 
+**v3 model**:
+A v2 Final model fine-tuned further by self-play against Past selves and Exploiters.
+It is v2 plus a fine-tuning stage, not a new architecture.
+_Avoid_: v2.1, retrained model
+
 **Shipped model**:
 The v2 checkpoint chosen by the selection protocol (ADR-0002) that passed the Ship
 gate. It is the default RL Opponent and the only model the Coach uses.
@@ -191,6 +196,11 @@ _Avoid_: snapshot (that is the per-tick client state), old model
 The small set of past selves the agent plays during the self-play phase; a new past
 self joins only by beating the pool.
 _Avoid_: snapshot pool, league
+
+**Exploiter**:
+An RL agent trained only to beat one frozen version of the main agent, then used as a
+Training opponent to expose that agent's weaknesses.
+_Avoid_: counter-bot, adversary
 
 **Training phase**:
 One stage of a training run with its own set of Training opponents: warm-up, scripted

@@ -4,7 +4,8 @@ Status: proposed (2026-09-28, revised 2026-10-21 after the research review in
 [`docs/research/rl-architecture-review.md`](../research/rl-architecture-review.md),
 revised again 2026-10-23 after the training review in
 [`docs/research/maskable-ppo-training-review.md`](../research/maskable-ppo-training-review.md));
-no training runs before plan approval.
+no training runs before plan approval. The Training-opponent mix and checkpoint selection
+for v3 are amended by [ADR-0007](0007-v3-self-play-fine-tuning.md).
 
 The v1 agent (MaskablePPO, flat observation, 13 actions, tower-HP-only reward,
 trained only against `LogicAgent`) overfits its opponent and suffers from an
