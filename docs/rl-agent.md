@@ -579,8 +579,9 @@ the Past-self pool. That round comes at the rollout end just past the planned 60
 self-play phase selected such a round, the command warns: "selected before self-play: the shipped
 model has no self-play training" ("the selected model" for a run that was not shipped). The
 warm-up's end is not marked by a round, so a round just past the planned 20% counts as the scripted
-mix. `selection.json` and `manifest.json` stay local (not committed): without them a run's phase,
-curve and self-play check are unavailable, and the command says so under Warnings.
+mix. Each run's `selection.json` and `manifest.json` are committed for the two thesis plans; for a
+run without them (a local plan) the phase, curve and self-play check are unavailable, and the
+command says so under Warnings.
 
 ## Results
 
@@ -641,8 +642,8 @@ Every number below is on the 200 Report seeds with the deterministic policy and 
 interval; models were chosen on the Selection seeds only. Regenerate with `cr-rl-final` and
 `cr-rl-ablations` (finished runs are not trained again; results land in
 `experiment_runs/final_configuration/results.json` and `experiment_runs/ablations/results.json`,
-which are committed; the runs and checkpoints stay local). `cr-rl-results` prints these numbers
-from the files.
+which are committed with each run's `manifest.json` and `selection.json`; the checkpoints and the
+rest of the runs stay local). `cr-rl-results` prints these numbers from the files.
 
 **Final configuration** (`full`, 3 seeds x 1M steps). The budget rule did not trigger (selection win
 rate 0.81 at 80% of the steps, 0.80 at the end), so the runs stay at 1M steps.
@@ -794,4 +795,4 @@ Facts about the current code and the v2 results that limit what they show:
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
 | 2026-10-23 | Run plans (#66, ADR-0002): `cr-rl-final` (3 seeds x 1M steps, shipped run, Ship gate and budget rule) and `cr-rl-ablations` (full, no-shaping, no-curriculum, no-self-play x 3 seeds x 500k steps, per-arm aggregation, full vs no-self-play head-to-head), each with curriculum metrics per run; `train()` takes `reward_weights`. Observation and action layout unchanged. |
 | 2026-10-26 | v2 results (#44): final configuration and ablations trained and evaluated (see [Results](#v2-model)); the shipped run passes the Ship gate and is the web RL Opponent. `cr-rl-final` copies a passing shipped run to `models/ppo_cr_best.zip` and plays each run's selected checkpoint against its final model; `cr-rl-ablations` adds the 3 × 3 full vs no-self-play head-to-head. Coach thresholds retuned to the outcome scale and the policy-probability cutoffs removed; `cr-rl-coach-validate` reports the quantiles they come from. Observation and action layout unchanged. |
-| 2026-10-26 | Run-plan summary (#70): `cr-rl-results` prints the plans' results from `results.json`, `manifest.json` and `selection.json` without loading a model: per-run selected step and Training phase, Report win rates, per-arm mean ± sd and curriculum metrics, head-to-head grid with row and column means, selection curves, and a warning when a run selected a checkpoint from before self-play; `--json` prints the same summary. Observation and action layout unchanged. |
+| 2026-10-26 | Run-plan summary (#70): `cr-rl-results` prints the plans' results from `results.json`, `manifest.json` and `selection.json` without loading a model: per-run selected step and Training phase, Report win rates, per-arm mean ± sd and curriculum metrics, head-to-head grid with row and column means, selection curves, and a warning when a run selected a checkpoint from before self-play; `--json` prints the same summary. Each thesis run's `manifest.json` and `selection.json` are now committed. Observation and action layout unchanged. |
