@@ -52,6 +52,7 @@ def load_final_steps(model_dir) -> int:
     return MaskablePPO.load(str(model_dir / "ppo_cr_final.zip")).num_timesteps
 
 
+@pytest.mark.slow
 class TestSmokeRun:
     @pytest.fixture(scope="class")
     def run(self, tmp_path_factory):
