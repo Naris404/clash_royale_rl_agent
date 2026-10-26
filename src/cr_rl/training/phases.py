@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import cycle
 from pathlib import Path
 from typing import Sequence
 
@@ -22,9 +23,13 @@ class TrainingPhase:
     def uses_pool(self) -> bool:
         return PAST_SELF in self.mix
 
+    def env_mix(self, n_envs: int) -> list[str]:
+        """The mix entry of each of the first `n_envs` envs."""
+        return [self.mix[index % len(self.mix)] for index in range(n_envs)]
+
     def past_self_envs(self, n_envs: int) -> int:
         """How many of the first `n_envs` envs play a pool member."""
-        return sum(self.mix[index % len(self.mix)] == PAST_SELF for index in range(n_envs))
+        return self.env_mix(n_envs).count(PAST_SELF)
 
 
 WARM_UP_MIX = ("random",) * 12
@@ -74,12 +79,5 @@ def phase_opponents(phase: TrainingPhase, n_envs: int, past_selves: Sequence[Pat
     """Opponent of each env index; the k-th Past-self env gets pool member k, in rotation."""
     if phase.uses_pool and not past_selves:
         raise ValueError(f"Phase {phase.name!r} plays Past selves but the Past-self pool is empty")
-    opponents: list[str | Path] = []
-    past_self_envs = 0
-    for index in range(n_envs):
-        opponent = phase.mix[index % len(phase.mix)]
-        if opponent == PAST_SELF:
-            opponent = past_selves[past_self_envs % len(past_selves)]
-            past_self_envs += 1
-        opponents.append(opponent)
-    return opponents
+    members = cycle(past_selves)
+    return [next(members) if opponent == PAST_SELF else opponent for opponent in phase.env_mix(n_envs)]

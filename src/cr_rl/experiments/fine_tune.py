@@ -12,7 +12,7 @@ from cr_rl.game.rewards import RewardWeights
 from cr_rl.jsonio import write_json
 from cr_rl.training.phases import FINE_TUNE
 from cr_rl.training.report import ENV_VERSION, MANIFEST_FILENAME
-from cr_rl.training.train import train
+from cr_rl.training.train import FINAL_MODEL_FILENAME, train
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def fine_tune(
     The pool starts with `source` as its only Past self plus the `permanent_members`
     (Exploiters). A run that already has its final model is kept.
     """
-    if (run_dir / "ppo_cr_final.zip").is_file():
+    if (run_dir / FINAL_MODEL_FILENAME).is_file():
         logger.info("Skipping %s: already trained", run_dir.name)
         return
     run_dir.mkdir(parents=True, exist_ok=True)

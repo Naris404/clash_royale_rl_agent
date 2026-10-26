@@ -105,11 +105,18 @@ class PastSelfPool:
 
     @classmethod
     def from_selection(
-        cls, results: Sequence[CheckpointResult], checkpoint_dir: Path, **kwargs
+        cls,
+        results: Sequence[CheckpointResult],
+        checkpoint_dir: Path,
+        *,
+        run_seed: int,
+        matches: int = ADMISSION_MATCHES,
+        size: int = POOL_SIZE,
+        permanent: Sequence[Path] = (),
     ) -> PastSelfPool:
         """Seed the pool with the last `size` selection checkpoints."""
-        size = kwargs.get("size", POOL_SIZE)
-        return cls([checkpoint_dir / result.path for result in results[-size:]], **kwargs)
+        past_selves = [checkpoint_dir / result.path for result in results[-size:]]
+        return cls(past_selves, run_seed=run_seed, matches=matches, size=size, permanent=permanent)
 
     def consider(
         self,

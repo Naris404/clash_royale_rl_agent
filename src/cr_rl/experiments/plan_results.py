@@ -17,10 +17,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from cr_rl.experiments.v3 import Target
 from cr_rl.paths import EXPERIMENT_RUNS_DIR
 from cr_rl.training.phases import FULL, TrainingPhase, phase_steps
-from cr_rl.training.report import MANIFEST_FILENAME, REPORT_FILENAME, SHIP_GATE_OPPONENT, OpponentReport, Spread
+from cr_rl.training.report import (
+    MANIFEST_FILENAME,
+    REPORT_FILENAME,
+    SHIP_GATE_OPPONENT,
+    OpponentReport,
+    Spread,
+    Target,
+)
 from cr_rl.training.selection import SELECTION_FILENAME, SELECTION_INTERVAL, CheckpointResult, load_selection
 
 SELF_PLAY_WARNING = "selected before self-play: the {model} model has no self-play training"
@@ -143,18 +149,22 @@ def mean_or_none(values: Sequence[float | None]) -> float | None:
     return statistics.fmean(present) if len(present) == len(values) else None
 
 
-def summarize_arm(arm: str, report: dict[str, Any], curriculum: dict[str, Any], plan_dir: Path) -> ArmSummary:
+def summarize_arm(arm: str, report: dict[str, Any], curriculum: dict[str, Any] | None, plan_dir: Path) -> ArmSummary:
     runs = tuple(
         summarize_run(record, plan_dir / record["name"], shipped=record["name"] == report["shipped"])
         for record in report["runs"]
     )
-    metrics = [curriculum.get(run.name, {}) for run in runs]  # a plan without a curriculum has none
+    jumpstart = steps_to_half = None  # the v3 plan records no curriculum metrics
+    if curriculum is not None:
+        metrics = [curriculum[run.name] for run in runs]
+        jumpstart = mean_or_none([run_metrics["jumpstart"] for run_metrics in metrics])
+        steps_to_half = mean_or_none([run_metrics["steps_to_half"] for run_metrics in metrics])
     return ArmSummary(
         arm,
         runs,
         logic_spread=Spread(**report["spread"][SHIP_GATE_OPPONENT]),
-        jumpstart=mean_or_none([run_metrics.get("jumpstart") for run_metrics in metrics]),
-        steps_to_half=mean_or_none([run_metrics.get("steps_to_half") for run_metrics in metrics]),
+        jumpstart=jumpstart,
+        steps_to_half=steps_to_half,
     )
 
 
@@ -184,7 +194,7 @@ def summarize_plan(plan_dir: Path) -> PlanSummary:
     return PlanSummary(
         name=plan_dir.name,
         timesteps=results["timesteps"],
-        arms=tuple(summarize_arm(arm, report, results.get("curriculum", {}), plan_dir) for arm, report in arms.items()),
+        arms=tuple(summarize_arm(arm, report, results.get("curriculum"), plan_dir) for arm, report in arms.items()),
         shipped_pair=matchup(results["head_to_head"]) if "head_to_head" in results else None,
         matrix=head_to_head_grid(matrix) if matrix else None,
         selected_vs_final=tuple(matchup(record) for record in results.get("selected_vs_final", [])),
@@ -262,10 +272,9 @@ def curve_line(run: RunSummary, width: int) -> str:
 
 def target_line(target: Target) -> str:
     verdict = "MET" if target.met else "NOT met"
-    return (
-        f"v3 target ({percent(target.logic_threshold)} vs logic and a head-to-head win over the v2 Shipped model): {verdict}. "
-        f"{target.run}: {percent(target.logic_win_rate)} vs logic, {percent(target.head_to_head_win_rate)} head-to-head"
-    )
+    goal = f"{percent(target.logic_threshold)} vs logic and a head-to-head win over the v2 Shipped model"
+    result = f"{percent(target.logic_win_rate)} vs logic, {percent(target.head_to_head_win_rate)} head-to-head"
+    return f"v3 target ({goal}): {verdict}. {target.run}: {result}"
 
 
 def run_warnings(run: RunSummary) -> list[str]:
@@ -305,7 +314,8 @@ def format_plan(plan: PlanSummary) -> str:
             [item.run, item.stop_reason, "-" if item.win_rate is None else percent(item.win_rate), thousands(item.steps)]
             for item in plan.exploiters
         ]
-        lines += ["Exploiters (rolling win rate against the target when training stopped)", *table(["run", "stopped", "win rate", "steps"], rows), ""]
+        headers = ["run", "stopped", "win rate", "steps"]
+        lines += ["Exploiters (rolling win rate against the target when training stopped)", *table(headers, rows), ""]
 
     width = max(len(run.name) for run in runs)
     lines += ["Selection curve (step:wins, * = selected)", *(curve_line(run, width) for run in runs)]

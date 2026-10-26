@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 SELECTION_INTERVAL = 50_000  # env steps between selection rounds
 SELECTION_FILENAME = "selection.json"
+CHECKPOINTS_DIR = "checkpoints"  # inside a run directory
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,7 @@ class SelectionCallback(BaseCallback):
         if self.results and self.results[-1].step == step:
             return self.results[-1]
         stats = summarize_matches(play_matches(model, "logic", self.seeds))
-        checkpoint = Path("checkpoints") / f"ppo_cr_{step}_steps.zip"
+        checkpoint = Path(CHECKPOINTS_DIR) / f"ppo_cr_{step}_steps.zip"
         (self.model_dir / checkpoint.parent).mkdir(exist_ok=True)
         model.save(str(self.model_dir / checkpoint))
         result = CheckpointResult(step, int(stats["wins"]), int(stats["episodes"]), checkpoint.name)

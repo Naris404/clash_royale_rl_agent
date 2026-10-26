@@ -16,7 +16,7 @@ import statistics
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, NamedTuple, Sequence
 
 from sb3_contrib import MaskablePPO
 
@@ -30,7 +30,7 @@ from cr_rl.training.report import REPORT_SEEDS, OpponentReport, ReportMetadata, 
 ARROWS = "Arrows"
 TOWER_ZONES = ("spell-tower-L", "spell-tower-R", "spell-king")
 LOGIC = "logic"
-OUTCOMES = {0: "win", 1: "loss", None: "draw"}
+OUTCOME_BY_WINNER = {0: "win", 1: "loss", None: "draw"}  # the model is player 0
 DEFAULT_OUT = EXPERIMENT_RUNS_DIR / "arrows" / "results.json"
 
 
@@ -60,6 +60,13 @@ class ArrowsProfile:
     matches_with_tower_play: int
     median_own_elixir: float
     median_enemy_elixir: float
+
+
+class OpponentRun(NamedTuple):
+    """The model against one opponent on the seeds: its Arrows profile and its win rate."""
+
+    profile: ArrowsProfile
+    win_rate: OpponentReport
 
 
 @dataclass(frozen=True)
@@ -132,8 +139,8 @@ def _tower_arrows_actions(board: Board, player: int) -> list[int]:
 
 def _play(
     model: Any, opponent: Any, name: str, seeds: Sequence[int], *, block_tower_arrows: bool
-) -> tuple[ArrowsProfile, OpponentReport]:
-    """The model against one opponent on the seeds: its Arrows profile and its win rate."""
+) -> OpponentRun:
+    """Play the model against one opponent on the seeds."""
     decisions: list[ArrowsDecision] = []
     zones: Counter[str] = Counter()
     results: list[MatchResult] = []
@@ -143,7 +150,7 @@ def _play(
         results.append(result)
         zones.update(play.zone for play in probe.plays)
         decisions += [
-            ArrowsDecision(seed=seed, outcome=OUTCOMES[result.winner], **vars(play))
+            ArrowsDecision(seed=seed, outcome=OUTCOME_BY_WINNER[result.winner], **vars(play))
             for play in probe.plays
             if play.zone in TOWER_ZONES
         ]
@@ -157,7 +164,7 @@ def _play(
         median_own_elixir=statistics.median(d.own_elixir for d in decisions) if decisions else 0.0,
         median_enemy_elixir=statistics.median(d.enemy_elixir for d in decisions) if decisions else 0.0,
     )
-    return profile, report_matches(name, results)
+    return OpponentRun(profile, report_matches(name, results))
 
 
 def run_arrows_experiment(
@@ -169,17 +176,17 @@ def run_arrows_experiment(
     frozen_name: str = "frozen",
 ) -> ArrowsResults:
     """Both parts for `model` on `seeds`; `frozen` plays as player 1 in the second win-rate pair."""
-    profile, logic_allowed = _play(model, LOGIC, LOGIC, seeds, block_tower_arrows=False)
-    blocked_profile, logic_blocked = _play(model, LOGIC, LOGIC, seeds, block_tower_arrows=True)
-    frozen_allowed = _play(model, frozen, frozen_name, seeds, block_tower_arrows=False)[1]
-    frozen_blocked = _play(model, frozen, frozen_name, seeds, block_tower_arrows=True)[1]
+    logic_allowed = _play(model, LOGIC, LOGIC, seeds, block_tower_arrows=False)
+    logic_blocked = _play(model, LOGIC, LOGIC, seeds, block_tower_arrows=True)
+    frozen_allowed = _play(model, frozen, frozen_name, seeds, block_tower_arrows=False)
+    frozen_blocked = _play(model, frozen, frozen_name, seeds, block_tower_arrows=True)
     return ArrowsResults(
         metadata=report_metadata(model_name, seeds, config={"frozen": frozen_name}),
-        profile=profile,
-        blocked_profile=blocked_profile,
+        profile=logic_allowed.profile,
+        blocked_profile=logic_blocked.profile,
         win_rates={
-            LOGIC: WinRates(logic_allowed, logic_blocked),
-            frozen_name: WinRates(frozen_allowed, frozen_blocked),
+            LOGIC: WinRates(logic_allowed.win_rate, logic_blocked.win_rate),
+            frozen_name: WinRates(frozen_allowed.win_rate, frozen_blocked.win_rate),
         },
     )
 

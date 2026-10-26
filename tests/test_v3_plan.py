@@ -17,6 +17,7 @@ from cr_rl.stats.reporting import load_experiment_results
 from cr_rl.training.head_to_head import HeadToHead
 from cr_rl.training.matches import MatchResult
 from cr_rl.training.report import REPORT_FILENAME, ReportEvaluation, report_matches, report_metadata
+from cr_rl.training import reference_selection
 from cr_rl.training.reference_selection import score_checkpoints
 from cr_rl.training.selection import CheckpointResult, save_selection
 
@@ -38,7 +39,10 @@ class FakeModel:
         return cls(path)
 
     def learn(self, *, callback, **_kwargs):
-        callback.reason, callback.win_rate, callback.steps = "win-rate", 0.72, 120_000  # as if stopped by the 70% rule
+        for winner in [0] * 72 + [1] * 28:
+            callback.rule.record(winner)
+        self.num_timesteps = 120_000
+        callback.reason = callback.rule.stop_reason(self.num_timesteps)  # stopped by the 70% rule
 
     def save(self, path):
         Path(path).write_bytes(b"exploiter")
@@ -107,7 +111,8 @@ def fakes(monkeypatch):
     monkeypatch.setattr(exploiter_module, "make_vec_training_env", fake_exploiter_env)
     monkeypatch.setattr(fine_tune_module, "train", fake_train)
     monkeypatch.setattr(v3, "score_checkpoints", fake_score)
-    monkeypatch.setattr(v3, "evaluate_report", fake_report)
+    monkeypatch.setattr(reference_selection, "MaskablePPO", FakeModel)
+    monkeypatch.setattr(reference_selection, "evaluate_report", fake_report)
     monkeypatch.setattr(v3, "evaluate_head_to_head", fake_head_to_head)
     monkeypatch.setattr(v3, "run_arrows_experiment", fake_arrows)
     monkeypatch.setattr(v3, "save_arrows_results", lambda results, path: path.write_text(json.dumps(results), encoding="utf-8"))

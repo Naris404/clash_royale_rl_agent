@@ -19,9 +19,9 @@ from sb3_contrib import MaskablePPO
 
 from cr_rl.jsonio import write_json
 from cr_rl.training.matches import MatchResult, play_matches
-from cr_rl.training.report import MANIFEST_FILENAME, evaluate_report
+from cr_rl.training.report import MANIFEST_FILENAME, REPORT_SEEDS, ReportEvaluation, evaluate_report
 from cr_rl.training.seeds import SELECTION_SEEDS
-from cr_rl.training.selection import SELECTION_FILENAME, load_selection
+from cr_rl.training.selection import CHECKPOINTS_DIR, SELECTION_FILENAME, load_selection
 
 REFERENCE_FILENAME = "reference_selection.json"
 LOGIC_OPPONENT = "logic"
@@ -39,6 +39,9 @@ class ReferenceScore:
     path: str  # file name inside the run's `checkpoints/` directory
     wins: dict[str, int]  # opponent name -> wins
     episodes: int  # matches played against each opponent
+
+    def checkpoint(self, run_dir: Path) -> Path:
+        return run_dir / CHECKPOINTS_DIR / self.path
 
     @property
     def win_rates(self) -> dict[str, float]:
@@ -85,7 +88,7 @@ def score_checkpoints(
         key=lambda result: result.step,
     )
     tasks = [
-        (run_dir / "checkpoints" / checkpoint.path, opponent)
+        (run_dir / CHECKPOINTS_DIR / checkpoint.path, opponent)
         for checkpoint in checkpoints
         for opponent in opponents.values()
     ]
@@ -115,14 +118,18 @@ def load_scores(path: Path) -> list[ReferenceScore]:
     return [ReferenceScore(**record) for record in json.loads(path.read_text(encoding="utf-8"))]
 
 
-def _report_selected(run_dir: Path, selected: ReferenceScore) -> dict:
-    """The selected checkpoint on the Report seeds, with the existing report tooling."""
-    checkpoint = run_dir / "checkpoints" / selected.path
+def evaluate_selected(run_dir: Path, selected: ReferenceScore, *, seeds: range = REPORT_SEEDS) -> ReportEvaluation:
+    """The selected checkpoint on the Report seeds, with the run's manifest as its configuration."""
+    checkpoint = selected.checkpoint(run_dir)
     manifest = run_dir / MANIFEST_FILENAME
     config = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else None
-    evaluation = evaluate_report(
-        MaskablePPO.load(str(checkpoint), device="cpu"), model=str(checkpoint), config=config
+    return evaluate_report(
+        MaskablePPO.load(str(checkpoint), device="cpu"), model=str(checkpoint), config=config, seeds=seeds
     )
+
+
+def _report_selected(run_dir: Path, selected: ReferenceScore) -> dict:
+    evaluation = evaluate_selected(run_dir, selected)
     for opponent in evaluation.opponents:
         print(f"{run_dir.name} Report seeds vs {opponent.opponent}: {opponent.win_rate:.1%} "
               f"(95% CI {opponent.ci_low:.1%} to {opponent.ci_high:.1%})")
