@@ -11,7 +11,7 @@ import asyncio
 import logging
 import threading
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from cr_rl.game.board import (
     ARENA_LENGTH,
@@ -32,6 +32,7 @@ from cr_rl.coach.evaluator import GRADE_SCORE, HINT_EVERY_TICKS, CoachEngine, Ke
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.agents.rl import RLAgent
+from cr_rl.server.model_catalogue import ModelCatalogue
 from cr_rl.server.protocol import (
     ErrorMsg,
     EventMsg,
@@ -96,6 +97,8 @@ class GameSession:
         *,
         lang: str = "en",
         seed: Optional[int] = None,
+        rl_model: Any = None,
+        rl_model_id: Optional[str] = None,
     ):
         if mode not in VALID_MODES:
             raise ValueError(f"Nieznany tryb gry: {mode!r}")
@@ -109,7 +112,13 @@ class GameSession:
         self.coach: Optional[CoachEngine] = (
             CoachEngine(inspector, lang=lang) if mode == MODE_COACH else None
         )
-        self.opponent = self._make_opponent(inspector)
+        # the RL Opponent plays an already loaded model; without one it is the rule-based bot
+        plays_rl = mode == MODE_VS_RL and rl_model is not None
+        self.model_id = rl_model_id if plays_rl else None
+        self.opponent = (
+            # asked only at Decision points, as in training
+            ScheduledAgent(RLAgent(model=rl_model, deterministic=True)) if plays_rl else LogicAgent()
+        )
 
         self.paused = False
         self.speed = 1.0
@@ -122,12 +131,6 @@ class GameSession:
         self.move_log: list[dict] = []
         self._alive_towers = self._tower_ids_alive()
         self._tower_id_map = self._build_tower_id_map()
-
-    def _make_opponent(self, inspector: PolicyInspector):
-        if self.mode == MODE_VS_RL and inspector.available:
-            # The RL opponent is asked only at Decision points, as in training.
-            return ScheduledAgent(RLAgent(model_path=inspector.model_path, deterministic=True))
-        return LogicAgent()
 
     def _build_tower_id_map(self) -> dict[int, str]:
         """Tower object → stable id mapping (e.g. 'p0_king', 'p1_l')."""
@@ -422,14 +425,25 @@ class GameSession:
 
 
 class SessionManager:
-    """Registry of active sessions; shared PolicyInspector (one model in RAM)."""
+    """Registry of active sessions; shared PolicyInspector and Model catalogue (each model once in RAM)."""
 
-    def __init__(self, inspector: Optional[PolicyInspector] = None):
+    def __init__(
+        self, inspector: Optional[PolicyInspector] = None, catalogue: Optional[ModelCatalogue] = None
+    ):
         self.inspector = inspector or PolicyInspector()
+        self.catalogue = catalogue or ModelCatalogue(self.inspector.model)
         self._sessions: dict[str, GameSession] = {}
 
-    def create(self, mode: str, lang: str = "en", seed: Optional[int] = None) -> GameSession:
-        session = GameSession(str(uuid.uuid4()), mode, self.inspector, lang=lang, seed=seed)
+    def create(
+        self, mode: str, lang: str = "en", seed: Optional[int] = None, model_id: Optional[str] = None
+    ) -> GameSession:
+        """New session; raises ModelNotAvailable for a `model_id` that is unknown or unavailable."""
+        playing = self.catalogue.resolve(model_id)
+        rl_model_id, rl_model = playing if playing else (None, None)
+        session = GameSession(
+            str(uuid.uuid4()), mode, self.inspector, lang=lang, seed=seed,
+            rl_model=rl_model, rl_model_id=rl_model_id,
+        )
         self._sessions[session.id] = session
         logger.info("Created session %s (mode=%s)", session.id, mode)
         return session

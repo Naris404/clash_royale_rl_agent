@@ -5,6 +5,7 @@ interface Props {
   snap: Snapshot | null;
   paused: boolean;
   speed: number;
+  opponent: string | null; // e.g. "vs RL · Shipped model", only in a match vs RL
   onPause: (paused: boolean) => void;
   onSpeed: (speed: number) => void;
   onMenu: () => void;
@@ -13,7 +14,7 @@ interface Props {
 
 const SPEEDS = [0.5, 1, 2];
 
-export function Hud({ snap, paused, speed, onPause, onSpeed, onMenu, strings }: Props) {
+export function Hud({ snap, paused, speed, opponent, onPause, onSpeed, onMenu, strings }: Props) {
   const clock = snap?.clock ?? 0;
   const phase = snap?.phase ?? "regulation";
   const crowns = snap?.crowns ?? [0, 0];
@@ -22,6 +23,7 @@ export function Hud({ snap, paused, speed, onPause, onSpeed, onMenu, strings }: 
       <div className={`hud-timer hud-phase-${phase}`} title={strings[`phase_${phase}`]}>
         ⏱ {formatTime(Math.ceil(clock))} · {strings[`phase_${phase}`]}
       </div>
+      {opponent && <div className="hud-opponent">{opponent}</div>}
       <div className="hud-crowns" title={strings.crowns}>
         👑 {crowns[0]} – {crowns[1]}
       </div>

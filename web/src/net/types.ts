@@ -174,6 +174,19 @@ export interface EventMsg {
   detail: Record<string, unknown> & Partial<MatchEndDetail>;
 }
 
+// REST — mirror of the Model catalogue in server/model_catalogue.py and server/app.py
+export interface ModelInfo {
+  id: string;
+  label: Record<"pl" | "en", string>;
+  description: Record<"pl" | "en", string>;
+  available: boolean;
+}
+
+export interface ModelCatalogue {
+  default: string;
+  models: ModelInfo[];
+}
+
 export interface Hello {
   type: "hello";
   session_id: string;

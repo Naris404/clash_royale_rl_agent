@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { GameSocket } from "../net/client";
 import type { GameStore } from "../game/store";
 import type { Lang, Strings } from "../i18n";
-import type { ArenaConfig, PocketState } from "../net/types";
+import type { ArenaConfig, ModelInfo, PocketState } from "../net/types";
 import { ArenaView } from "../scene/ArenaView";
 import { CoachPanel } from "./CoachPanel";
 import { HandView } from "./HandView";
@@ -15,6 +15,7 @@ interface Props {
   socket: GameSocket;
   lang: Lang;
   strings: Strings;
+  opponentModel: ModelInfo | null; // the model playing the RL Opponent
   onExit: () => void;
 }
 
@@ -27,7 +28,7 @@ function isValidPlacement(config: ArenaConfig, pockets: PocketState[], card: str
   return pockets.some((p) => x >= p.x_min && x <= p.x_max && y >= p.y_min && y <= p.y_max);
 }
 
-export function GameScreen({ store, socket, lang, strings, onExit }: Props) {
+export function GameScreen({ store, socket, lang, strings, opponentModel, onExit }: Props) {
   useSyncExternalStore(store.subscribe, store.getVersion);
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export function GameScreen({ store, socket, lang, strings, onExit }: Props) {
         snap={snap}
         paused={store.paused}
         speed={store.speed}
+        opponent={store.mode === "vs_rl" ? [strings.hud_vs_rl, opponentModel?.label[lang]].filter(Boolean).join(" · ") : null}
         onPause={handlePause}
         onSpeed={handleSpeed}
         onMenu={onExit}

@@ -15,7 +15,7 @@ mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 |---|---|
 | Documented layout | 279-dim observation (version 2), 53 actions (13 deploy zones) |
 | Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested and signed off ([checklist](playtest-env-v1.md#env-v11-sign-off)); frozen, tagged `env-v1.1` |
-| Trained model for this layout | the **v2 model**: run `full-seed0` of the final configuration, checkpoint at 601,524 steps, trained on env-v1.1; passes the Ship gate and is the web RL Opponent (`models/ppo_cr_best.zip`), see [Results](#v2-model) |
+| Trained model for this layout | the **v2 model**: run `full-seed0` of the final configuration, checkpoint at 601,524 steps, trained on env-v1.1; passes the Ship gate and is the **Shipped model**: the default web RL Opponent and the only model the Coach uses (`models/ppo_cr_best.zip`), see [Results](#v2-model). The player can also pick the self-play model, see [Model catalogue](#model-catalogue) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
 The observation and action layout above is the contract: the observation is pinned by
@@ -583,6 +583,34 @@ mix. Each run's `selection.json` and `manifest.json` are committed for the two t
 run without them (a local plan) the phase, curve and self-play check are unavailable, and the
 command says so under Warnings.
 
+## Model catalogue
+
+The home screen lets the player choose which model plays the RL Opponent in a match vs RL. The
+choices are the fixed **Model catalogue** in `cr_rl/server/model_catalogue.py`; a player picks an entry
+by id, never a file. The Coach always uses the Shipped model, whatever is picked.
+
+| id | File | Model |
+|---|---|---|
+| `v2-shipped` (default) | `models/ppo_cr_best.zip` (follows `MODEL_PATH`) | the Shipped model: full-seed0 at 601,524 steps, no self-play training |
+| `v2-self-play` | `models/ppo_cr_self_play.zip` | full-seed0's final model at 1M steps, with 400k steps of self-play |
+
+`GET /api/models` lists each entry's id, PL/EN label and description, and whether it is available;
+it never returns a file path. `POST /api/sessions` takes an optional `model` id and returns the id that
+plays. Every entry is loaded once when the server starts, so an entry is *available* when its file is
+present and has the current layout. An unknown or unavailable id is rejected with 422. Only a request
+without a `model`, whose Shipped model is unavailable, plays the rule-based `LogicAgent`.
+
+**Adding a model:** put its file in `models/`, add a `CatalogueEntry` to `CATALOGUE` (stable id, PL/EN
+label and description, file name) and bundle the file in the Docker image (see `DEPLOYMENT.md`).
+`cr-rl-final` still writes only the Shipped model.
+
+The self-play model is a copy of the final model of run `full-seed0` of the final configuration
+(1M steps, SHA-256 `38b6b575cf90b40deb7c5b7c3de31e0207b3a5137b71bc43882ad56a37d733a4`):
+
+```bash
+cp experiment_runs/final_configuration/full-seed0/ppo_cr_final.zip models/ppo_cr_self_play.zip
+```
+
 ## Results
 
 ### v1 model (historical)
@@ -657,6 +685,18 @@ rate 0.81 at 80% of the steps, 0.80 at the end), so the runs stay at 1M steps.
 Spread over the 3 runs: 87.7% ± 6.6% vs `LogicAgent` (80.5–93.5%), 92.5% ± 3.0% vs `RandomAgent`.
 No match was drawn. **The shipped run passes the Ship gate** (lower bound 89.2% > 50%), so
 `models/ppo_cr_best.zip` is its selected checkpoint and the web RL Opponent and the Coach use it.
+
+**Self-play model** (full-seed0's 1M final model, `models/ppo_cr_self_play.zip`, in the
+[Model catalogue](#model-catalogue)), same 200 Report seeds and deterministic policy, from
+`evaluate_report()`:
+
+| Model | vs `LogicAgent` | vs `RandomAgent` | Mean return / length vs logic | Head-to-head |
+|---|---|---|---|---|
+| Shipped model | 93.5% [89.2, 96.2] | 92.5% [88.0, 95.4] | 0.851 / 28.4 | 22.5% vs self-play |
+| Self-play model | 78.0% [71.8, 83.2] | 94.0% [89.8, 96.5] | 0.552 / 29.7 | 77.5% vs shipped |
+
+It wins less often against the rule-based bot but beats the Shipped model in 77.5% of head-to-head
+matches (the table below).
 
 **Selected checkpoint vs final model.** In all three runs selection picked the checkpoint at the
 start of the self-play phase (about 600k steps): the selection win rate vs `LogicAgent` fell during
@@ -796,3 +836,4 @@ Facts about the current code and the v2 results that limit what they show:
 | 2026-10-23 | Run plans (#66, ADR-0002): `cr-rl-final` (3 seeds x 1M steps, shipped run, Ship gate and budget rule) and `cr-rl-ablations` (full, no-shaping, no-curriculum, no-self-play x 3 seeds x 500k steps, per-arm aggregation, full vs no-self-play head-to-head), each with curriculum metrics per run; `train()` takes `reward_weights`. Observation and action layout unchanged. |
 | 2026-10-26 | v2 results (#44): final configuration and ablations trained and evaluated (see [Results](#v2-model)); the shipped run passes the Ship gate and is the web RL Opponent. `cr-rl-final` copies a passing shipped run to `models/ppo_cr_best.zip` and plays each run's selected checkpoint against its final model; `cr-rl-ablations` adds the 3 × 3 full vs no-self-play head-to-head. Coach thresholds retuned to the outcome scale and the policy-probability cutoffs removed; `cr-rl-coach-validate` reports the quantiles they come from. Observation and action layout unchanged. |
 | 2026-10-26 | Run-plan summary (#70): `cr-rl-results` prints the plans' results from `results.json`, `manifest.json` and `selection.json` without loading a model: per-run selected step and Training phase, Report win rates, per-arm mean ± sd and curriculum metrics, head-to-head grid with row and column means, selection curves, and a warning when a run selected a checkpoint from before self-play; `--json` prints the same summary. Each thesis run's `manifest.json` and `selection.json` are now committed. Observation and action layout unchanged. |
+| 2026-10-26 | Model picker (#69): the Model catalogue (`v2-shipped`, `v2-self-play`) lets the player choose the RL Opponent's model; `GET /api/models` lists the catalogue without file paths, `POST /api/sessions` takes a catalogue `model` id, each model is loaded once at startup, and `/api/health` reports `shipped_model_available` instead of a file path. The Coach and `cr-rl-final` keep the Shipped model. `models/ppo_cr_self_play.zip` is the full-seed0 1M final model, evaluated on the Report seeds. Observation and action layout unchanged. |

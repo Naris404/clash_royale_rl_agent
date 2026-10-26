@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from cr_rl.coach.inference import DEFAULT_MODEL_PATH, PolicyInspector
 from cr_rl.paths import MODELS_DIR, WEB_DIST_DIR
+from cr_rl.server.model_catalogue import DEFAULT_MODEL_ID, ModelCatalogue, ModelNotAvailable
 from cr_rl.server.protocol import (
     ErrorMsg,
     PauseMsg,
@@ -46,23 +47,28 @@ class CreateSessionRequest(BaseModel):
     mode: str = Field(default="coach")
     lang: str = Field(default="en", pattern="^(pl|en)$")
     seed: Optional[int] = None
+    model: Optional[str] = None  # a Model catalogue id; the RL Opponent plays it (default: the Shipped model)
 
 
 class CreateSessionResponse(BaseModel):
     session_id: str
     mode: str
     coach_enabled: bool
+    model: Optional[str]  # the catalogue id that actually plays; None for the rule-based bot
 
 
 def create_app(
     inspector: Optional[PolicyInspector] = None,
     *,
     model_path: str | Path | None = DEPLOY_MODEL_PATH,
+    models_dir: Path = MODELS_DIR,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.inspector = inspector or PolicyInspector(model_path)
-        app.state.sessions = SessionManager(app.state.inspector)
+        app.state.sessions = SessionManager(
+            app.state.inspector, ModelCatalogue(app.state.inspector.model, models_dir)
+        )
         logger.info(
             "Server started; RL model: %s",
             app.state.inspector.model_path or "none (heuristic coach)",
@@ -87,15 +93,13 @@ def create_app(
     def health() -> dict:
         return {
             "status": "ok",
-            "model_loaded": app.state.inspector.available,
-            "model_path": str(app.state.inspector.model_path) if app.state.inspector.model_path else None,
+            "shipped_model_available": app.state.inspector.available,
             "active_sessions": len(app.state.sessions),
         }
 
     @app.get("/api/models")
     def models() -> dict:
-        files = sorted(MODELS_DIR.glob("**/*.zip"))
-        return {"models": [str(f) for f in files]}
+        return {"default": DEFAULT_MODEL_ID, "models": app.state.sessions.catalogue.describe()}
 
     @app.get("/api/training/metrics")
     def training_metrics() -> dict:
@@ -105,11 +109,17 @@ def create_app(
     def create_session(request: CreateSessionRequest) -> CreateSessionResponse:
         if request.mode not in VALID_MODES:
             raise HTTPException(status_code=422, detail=f"Nieznany tryb: {request.mode!r}")
-        session = app.state.sessions.create(request.mode, lang=request.lang, seed=request.seed)
+        try:
+            session = app.state.sessions.create(
+                request.mode, lang=request.lang, seed=request.seed, model_id=request.model
+            )
+        except ModelNotAvailable as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         return CreateSessionResponse(
             session_id=session.id,
             mode=session.mode,
             coach_enabled=session.coach is not None,
+            model=session.model_id,
         )
 
     @app.delete("/api/sessions/{session_id}")
