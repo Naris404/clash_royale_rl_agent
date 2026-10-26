@@ -19,12 +19,13 @@ from pathlib import Path
 import numpy as np
 
 from cr_rl.game.board import Board
-from cr_rl.coach.evaluator import GRADE_SCORE, GRADE_UNKNOWN, CoachEngine
+from cr_rl.coach.evaluator import GRADE_SCORE, GRADE_UNKNOWN, HINT_EVERY_TICKS, CoachEngine
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.paths import MODELS_DIR
 
 STATS_DIR = MODELS_DIR / "stats"
+PERCENTILES = (1, 5, 10, 20, 50, 80, 90, 95, 99)
 
 
 def play_graded_match(coach: CoachEngine, seed: int, max_steps: int = 2500) -> dict:
@@ -34,14 +35,22 @@ def play_graded_match(coach: CoachEngine, seed: int, max_steps: int = 2500) -> d
     opponent = LogicAgent()
 
     grades: list[str] = []
+    human_probs: list[float] = []
+    delta_values: list[float] = []
+    value_swings: list[float] = []  # |V change| between hints, what a Key moment is judged on
+    previous_value = None
     exact_agreements = 0
     card_agreements = 0
-    for _ in range(max_steps):
+    for tick in range(1, max_steps + 1):
         play = human_proxy._decide_play(board, 0)
         if play is not None:
             suggestion = coach.suggest(board, player=0)
             grade = coach.grade_move(board, play[0], play[1], play[2], player=0)
             grades.append(grade.grade)
+            if grade.human_prob is not None:
+                human_probs.append(grade.human_prob)
+            if grade.delta_value is not None:
+                delta_values.append(grade.delta_value)
             played_zone = grade.zone
             if suggestion.card == play[0]:
                 card_agreements += 1
@@ -50,6 +59,11 @@ def play_graded_match(coach: CoachEngine, seed: int, max_steps: int = 2500) -> d
             board.set_pending_play(0, play)
         opponent.choose_action(board, player=1)
         result = board.step(0, 0)
+        if tick % HINT_EVERY_TICKS == 0:
+            value = coach.inspector.value(board, 0)
+            if value is not None and previous_value is not None:
+                value_swings.append(abs(value - previous_value))
+            previous_value = value
         if result.terminated or result.truncated:
             break
 
@@ -61,7 +75,17 @@ def play_graded_match(coach: CoachEngine, seed: int, max_steps: int = 2500) -> d
         "grades": {g: grades.count(g) for g in sorted(set(grades))},
         "card_agreements": card_agreements,
         "exact_agreements": exact_agreements,
+        "human_probs": human_probs,
+        "delta_values": delta_values,
+        "value_swings": value_swings,
     }
+
+
+def signal_quantiles(values: list[float]) -> dict[str, float]:
+    """Percentiles of a grading signal; the Coach thresholds are read off these."""
+    if not values:
+        return {}
+    return {f"p{q}": float(np.percentile(values, q)) for q in PERCENTILES}
 
 
 def pairwise_outcome_accuracy(matches: list[dict]) -> float | None:
@@ -131,6 +155,14 @@ def run_validation(games: int, model_path: str | None, seed: int) -> dict:
             sum(m["exact_agreements"] for m in matches)
             / max(1, sum(m["moves"] for m in matches))
         ),
+        "signal_quantiles": {
+            signal: signal_quantiles([value for m in matches for value in m[key]])
+            for signal, key in (
+                ("delta_value", "delta_values"),
+                ("human_prob", "human_probs"),
+                ("value_swing", "value_swings"),
+            )
+        },
         "method": (
             "LogicAgent proxy moves are graded before execution; mean grades are "
             "compared with final tower outcomes. Agreement is a proxy metric, "
@@ -160,6 +192,8 @@ def main() -> None:
     if summary["outcome_pairwise_accuracy"] is not None:
         print(f"Win/loss pair accuracy:     {summary['outcome_pairwise_accuracy']:.1%}")
     print(f"Card / action agreement:    {summary['card_agreement']:.1%} / {summary['exact_action_agreement']:.1%}")
+    for signal, quantiles in summary["signal_quantiles"].items():
+        print(f"{signal} quantiles: " + " ".join(f"{q}={value:+.3f}" for q, value in quantiles.items()))
 
     STATS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = STATS_DIR / "coach_validation.json"

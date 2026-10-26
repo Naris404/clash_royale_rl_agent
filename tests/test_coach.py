@@ -17,7 +17,7 @@ from cr_rl.coach.evaluator import (
     encode_action,
     nearest_zone,
 )
-from cr_rl.coach.inference import PolicyInspector
+from cr_rl.coach.inference import PolicyEstimate, PolicyInspector
 from scenario import new_board, set_hand
 
 
@@ -28,22 +28,6 @@ def _zone_name(zone_idx: int, player: int = 0) -> str:
 def _zone_xy(zone_idx: int, player: int = 0) -> tuple[float, float]:
     zone = DEPLOY_ZONES[player][zone_idx]
     return zone.x, zone.y
-
-
-@pytest.fixture(scope="module")
-def untrained_model_path(tmp_path_factory):
-    """Fresh (untrained) MaskablePPO — exercises the NN path without training."""
-    from sb3_contrib import MaskablePPO
-    from sb3_contrib.common.wrappers import ActionMasker
-
-    from cr_rl.env.gym_env import ClashRoyaleEnv
-
-    env = ClashRoyaleEnv(seed=0)
-    model = MaskablePPO("MlpPolicy", env, n_steps=64, n_epochs=1, batch_size=64, verbose=0)
-    path = tmp_path_factory.mktemp("models") / "untrained.zip"
-    model.save(str(path))
-    env.close()
-    return path
 
 
 class TestActionMapping:
@@ -208,6 +192,46 @@ class TestNeuralPath:
             pytest.skip("policy suggests noop — force a card")
         grade = coach.grade_move(board, suggestion.card, *_zone_xy(suggestion.zone), player=0)
         assert grade.grade == GRADE_BEST
+
+
+class _FixedValueInspector:
+    """Stands in for the network: a policy that prefers noop, V = 0.5 before a move and `after` after it."""
+
+    available = True
+
+    def __init__(self, after: float):
+        self.after = after
+
+    def estimate(self, board, player=0):
+        probs = np.zeros(NUM_ACTIONS)
+        probs[0] = 1.0
+        return PolicyEstimate(action=0, probs=probs, value=0.5)
+
+    def value(self, board, player=0):
+        return self.after
+
+
+class TestOutcomeScaleGrading:
+    """A non-best move is graded by its value change alone, on the v2 outcome scale."""
+
+    @pytest.mark.parametrize(
+        ("delta_v", "expected"),
+        [(-0.05, GRADE_GOOD), (-0.15, GRADE_INACCURACY), (-0.25, GRADE_BLUNDER)],
+    )
+    def test_value_drop_sets_the_grade(self, delta_v, expected):
+        coach = CoachEngine(_FixedValueInspector(after=0.5 + delta_v))  # type: ignore[arg-type]
+        board = new_board()
+        board.elixir[0] = 10.0
+        set_hand(board, 0, ["Knight", "Giant", "Cannon", "Musketeer"])
+        grade = coach.grade_move(board, "Knight", *_zone_xy(0), player=0)
+        assert grade.human_prob == 0.0  # the policy would never play it
+        assert grade.grade == expected
+
+    def test_key_moments_need_a_swing_of_a_fifth_of_the_outcome_scale(self):
+        tracker = KeyMomentTracker()
+        tracker.update(1.0, 0.0)
+        assert tracker.update(1.5, 0.15) is None
+        assert tracker.update(2.0, 0.40) is not None
 
 
 class TestKeyMoments:

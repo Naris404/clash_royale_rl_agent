@@ -28,7 +28,7 @@ from cr_rl.game.board import (
 )
 from cr_rl.game.cards import DECK, cards_dic
 from cr_rl.game.decisions import ScheduledAgent
-from cr_rl.coach.evaluator import GRADE_SCORE, CoachEngine, KeyMomentTracker
+from cr_rl.coach.evaluator import GRADE_SCORE, HINT_EVERY_TICKS, CoachEngine, KeyMomentTracker
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.agents.rl import RLAgent
@@ -55,7 +55,6 @@ MODE_VS_BOT = "vs_bot"  # vs LogicAgent
 MODE_VS_RL = "vs_rl"  # vs trained PPO model
 VALID_MODES = frozenset({MODE_COACH, MODE_VS_BOT, MODE_VS_RL})
 
-HINT_EVERY_TICKS = 5  # hint every 0.5 s at 10 Hz
 MIN_SPEED = 0.25
 MAX_SPEED = 4.0
 
