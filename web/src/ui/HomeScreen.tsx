@@ -1,10 +1,13 @@
+import { useState } from "react";
 import type { Lang, Strings } from "../i18n";
+import type { ModelCatalogue } from "../net/types";
 
 interface Props {
   lang: Lang;
   strings: Strings;
+  models: ModelCatalogue | null;
   onLang: (lang: Lang) => void;
-  onPlay: (mode: string) => void;
+  onPlay: (mode: string, model?: string) => void;
   onDashboard: () => void;
   busy: boolean;
 }
@@ -15,8 +18,13 @@ const MODES = [
   { id: "vs_bot", icon: "⚔️", titleKey: "mode_vs_bot", descKey: "mode_vs_bot_desc" },
 ] as const;
 
-export function HomeScreen({ lang, strings, onLang, onPlay, onDashboard, busy }: Props) {
+export function HomeScreen({ lang, strings, models, onLang, onPlay, onDashboard, busy }: Props) {
   const experiments = strings.research_items.split("|");
+  // a fresh pick on every visit: the Shipped model, or the first available one when it is missing
+  const [pickedModel, setPickedModel] = useState<string | null>(null);
+  const available = models?.models.filter((m) => m.available) ?? [];
+  const defaultModel = (available.find((m) => m.id === models?.default) ?? available[0])?.id ?? null;
+  const model = pickedModel ?? defaultModel;
 
   return (
     <div className="home">
@@ -81,7 +89,12 @@ export function HomeScreen({ lang, strings, onLang, onPlay, onDashboard, busy }:
         <h2 id="demo-heading">{strings.choose_mode}</h2>
       <div className="mode-grid">
         {MODES.map((mode) => (
-          <button key={mode.id} className="mode-card" onClick={() => onPlay(mode.id)} disabled={busy}>
+          <button
+            key={mode.id}
+            className="mode-card"
+            onClick={() => onPlay(mode.id, mode.id === "vs_rl" ? model ?? undefined : undefined)}
+            disabled={busy}
+          >
             <span className="mode-icon">{mode.icon}</span>
             <span className="mode-title">{strings[mode.titleKey]}</span>
             <span className="mode-desc">{strings[mode.descKey]}</span>
@@ -89,6 +102,29 @@ export function HomeScreen({ lang, strings, onLang, onPlay, onDashboard, busy }:
           </button>
         ))}
       </div>
+      {models && (
+        <fieldset className="model-picker">
+          <legend>{strings.model_picker_title}</legend>
+          <p className="model-picker-hint">{strings.model_picker_hint}</p>
+          {models.models.map((entry) => (
+            <label key={entry.id} className={`model-option ${entry.available ? "" : "model-option-unavailable"}`}>
+              <input
+                type="radio"
+                name="rl-model"
+                value={entry.id}
+                checked={model === entry.id}
+                disabled={!entry.available}
+                onChange={() => setPickedModel(entry.id)}
+              />
+              <span className="model-option-label">
+                {entry.label[lang]}
+                {!entry.available && ` (${strings.model_unavailable})`}
+              </span>
+              <span className="model-option-desc">{entry.description[lang]}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
       </section>
 
       <footer className="home-footer">{strings.footer_thesis}</footer>

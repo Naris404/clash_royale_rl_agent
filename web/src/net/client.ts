@@ -1,16 +1,25 @@
-import type { ClientMessage, ServerMessage } from "./types";
+import type { ClientMessage, ModelCatalogue, ServerMessage } from "./types";
 
 export interface SessionInfo {
   session_id: string;
   mode: string;
   coach_enabled: boolean;
+  model: string | null; // the catalogue id that plays; null for the rule-based bot
 }
 
-export async function createSession(mode: string, lang: string): Promise<SessionInfo> {
+export async function fetchModels(): Promise<ModelCatalogue> {
+  const response = await fetch("/api/models");
+  if (!response.ok) {
+    throw new Error(`Failed to load models: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function createSession(mode: string, lang: string, model?: string): Promise<SessionInfo> {
   const response = await fetch("/api/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode, lang }),
+    body: JSON.stringify({ mode, lang, model }),
   });
   if (!response.ok) {
     throw new Error(`Failed to create session: ${response.status}`);

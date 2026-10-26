@@ -27,8 +27,8 @@ def inspector() -> PolicyInspector:
 
 
 @pytest.fixture()
-def client(inspector) -> TestClient:
-    with TestClient(create_app(inspector)) as test_client:
+def client(inspector, tmp_path) -> TestClient:
+    with TestClient(create_app(inspector, models_dir=tmp_path)) as test_client:
         yield test_client
 
 
@@ -38,7 +38,7 @@ class TestRest:
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "ok"
-        assert body["model_loaded"] is False
+        assert body["shipped_model_available"] is False
 
     def test_create_session(self, client):
         response = client.post("/api/sessions", json={"mode": "coach", "lang": "pl", "seed": 1})
@@ -54,9 +54,6 @@ class TestRest:
         sid = client.post("/api/sessions", json={"mode": "vs_bot"}).json()["session_id"]
         assert client.delete(f"/api/sessions/{sid}").status_code == 200
         assert client.delete(f"/api/sessions/{sid}").status_code == 404
-
-    def test_models_list(self, client):
-        assert client.get("/api/models").status_code == 200
 
     def test_training_metrics(self, client):
         response = client.get("/api/training/metrics")

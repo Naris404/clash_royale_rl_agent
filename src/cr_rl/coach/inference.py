@@ -57,6 +57,11 @@ class PolicyInspector:
         return self._model is not None
 
     @property
+    def model(self):
+        """The loaded MaskablePPO (the Shipped model), or None."""
+        return self._model
+
+    @property
     def model_path(self) -> Path | None:
         return self._model_path
 

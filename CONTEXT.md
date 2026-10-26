@@ -119,8 +119,8 @@ A large evaluation swing surfaced to the player.
 _Avoid_: highlight, turning point
 
 **Opponent**:
-Who the human plays against: the rule-based bot, the RL policy, or the bot with the
-coach enabled.
+Who the human plays against: the rule-based bot, the RL policy (a model from the
+Model catalogue), or the bot with the coach enabled.
 _Avoid_: enemy AI
 
 ## Model lineage
@@ -134,6 +134,16 @@ _Avoid_: old model, legacy model, baseline
 The rewritten RL agent, trained only on env-v1.1 and evaluated against the rule-based
 and random bots.
 _Avoid_: new model
+
+**Shipped model**:
+The v2 checkpoint chosen by the selection protocol (ADR-0002) that passed the Ship
+gate. It is the default RL Opponent and the only model the Coach uses.
+_Avoid_: best model, default model
+
+**Model catalogue**:
+The fixed, curated list of models a player may choose as the RL Opponent before a
+Session; the Shipped model is its default entry. A player picks an entry, never a file.
+_Avoid_: model list, model registry
 
 ## Training
 
@@ -152,6 +162,15 @@ _Avoid_: step, frame, agent tick
 The fixed set of matches used only to choose which checkpoint of a training run
 becomes its model. Never used for reported results.
 _Avoid_: validation set, eval seeds
+
+**Selected model**:
+The checkpoint of a training run that the selection seeds choose as that run's model.
+It may come from any Training phase, including one before self-play.
+_Avoid_: best model, self-play model
+
+**Final model**:
+The last checkpoint of a training run, whatever its selection score.
+_Avoid_: latest model, self-play model
 
 **Report seeds**:
 The fixed set of matches, disjoint from the selection seeds, on which every reported

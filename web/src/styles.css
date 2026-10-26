@@ -264,6 +264,49 @@ button {
   min-height: 3.6em;
 }
 
+.model-picker {
+  margin: 24px auto 0;
+  max-width: 640px;
+  border: 1px solid #263154;
+  border-radius: 14px;
+  padding: 12px 18px 16px;
+  text-align: left;
+}
+
+.model-picker legend {
+  padding: 0 8px;
+  font-weight: 700;
+}
+
+.model-picker-hint {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.model-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.model-option-unavailable {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.model-option-label {
+  font-weight: 600;
+}
+
+.model-option-desc {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .mode-cta {
   color: var(--accent);
   font-weight: 600;
@@ -512,6 +555,11 @@ button {
 
 .hud-phase-overtime {
   color: var(--bad);
+}
+
+.hud-opponent {
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
 .hud-crowns {
