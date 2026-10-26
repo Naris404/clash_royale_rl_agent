@@ -1,0 +1,13 @@
+{
+  "arm": "full",
+  "seed": 0,
+  "timesteps": 1000000,
+  "layout": "full",
+  "reward_weights": {
+    "win": 1.0,
+    "crown": 0.2,
+    "hp": 0.5
+  },
+  "env_version": "env-v1.1",
+  "generated_at": "2026-10-24T07:47:02.355405+00:00"
+}

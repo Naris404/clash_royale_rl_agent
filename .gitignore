@@ -61,7 +61,8 @@ models/stats/*
 !models/stats/coach_validation.json
 checkpoints/
 runs/
-# Runs stay local; the run plans' results.json files are the thesis numbers (docs/rl-agent.md).
+# Runs stay local; the run plans' results.json files are the thesis numbers (docs/rl-agent.md),
+# and each run's manifest.json and selection.json let cr-rl-results label phases from a clean clone.
 experiment_runs/*
 !experiment_runs/final_configuration/
 !experiment_runs/ablations/
@@ -69,6 +70,14 @@ experiment_runs/final_configuration/*
 experiment_runs/ablations/*
 !experiment_runs/final_configuration/results.json
 !experiment_runs/ablations/results.json
+!experiment_runs/final_configuration/*/
+!experiment_runs/ablations/*/
+experiment_runs/final_configuration/*/*
+experiment_runs/ablations/*/*
+!experiment_runs/final_configuration/*/manifest.json
+!experiment_runs/final_configuration/*/selection.json
+!experiment_runs/ablations/*/manifest.json
+!experiment_runs/ablations/*/selection.json
 wandb/
 
 # Web

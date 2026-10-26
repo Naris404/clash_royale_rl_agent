@@ -433,6 +433,7 @@ later in a run continue the env indices of the earlier ones, so no seed is repla
   evaluated vs the rule-based bot.
 
 - `cr-rl-final` and `cr-rl-ablations`: the thesis run plans, see [Run plans](#run-plans).
+- `cr-rl-results`: a read-only summary of the run plans' results, see [Run plans](#run-plans).
 
 No sweep results are committed yet.
 
@@ -556,6 +557,32 @@ a head-to-head is only approximately zero-sum and is not used.
 Rounds happen every 50,000 steps and a round's step is the rollout end after it, so a metric is
 resolved to about one selection interval. The ablations are judged by win rate, not shaped return.
 
+**Reading the results** (`cr_rl/experiments/plan_results.py`). Read the plans' numbers with
+`cr-rl-results`, not with ad-hoc reads of the JSON files. It reads `results.json` and each run's
+`manifest.json` and `selection.json`, and loads no model and plays no match:
+
+```bash
+cr-rl-results                                   # every plan under experiment_runs/ with a results.json
+cr-rl-results experiment_runs/ablations         # one plan
+cr-rl-results experiment_runs/ablations --json  # the same summary as JSON, for agents
+```
+
+For each plan it prints, per run, the selected step and the Training phase that trained it, the
+selection wins, the Report win rate with its 95% Wilson interval and the mean length vs each
+Training opponent, and the shipped flag. Per arm, it prints the mean ± sd of the Report win rate vs
+`LogicAgent` and the mean jumpstart and steps to 50% (`-` when a run never reached 50%). It also
+prints the shipped head-to-head pair, the head-to-head matrix with each row's and column's mean,
+`selected_vs_final`, and each run's selection curve (`step:wins`, `|` where a phase begins, `*` on
+the selected round). The self-play phase starts with the selection round `train()` takes to seed
+the Past-self pool. That round comes at the rollout end just past the planned 60% (601,524 in a
+1M run), so it and any earlier round count as trained without self-play. When a run with a
+self-play phase selected such a round, the command warns: "selected before self-play: the shipped
+model has no self-play training" ("the selected model" for a run that was not shipped). The
+warm-up's end is not marked by a round, so a round just past the planned 20% counts as the scripted
+mix. Each run's `selection.json` and `manifest.json` are committed for the two thesis plans; for a
+run without them (a local plan) the phase, curve and self-play check are unavailable, and the
+command says so under Warnings.
+
 ## Results
 
 ### v1 model (historical)
@@ -615,7 +642,8 @@ Every number below is on the 200 Report seeds with the deterministic policy and 
 interval; models were chosen on the Selection seeds only. Regenerate with `cr-rl-final` and
 `cr-rl-ablations` (finished runs are not trained again; results land in
 `experiment_runs/final_configuration/results.json` and `experiment_runs/ablations/results.json`,
-which are committed; the runs and checkpoints stay local).
+which are committed with each run's `manifest.json` and `selection.json`; the checkpoints and the
+rest of the runs stay local). `cr-rl-results` prints these numbers from the files.
 
 **Final configuration** (`full`, 3 seeds x 1M steps). The budget rule did not trigger (selection win
 rate 0.81 at 80% of the steps, 0.80 at the end), so the runs stay at 1M steps.
@@ -767,3 +795,4 @@ Facts about the current code and the v2 results that limit what they show:
 | 2026-10-23 | Documentation fix (#57): minibatches per epoch 8 → 12 (3072-transition rollout) and 1M steps ≈ 5,000–38,000 matches instead of 555, both checked against the code. ADR-0002 records the training-review decisions; they are not implemented yet. |
 | 2026-10-23 | Run plans (#66, ADR-0002): `cr-rl-final` (3 seeds x 1M steps, shipped run, Ship gate and budget rule) and `cr-rl-ablations` (full, no-shaping, no-curriculum, no-self-play x 3 seeds x 500k steps, per-arm aggregation, full vs no-self-play head-to-head), each with curriculum metrics per run; `train()` takes `reward_weights`. Observation and action layout unchanged. |
 | 2026-10-26 | v2 results (#44): final configuration and ablations trained and evaluated (see [Results](#v2-model)); the shipped run passes the Ship gate and is the web RL Opponent. `cr-rl-final` copies a passing shipped run to `models/ppo_cr_best.zip` and plays each run's selected checkpoint against its final model; `cr-rl-ablations` adds the 3 × 3 full vs no-self-play head-to-head. Coach thresholds retuned to the outcome scale and the policy-probability cutoffs removed; `cr-rl-coach-validate` reports the quantiles they come from. Observation and action layout unchanged. |
+| 2026-10-26 | Run-plan summary (#70): `cr-rl-results` prints the plans' results from `results.json`, `manifest.json` and `selection.json` without loading a model: per-run selected step and Training phase, Report win rates, per-arm mean ± sd and curriculum metrics, head-to-head grid with row and column means, selection curves, and a warning when a run selected a checkpoint from before self-play; `--json` prints the same summary. Each thesis run's `manifest.json` and `selection.json` are now committed. Observation and action layout unchanged. |

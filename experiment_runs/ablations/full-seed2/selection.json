@@ -1,0 +1,74 @@
+[
+  {
+    "step": 50004,
+    "wins": 36,
+    "episodes": 100,
+    "path": "ppo_cr_50004_steps.zip"
+  },
+  {
+    "step": 100008,
+    "wins": 39,
+    "episodes": 100,
+    "path": "ppo_cr_100008_steps.zip"
+  },
+  {
+    "step": 150012,
+    "wins": 61,
+    "episodes": 100,
+    "path": "ppo_cr_150012_steps.zip"
+  },
+  {
+    "step": 200016,
+    "wins": 65,
+    "episodes": 100,
+    "path": "ppo_cr_200016_steps.zip"
+  },
+  {
+    "step": 250020,
+    "wins": 73,
+    "episodes": 100,
+    "path": "ppo_cr_250020_steps.zip"
+  },
+  {
+    "step": 300024,
+    "wins": 75,
+    "episodes": 100,
+    "path": "ppo_cr_300024_steps.zip"
+  },
+  {
+    "step": 300762,
+    "wins": 75,
+    "episodes": 100,
+    "path": "ppo_cr_300762_steps.zip"
+  },
+  {
+    "step": 350766,
+    "wins": 69,
+    "episodes": 100,
+    "path": "ppo_cr_350766_steps.zip"
+  },
+  {
+    "step": 400770,
+    "wins": 71,
+    "episodes": 100,
+    "path": "ppo_cr_400770_steps.zip"
+  },
+  {
+    "step": 450774,
+    "wins": 66,
+    "episodes": 100,
+    "path": "ppo_cr_450774_steps.zip"
+  },
+  {
+    "step": 500778,
+    "wins": 75,
+    "episodes": 100,
+    "path": "ppo_cr_500778_steps.zip"
+  },
+  {
+    "step": 501270,
+    "wins": 82,
+    "episodes": 100,
+    "path": "ppo_cr_501270_steps.zip"
+  }
+]

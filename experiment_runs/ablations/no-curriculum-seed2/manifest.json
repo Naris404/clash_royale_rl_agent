@@ -1,0 +1,13 @@
+{
+  "arm": "no-curriculum",
+  "seed": 2,
+  "timesteps": 500000,
+  "layout": "no-curriculum",
+  "reward_weights": {
+    "win": 1.0,
+    "crown": 0.2,
+    "hp": 0.5
+  },
+  "env_version": "env-v1.1",
+  "generated_at": "2026-10-24T18:11:52.492577+00:00"
+}
