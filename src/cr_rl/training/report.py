@@ -22,6 +22,7 @@ from cr_rl.paths import EXPERIMENT_RUNS_DIR
 from cr_rl.training.matches import MatchResult, play_matches, summarize_matches, wilson_interval
 from cr_rl.training.seeds import REPORT_SEEDS
 from cr_rl.training.selection import (
+    CHECKPOINTS_DIR,
     SELECTION_FILENAME,
     CheckpointResult,
     load_selection,
@@ -111,6 +112,17 @@ class ConfigurationReport:
     spread: dict[str, Spread]  # opponent -> spread of the runs' win rates
 
 
+@dataclass(frozen=True)
+class Target:
+    """The v3 ship decision: the best run's Report-seed results against the v3 target."""
+
+    run: str
+    logic_win_rate: float
+    head_to_head_win_rate: float  # against the v2 Shipped model, both sides together
+    logic_threshold: float
+    met: bool
+
+
 def report_matches(opponent: str, results: Sequence[MatchResult]) -> OpponentReport:
     stats = summarize_matches(results)
     wins = int(stats["wins"])
@@ -180,7 +192,7 @@ def summarize_configuration(runs: Sequence[RunReport]) -> ConfigurationReport:
 def selected_checkpoint(run_dir: Path) -> tuple[CheckpointResult, Path]:
     """The checkpoint a run selected on its Selection seeds, and its file."""
     selected = select_checkpoint(load_selection(run_dir / SELECTION_FILENAME))
-    return selected, run_dir / "checkpoints" / selected.path
+    return selected, run_dir / CHECKPOINTS_DIR / selected.path
 
 
 def evaluate_run(run_dir: Path, *, seeds: range = REPORT_SEEDS) -> RunReport:

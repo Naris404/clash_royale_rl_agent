@@ -31,15 +31,26 @@ from cr_rl.env.gym_env import ClashRoyaleEnv
 from cr_rl.game.rewards import DEFAULT_GAMMA, RewardWeights
 from cr_rl.paths import MODELS_DIR
 from cr_rl.training.matches import play_matches, summarize_matches
-from cr_rl.training.phases import FULL, PAST_SELF, PHASE_LAYOUTS, phase_opponents, phase_steps
+from cr_rl.training.phases import (
+    FINE_TUNE,
+    FULL,
+    PAST_SELF,
+    PHASE_LAYOUTS,
+    TrainingPhase,
+    phase_opponents,
+    phase_steps,
+)
 from cr_rl.training.self_play import (
     ADMISSION_MATCHES,
+    FINE_TUNE_POOL_SIZE,
     POOL_LOG_FILENAME,
+    POOL_SIZE,
     POOL_UPDATE_INTERVAL,
     PastSelfPool,
     load_past_self,
 )
 from cr_rl.training.selection import (
+    CHECKPOINTS_DIR,
     SELECTION_INTERVAL,
     SELECTION_SEEDS,
     SelectionCallback,
@@ -47,6 +58,8 @@ from cr_rl.training.selection import (
 )
 
 logger = logging.getLogger(__name__)
+
+FINAL_MODEL_FILENAME = "ppo_cr_final.zip"
 
 DEFAULT_MODEL_DIR = MODELS_DIR
 DEFAULT_BEST_PATH = DEFAULT_MODEL_DIR / "ppo_cr_best.zip"
@@ -114,13 +127,22 @@ def train(
     layout: str = FULL,
     reward_weights: RewardWeights = RewardWeights(),
     model_dir: Path = DEFAULT_MODEL_DIR,
-    resume: str | None = None,
+    resume: str | Path | None = None,
+    permanent_members: Sequence[Path] = (),
+    pool_size: int | None = None,
     selection_interval: int = SELECTION_INTERVAL,
     selection_seeds: Sequence[int] = SELECTION_SEEDS,
     pool_interval: int = POOL_UPDATE_INTERVAL,
     pool_matches: int = ADMISSION_MATCHES,
 ) -> MaskablePPO:
+    """Train a new model through the layout's phases, or continue `resume` (a model file).
+
+    `permanent_members` (e.g. Exploiters) join the Past-self pool for good; `pool_size` is the
+    number of Past selves it holds (default: `FINE_TUNE_POOL_SIZE` for the fine-tune layout, else `POOL_SIZE`).
+    """
     model_dir.mkdir(parents=True, exist_ok=True)
+    if pool_size is None:
+        pool_size = FINE_TUNE_POOL_SIZE if layout == FINE_TUNE else POOL_SIZE
     # Seed the libraries here, not through MaskablePPO(seed=...), which would also pin each
     # env's first episode to seed + index instead of its derived episode seed.
     set_random_seed(seed)
@@ -131,19 +153,27 @@ def train(
     callbacks = [selection, WinRateCallback()]
 
     model = None
+    # Until the first env set exists `resumed` stands in for the model. It is loaded again with the env
+    # (`set_env` would refuse a different number of envs than the model was saved with).
+    resumed = MaskablePPO.load(str(resume)) if resume else None
     env_offset = 0  # env indices are unique across the run, so no episode seed is replayed
     for phase, steps in phase_steps(layout, timesteps):
         pool = None
         if phase.uses_pool:
-            selection.evaluate()  # the model so far joins the checkpoints the pool is seeded from
+            current = model or resumed
+            if current is None:
+                raise ValueError(f"Phase {phase.name!r} plays Past selves and needs a model to resume from")
+            selection.evaluate(current)  # the model so far joins the checkpoints the pool is seeded from
             pool = PastSelfPool.from_selection(
-                selection.results, model_dir / "checkpoints", run_seed=seed, matches=pool_matches
+                selection.results, model_dir / CHECKPOINTS_DIR, run_seed=seed, matches=pool_matches,
+                size=pool_size, permanent=permanent_members,
             )
         remaining = steps
         while remaining > 0:
             # The envs are rebuilt after every pool check, so a chunk ends at each check.
             chunk = min(remaining, pool_interval) if pool else remaining
-            opponents = phase_opponents(phase, n_envs, pool.members if pool else ())
+            past_selves = _pool_envs(pool, phase, n_envs, (model or resumed).num_timesteps) if pool else ()
+            opponents = phase_opponents(phase, n_envs, past_selves)
             train_env = make_vec_training_env(
                 seed, opponents, gamma=gamma, index_offset=env_offset, reward_weights=reward_weights
             )
@@ -151,7 +181,7 @@ def train(
             if model is not None:
                 model.set_env(train_env)
             elif resume:
-                model = MaskablePPO.load(resume, env=train_env)
+                model = MaskablePPO.load(str(resume), env=train_env, tensorboard_log=str(model_dir / "tb"))
             else:
                 model = MaskablePPO(
                     "MlpPolicy",
@@ -181,13 +211,13 @@ def train(
             if pool and remaining > 0:
                 _check_pool(pool, model, model_dir)
 
-    final_path = model_dir / "ppo_cr_final.zip"
+    final_path = model_dir / FINAL_MODEL_FILENAME
     model.save(str(final_path))
     logger.info("Saved final model: %s", final_path)
 
     selection.evaluate()  # the final model takes part in the selection too
     selected = select_checkpoint(selection.results)
-    selected_path = model_dir / "checkpoints" / selected.path
+    selected_path = model_dir / CHECKPOINTS_DIR / selected.path
     shutil.copy2(selected_path, model_dir / "best_model.zip")
     logger.info("Selected checkpoint: %s (win rate %.1f%%)", selected.path, selected.win_rate * 100)
     if model_dir == DEFAULT_MODEL_DIR:
@@ -196,6 +226,13 @@ def train(
         logger.info("Best model: %s", DEFAULT_BEST_PATH)
 
     return model
+
+
+def _pool_envs(pool: PastSelfPool, phase: TrainingPhase, n_envs: int, step: int) -> list[Path]:
+    """The pool member each Past-self env plays: PFSP draws for the phases that use them, else rotation."""
+    if phase.pfsp:
+        return pool.assign(phase.past_self_envs(n_envs), step)
+    return pool.members
 
 
 def _check_pool(pool: PastSelfPool, model: MaskablePPO, model_dir: Path) -> None:
