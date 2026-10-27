@@ -18,13 +18,6 @@ Clash Royale RL Coach is an educational, thesis-oriented platform built around a
 
 The Python backend owns simulation state and is the single source of truth. The browser renders snapshots and sends player input; it must not duplicate game rules. Preserve deterministic seeding and observation/action compatibility when changing game mechanics.
 
-## Technical stack
-
-- Python 3.10+, NumPy, Gymnasium, PyTorch.
-- FastAPI, Pydantic, Uvicorn.
-- React 18, strict TypeScript, Vite, and PixiJS for the web client.
-- pytest for Python tests; Docker uses a Node build stage and a non-root Python runtime.
-
 ## Repo structure
 
 - `src/cr_rl/game/`: simulation, cards, observations, actions, and rewards.
@@ -38,14 +31,17 @@ The Python backend owns simulation state and is the single source of truth. The 
 
 ## Coding style
 
+Reviewer-enforced judgement calls live in `CODING_STANDARDS.md`.
+
 - Python: 4-space indentation, `from __future__ import annotations`, type hints on public APIs, dataclasses or Pydantic models for structured data, and module loggers instead of `print` in library code.
 - Keep simulation logic deterministic and side effects explicit. Use named constants for observation/action layouts and update tests whenever those contracts change.
 - TypeScript: strict types, functional React components, double quotes, semicolons, and shared protocol types matching the Pydantic WebSocket models.
 - Keep rendering separate from game rules: React handles interface state, PixiJS renders the arena, and FastAPI validates all authoritative actions.
-- Add focused pytest coverage for Python behavior. While iterating run `python -m pytest -m "not slow"` (seconds); run the full `python -m pytest` (about 6 min) before committing. Run `npm run build --prefix web` after frontend changes.
+- Add focused pytest coverage for Python behavior. While iterating run `python -m pytest -m "not slow"` (seconds); run the full `python -m pytest` (about 6-7 min, slow tests need the gitignored model files) before committing. Run `npm run build --prefix web` after frontend changes.
 - Follow existing PL/EN behavior: user-facing web copy must remain translatable; code identifiers stay in English.
 - KEEP CLEAN AND SIMPLE SOURCE CODE.
 
 ## IMPORTANT INFORMATION
 - Card identity, elixir cost and icons come from the official Clash Royale API (key in `.env`). The API does not provide combat stats, so those come from a committed data file.
 - Everything in the repo (code, docs, comments, commit messages) is English unless the user says otherwise. The UI stays bilingual (PL/EN) with English as the default.
+- Models and run outputs (`models/`, `experiment_runs/*/*`) are gitignored, so a git worktree has none of them. Point `CR_RL_PROJECT_ROOT` at the main checkout to read them (`src/cr_rl/paths.py`), and write scratch output outside the repo so tests and smoke runs never touch real runs.
