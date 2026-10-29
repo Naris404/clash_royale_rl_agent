@@ -15,7 +15,8 @@ mirror deck), ADR-0005 (arena geometry reopened as **env-v1.1**).
 |---|---|
 | Documented layout | 279-dim observation (version 2), 53 actions (13 deploy zones) |
 | Simulation | env-v1.1 (env-v1 plus the arena geometry of ADR-0005, below): 8-card Deck, air units and splash; crowns decide the match; double elixir from 2:00, overtime and a weakest-tower tiebreak. Playtested and signed off ([checklist](playtest-env-v1.md#env-v11-sign-off)); frozen, tagged `env-v1.1` |
-| Trained model for this layout | the **v2 model**: run `full-seed0` of the final configuration, checkpoint at 601,524 steps, trained on env-v1.1; passes the Ship gate and is the **Shipped model**: the default web RL Opponent and the only model the Coach uses (`models/ppo_cr_best.zip`), see [Results](#v2-model). The player can also pick the self-play model, see [Model catalogue](#model-catalogue) |
+| Trained model for this layout | the **v2 model**: run `full-seed0` of the final configuration, checkpoint at 601,524 steps, trained on env-v1.1; passes the Ship gate and is the **Shipped model**: the default web RL Opponent and the only model the Coach uses (`models/ppo_cr_best.zip`), see [Results](#v2-model). The player can also pick the self-play model and the v3 model, see [Model catalogue](#model-catalogue) |
+| **v3 model** | v2 fine-tuned by self-play against Exploiters (ADR-0007); missed its target, so it is not the Shipped model. It is a Model catalogue entry, see [Results](#v3-model) |
 | **v1 model** | historical result only (13 actions); cannot run in env-v1, see [Results](#results) |
 
 The observation and action layout above is the contract: the observation is pinned by
@@ -438,7 +439,7 @@ later in a run continue the env indices of the earlier ones, so no seed is repla
 - `cr-rl-arrows --model M --frozen F`: the Arrows experiment (ADR-0007). Records every Report-seed decision of `M` whose
   top choice is Arrows on a tower (zone, time, both elixirs, probabilities, V(s), outcome), then replays the seeds
   with that play blocked against LogicAgent and the frozen model `F`; writes
-  `experiment_runs/arrows/results.json`.
+  `experiment_runs/arrows/results.json` (committed: the v2 Shipped model with full-seed0's Final model as `F`).
 
 No sweep results are committed yet.
 
@@ -622,9 +623,10 @@ by id, never a file. The Coach always uses the Shipped model, whatever is picked
 
 | id | File | Model |
 |---|---|---|
-| `shipped` (default) | `models/ppo_cr_best.zip` (follows `MODEL_PATH`) | the Shipped model: v2 until a v3 model is shipped, then v3 |
+| `shipped` (default) | `models/ppo_cr_best.zip` (follows `MODEL_PATH`) | the Shipped model: the v2 Shipped model, since v3 missed its target ([v3 model](#v3-model)) |
 | `v2-shipped` | `models/ppo_cr_v2_shipped.zip` | the v2 Shipped model: full-seed0 at 601,524 steps, no self-play training |
 | `v2-self-play` | `models/ppo_cr_self_play.zip` | full-seed0's final model at 1M steps, with 400k steps of self-play |
+| `v3` | `models/ppo_cr_v3.zip` | the v3 Selected model: gen2-seed2 at 2,014,080 steps |
 
 `GET /api/models` lists each entry's id, PL/EN label and description, and whether it is available;
 it never returns a file path. `POST /api/sessions` takes an optional `model` id and returns the id that
@@ -643,6 +645,13 @@ The self-play model is a copy of the final model of run `full-seed0` of the fina
 
 ```bash
 cp experiment_runs/final_configuration/full-seed0/ppo_cr_final.zip models/ppo_cr_self_play.zip
+```
+
+The v3 model is a copy of the v3 Selected model (SHA-256
+`a4d39a2c77133ed6d53868f4c851f208ebdabd0f1f19801cad5961d4b22ae54d`):
+
+```bash
+cp experiment_runs/v3/gen2-seed2/checkpoints/ppo_cr_2014080_steps.zip models/ppo_cr_v3.zip
 ```
 
 ## Results
@@ -822,6 +831,98 @@ Mean move quality is 0.653 in won and 0.605 in lost matches (pairwise win/loss a
 point-biserial correlation +0.28): the grades agree with the outcome more often than not, on a proxy,
 not human-labelled, benchmark.
 
+### v3 model
+
+Fine-tuned from the three v2 Final models by `cr-rl-v3` (ADR-0007, [v3 plan](#v3-plan)) with the code at
+`5d95548`, 12 envs on the laptop, 27–28 October 2026: about 8 h for training and evaluation together.
+`experiment_runs/v3/results.json` and `arrows.json` are committed, with each run's `manifest.json`,
+`selection.json` and `reference_selection.json`, each Exploiter's `exploiter.json` and the Coach check
+(`coach_validation.json`);
+`cr-rl-results experiment_runs/v3` prints the summary. As for v2, models were chosen on the Selection seeds
+only and every number below is on the 200 Report seeds with the deterministic policy and a 95% Wilson interval.
+
+**The target was not met**, so the Shipped model is still the v2 Shipped model and v3 is a negative result
+against the target. v3 is in the [Model catalogue](#model-catalogue) as `v3` (ADR-0007, Outcome). In
+`results.json`, `shipped` (and the `shipped` column of `cr-rl-results`) names the run with the best selection
+score, the one judged against the target; it was not copied to `models/ppo_cr_best.zip`.
+
+| Run | Selected step | Selection score | vs `LogicAgent` | vs `RandomAgent` | Length vs logic | Head-to-head vs v2 Shipped |
+|---|---|---|---|---|---|---|
+| gen2-seed0 | 1,614,048 | 70.4% | 74.5% [68.0, 80.0] | 99.0% [96.4, 99.7] | 49.2 | 69.2% [64.6, 73.6] |
+| gen2-seed1 | 2,025,540 | 70.6% | 65.5% [58.7, 71.7] | 99.0% [96.4, 99.7] | 40.2 | 71.8% [67.1, 75.9] |
+| **gen2-seed2** (best selection score) | 2,014,080 | **73.8%** | **73.5%** [67.0, 79.1] | 96.0% [92.3, 98.0] | 35.7 | **78.0%** [73.7, 81.8] |
+
+Spread over the 3 runs: 71.2% ± 4.9% vs `LogicAgent` (65.5–74.5%), 98.0% ± 1.7% vs `RandomAgent`. No match was
+drawn. The best run wins its head-to-head from both sides (80.0% as player 0, 76.0% as player 1, 312/88/0) but
+stays 16.5 points below the 90% target against `LogicAgent`. Generation 2 starts at 1,514,040 steps; gen2-seed0
+selected its first generation-2 checkpoint and gen2-seed1 its Final model.
+
+**Reference pool scores** of the Selected models (Selection seeds, 100 matches per opponent, as player 0):
+
+| Model | `LogicAgent` | v2 Shipped | v2 Final seed0 | v2 Final seed1 | v2 Final seed2 | Selection score |
+|---|---|---|---|---|---|---|
+| v3 gen2-seed0 | 77% | 75% | 70% | 68% | 62% | 70.4% |
+| v3 gen2-seed1 | 69% | 72% | 66% | 73% | 73% | 70.6% |
+| v3 gen2-seed2 | 70% | 80% | 74% | 72% | 73% | 73.8% |
+| v2 fallback full-seed0 (1,002,540) | 80% | 81% | 63% | 48% | 51% | 64.6% |
+| v2 fallback full-seed1 (1,002,540) | 69% | 74% | 55% | 52% | 60% | 62.0% |
+| v2 fallback full-seed2 (1,001,556) | 72% | 74% | 63% | 33% | 60% | 60.4% |
+
+The **re-selected v2 fallback** (#75, `reference_selection.json` in each final-configuration run) picks a
+checkpoint after self-play in every run and wins 78.0%, 71.5% and 77.0% against `LogicAgent` on the Report
+seeds, so it misses the target too. Every v3 run has a higher selection score than every v2 fallback;
+full-seed0's fallback is the self-play model already in the catalogue.
+
+**Exploiters.** Only two of the six reached the 70% stop rule, both in generation 1; every generation-2
+Exploiter ran to the 300k-step limit, at 42–59%. Against the v2 Final models, two of three Exploiters found
+a weakness within 300k steps; against the generation-1 models, none did:
+
+| Exploiter | Stopped by | Rolling win rate vs its target | Steps |
+|---|---|---|---|
+| exploiter1-seed0 | win rate | 70% | 132,396 |
+| exploiter1-seed1 | win rate | 70% | 111,696 |
+| exploiter1-seed2 | step limit | 58% | 300,000 |
+| exploiter2-seed0 | step limit | 59% | 300,000 |
+| exploiter2-seed1 | step limit | 42% | 300,000 |
+| exploiter2-seed2 | step limit | 54% | 300,000 |
+
+**Arrows before and after** (`cr-rl-arrows`, Report seeds vs `LogicAgent`; v2 in
+`experiment_runs/arrows/results.json`, v3 in `experiment_runs/v3/arrows.json`). An Arrows play on a tower is
+one aimed at a princess or king tower zone:
+
+| | v2 Shipped model | v3 (gen2-seed2) |
+|---|---|---|
+| Arrows plays on a tower (per match) | 796 (3.98) | 724 (3.62) |
+| Share of all Arrows plays aimed at a tower | 80.6% | 69.7% |
+| Matches with such a play | 200 / 200 | 200 / 200 |
+| Played at 3 elixir (as soon as affordable) | 99.6% | 93.9% |
+| Median own / enemy elixir at the play | 3.0 / 7.7 | 3.0 / 6.4 |
+| vs `LogicAgent`: allowed → blocked | 93.5% → 87.5% | 73.5% → 74.0% |
+| vs a frozen model: allowed → blocked | 23.0% → 28.5% (v2 full-seed0 Final) | 80.0% → 79.0% (v2 Shipped) |
+
+v3 kept the habit, slightly less often: it still sends Arrows at a tower about 3.6 times per match, nearly
+always as soon as it has 3 elixir. Blocking the play no longer changes v3's win rate against either opponent,
+so for v3 the habit neither wins nor loses matches.
+
+**Coach check.** v3 is not used for the Coach. `cr-rl-coach-validate --games 50 --model models/ppo_cr_v3.zip`
+(`experiment_runs/v3/coach_validation.json`) gives a
+correlation of −0.17 between move quality and outcome (win/loss pair accuracy 40.0%, mean quality 0.697 in won
+and 0.711 in lost matches), against +0.28 and 66.1% with the v2 Shipped model
+([Coach thresholds](#coach-thresholds)). The median ΔV of a proxy move is +0.129 under v3 against −0.002 under
+v2, so the v2 thresholds do not fit its value function. `models/stats/coach_validation.json` stays the v2
+measurement.
+
+How to read the result:
+
+- **v3 is the strongest model against learned opponents but far weaker than the v2 Shipped model against
+  `LogicAgent`.** It beats the v2 Shipped model in 69–78% of head-to-head matches and every v2 Final model on
+  the Selection seeds, yet loses about one match in four to the rule-based bot, about as often as the v2
+  fallback. Training against Past selves and Exploiters, with only 2 of 12
+  envs on `LogicAgent`, continued the trade-off the v2 self-play phase showed.
+- **The target's two halves pull in opposite directions.** The only model that wins at least 90% against
+  `LogicAgent`, the v2 Shipped model (no self-play training), loses about 3 in 4 head-to-head matches against
+  models with self-play, and no model with self-play training wins more than 80% against `LogicAgent`.
+
 ## Known limitations
 
 Facts about the current code and the v2 results that limit what they show:
@@ -837,9 +938,12 @@ Facts about the current code and the v2 results that limit what they show:
   their share of training steps against `LogicAgent`, the Selection win rate does not predict
   head-to-head strength within the full arm, and in the final configuration selection kept the
   checkpoint from the start of the self-play phase in all three runs, so the shipped model loses
-  about 3 in 4 matches against its own 1M final model (see [Results](#v2-model)). A selection that
-  also plays learned opponents (for example the Past-self pool) would not discard the self-play
-  phase.
+  about 3 in 4 matches against its own 1M final model (see [Results](#v2-model)). v3 selects by a
+  Reference pool of learned models and `LogicAgent` (ADR-0007), but its target still asks for about
+  90% against `LogicAgent`, which no model with self-play training reaches (see [v3 model](#v3-model)).
+- **The Coach depends on the Shipped model's value function.** The Coach thresholds are tuned to the v2
+  Shipped model; graded by v3, a proxy's move quality no longer tracks the outcome, so a stronger
+  opponent model is not automatically a better Coach model.
 - **No human evaluation.** Every reported number is against scripted bots or other models; the
   Coach's grades are checked on a `LogicAgent` proxy, not on human-labelled moves.
 
@@ -872,3 +976,4 @@ Facts about the current code and the v2 results that limit what they show:
 | 2026-10-26 | Run-plan summary (#70): `cr-rl-results` prints the plans' results from `results.json`, `manifest.json` and `selection.json` without loading a model: per-run selected step and Training phase, Report win rates, per-arm mean ± sd and curriculum metrics, head-to-head grid with row and column means, selection curves, and a warning when a run selected a checkpoint from before self-play; `--json` prints the same summary. Each thesis run's `manifest.json` and `selection.json` are now committed. Observation and action layout unchanged. |
 | 2026-10-26 | v3 plan driver (#79, ADR-0007): `cr-rl-v3` runs two generations of Exploiter + self-play fine-tuning per seed from the v2 Final models, selects generation-2 checkpoints by the reference pool, evaluates on the Report seeds, ships only if the target is met and runs the Arrows experiment. The Model catalogue gains `v2-shipped` (`models/ppo_cr_v2_shipped.zip`); its default entry is now `shipped`. `cr-rl-results` shows the target verdict and Exploiter records. Observation and action layout unchanged. |
 | 2026-10-26 | Model picker (#69): the Model catalogue (`v2-shipped`, `v2-self-play`) lets the player choose the RL Opponent's model; `GET /api/models` lists the catalogue without file paths, `POST /api/sessions` takes a catalogue `model` id, each model is loaded once at startup, and `/api/health` reports `shipped_model_available` instead of a file path. The Coach and `cr-rl-final` keep the Shipped model. `models/ppo_cr_self_play.zip` is the full-seed0 1M final model, evaluated on the Report seeds. Observation and action layout unchanged. |
+| 2026-10-29 | v3 results (#80, ADR-0007 Outcome): the v3 run missed the target (73.5% vs `LogicAgent`, 78.0% head-to-head vs the v2 Shipped model), so the v2 Shipped model stays the Shipped model and the Coach's model; the v3 Selected model joins the Model catalogue as `v3` (`models/ppo_cr_v3.zip`). The v3 results, Reference pool scores, Exploiter records and both Arrows results are committed; `cr-rl-results` skips a `results.json` that is not a run plan's (the Arrows experiment's). Observation and action layout unchanged. |

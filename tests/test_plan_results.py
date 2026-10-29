@@ -226,6 +226,12 @@ class TestCommand:
         main([str(tmp_path), "--json"])
         assert [plan["name"] for plan in json.loads(capsys.readouterr().out)] == ["ablations", "final_configuration"]
 
+    def test_skips_the_results_of_an_experiment_that_is_not_a_run_plan(self, tmp_path, capsys):
+        final_plan(tmp_path)
+        write(tmp_path / "arrows" / "results.json", {"experiment": "arrows", "profile": {}, "win_rates": {}})
+        main([str(tmp_path), "--json"])
+        assert [plan["name"] for plan in json.loads(capsys.readouterr().out)] == ["final_configuration"]
+
     def test_reads_a_single_plan_directory(self, tmp_path, capsys):
         main([str(final_plan(tmp_path)), "--json"])
         (plan,) = json.loads(capsys.readouterr().out)

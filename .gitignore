@@ -63,21 +63,37 @@ checkpoints/
 runs/
 # Runs stay local; the run plans' results.json files are the thesis numbers (docs/rl-agent.md),
 # and each run's manifest.json and selection.json let cr-rl-results label phases from a clean clone.
+# The v3 plan also keeps its Arrows results, Reference pool scores, Exploiter records and Coach check (ADR-0007).
 experiment_runs/*
 !experiment_runs/final_configuration/
 !experiment_runs/ablations/
+!experiment_runs/v3/
+!experiment_runs/arrows/
 experiment_runs/final_configuration/*
 experiment_runs/ablations/*
+experiment_runs/v3/*
+experiment_runs/arrows/*
 !experiment_runs/final_configuration/results.json
 !experiment_runs/ablations/results.json
+!experiment_runs/v3/results.json
+!experiment_runs/v3/arrows.json
+!experiment_runs/v3/coach_validation.json
+!experiment_runs/arrows/results.json
 !experiment_runs/final_configuration/*/
 !experiment_runs/ablations/*/
+!experiment_runs/v3/*/
 experiment_runs/final_configuration/*/*
 experiment_runs/ablations/*/*
+experiment_runs/v3/*/*
 !experiment_runs/final_configuration/*/manifest.json
 !experiment_runs/final_configuration/*/selection.json
+!experiment_runs/final_configuration/*/reference_selection.json
 !experiment_runs/ablations/*/manifest.json
 !experiment_runs/ablations/*/selection.json
+!experiment_runs/v3/*/manifest.json
+!experiment_runs/v3/*/selection.json
+!experiment_runs/v3/*/reference_selection.json
+!experiment_runs/v3/*/exploiter.json
 wandb/
 
 # Web

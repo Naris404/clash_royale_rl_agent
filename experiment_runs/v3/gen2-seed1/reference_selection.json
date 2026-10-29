@@ -1,0 +1,74 @@
+[
+  {
+    "step": 1614048,
+    "path": "ppo_cr_1614048_steps.zip",
+    "wins": {
+      "logic": 72,
+      "v2-shipped": 71,
+      "v2-final-seed0": 67,
+      "v2-final-seed1": 70,
+      "v2-final-seed2": 60
+    },
+    "episodes": 100
+  },
+  {
+    "step": 1714056,
+    "path": "ppo_cr_1714056_steps.zip",
+    "wins": {
+      "logic": 80,
+      "v2-shipped": 80,
+      "v2-final-seed0": 65,
+      "v2-final-seed1": 62,
+      "v2-final-seed2": 59
+    },
+    "episodes": 100
+  },
+  {
+    "step": 1814064,
+    "path": "ppo_cr_1814064_steps.zip",
+    "wins": {
+      "logic": 56,
+      "v2-shipped": 80,
+      "v2-final-seed0": 72,
+      "v2-final-seed1": 67,
+      "v2-final-seed2": 56
+    },
+    "episodes": 100
+  },
+  {
+    "step": 1914072,
+    "path": "ppo_cr_1914072_steps.zip",
+    "wins": {
+      "logic": 66,
+      "v2-shipped": 69,
+      "v2-final-seed0": 74,
+      "v2-final-seed1": 73,
+      "v2-final-seed2": 56
+    },
+    "episodes": 100
+  },
+  {
+    "step": 2014080,
+    "path": "ppo_cr_2014080_steps.zip",
+    "wins": {
+      "logic": 71,
+      "v2-shipped": 79,
+      "v2-final-seed0": 65,
+      "v2-final-seed1": 70,
+      "v2-final-seed2": 63
+    },
+    "episodes": 100
+  },
+  {
+    "step": 2025540,
+    "path": "ppo_cr_2025540_steps.zip",
+    "wins": {
+      "logic": 69,
+      "v2-shipped": 72,
+      "v2-final-seed0": 66,
+      "v2-final-seed1": 73,
+      "v2-final-seed2": 73
+    },
+    "episodes": 100
+  }
+]

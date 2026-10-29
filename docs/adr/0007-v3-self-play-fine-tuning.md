@@ -48,3 +48,24 @@ scratch:
   anchor.
 - **GPU training:** rejected. A PPO update on the 256×256 MLP is about 7% of the wall-clock
   time; the CPU game simulation is the rest.
+
+## Outcome (2026-10-29)
+
+v3 missed the target, and the fallback rule was not applied as written.
+
+- The v3 run with the best selection score (gen2-seed2) wins 73.5% [67.0, 79.1] against LogicAgent on the
+  Report seeds and 78.0% [73.7, 81.8] head-to-head against the v2 Shipped model. It meets the
+  head-to-head half of the target, not the LogicAgent half.
+- The re-selected v2 fallback (#75) misses the target too: the reference pool picks a checkpoint after
+  self-play in every v2 run (71.5–78.0% against LogicAgent). The fallback is weaker against LogicAgent than
+  the v2 Shipped model (93.5%), and weaker against learned models than v3, so shipping it would make
+  the default opponent worse on both measures.
+- v3 is also a worse model for the Coach. Graded by v3, a LogicAgent proxy's moves no longer
+  track the outcome (`cr-rl-coach-validate`, 50 matches: correlation −0.17 and win/loss pair accuracy 40%,
+  against +0.28 and 66% with the v2 Shipped model). v3's value function rates most proxy moves as
+  gains (median ΔV +0.13).
+
+The **v2 Shipped model therefore stays the Shipped model**: the default RL Opponent and the Coach's
+model. v3 is reported as a negative result against the target. Because it is the strongest model
+against learned opponents, it joins the Model catalogue as its own entry (`v3`,
+`models/ppo_cr_v3.zip`) so a player can choose it.

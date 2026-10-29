@@ -1,0 +1,18 @@
+{
+  "arm": "fine-tune",
+  "seed": 1002,
+  "timesteps": 500000,
+  "layout": "fine-tune",
+  "reward_weights": {
+    "win": 1.0,
+    "crown": 0.2,
+    "hp": 0.5
+  },
+  "source_model": "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\v3\\gen1-seed2\\ppo_cr_final.zip",
+  "permanent_members": [
+    "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\v3\\exploiter1-seed2\\exploiter.zip",
+    "C:\\Users\\piotr\\Desktop\\clash_royale_rl_agent\\experiment_runs\\v3\\exploiter2-seed2\\exploiter.zip"
+  ],
+  "env_version": "env-v1.1",
+  "generated_at": "2026-10-28T04:54:59.930148+00:00"
+}
