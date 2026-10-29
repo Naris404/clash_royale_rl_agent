@@ -31,8 +31,8 @@ CATALOGUE = (
         id=DEFAULT_MODEL_ID,
         label={"en": "Shipped model", "pl": "Model wdrożony"},
         description={
-            "en": "The strongest model: the default opponent, and the model the Coach uses.",
-            "pl": "Najsilniejszy model: domyślny przeciwnik i model, z którego korzysta Trener.",
+            "en": "The default opponent, and the model the Coach uses.",
+            "pl": "Domyślny przeciwnik i model, z którego korzysta Trener.",
         },
         filename=None,
     ),
@@ -59,6 +59,23 @@ CATALOGUE = (
             ),
         },
         filename="ppo_cr_self_play.zip",
+    ),
+    CatalogueEntry(
+        id="v3",
+        label={"en": "v3 model", "pl": "Model v3"},
+        description={
+            "en": (
+                "Trained further after self-play, against its past versions and opponents trained to find "
+                "its weaknesses: wins 73.5% against the rule-based bot, but beats the shipped model in 78% of "
+                "head-to-head matches."
+            ),
+            "pl": (
+                "Trenowany dalej po self-play, przeciwko własnym wcześniejszym wersjom i przeciwnikom "
+                "uczonym szukać jego słabości: wygrywa 73,5% meczów z botem regułowym, ale pokonuje model "
+                "wdrożony w 78% bezpośrednich pojedynków."
+            ),
+        },
+        filename="ppo_cr_v3.zip",
     ),
 )
 

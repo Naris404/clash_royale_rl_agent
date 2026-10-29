@@ -1,0 +1,266 @@
+[
+  {
+    "step": 50004,
+    "path": "ppo_cr_50004_steps.zip",
+    "wins": {
+      "logic": 33,
+      "shipped": 33,
+      "final-0": 40,
+      "final-1": 46,
+      "final-2": 31
+    },
+    "episodes": 100
+  },
+  {
+    "step": 100008,
+    "path": "ppo_cr_100008_steps.zip",
+    "wins": {
+      "logic": 48,
+      "shipped": 46,
+      "final-0": 42,
+      "final-1": 34,
+      "final-2": 23
+    },
+    "episodes": 100
+  },
+  {
+    "step": 150012,
+    "path": "ppo_cr_150012_steps.zip",
+    "wins": {
+      "logic": 36,
+      "shipped": 52,
+      "final-0": 38,
+      "final-1": 39,
+      "final-2": 37
+    },
+    "episodes": 100
+  },
+  {
+    "step": 200016,
+    "path": "ppo_cr_200016_steps.zip",
+    "wins": {
+      "logic": 47,
+      "shipped": 64,
+      "final-0": 54,
+      "final-1": 49,
+      "final-2": 40
+    },
+    "episodes": 100
+  },
+  {
+    "step": 250020,
+    "path": "ppo_cr_250020_steps.zip",
+    "wins": {
+      "logic": 71,
+      "shipped": 60,
+      "final-0": 42,
+      "final-1": 33,
+      "final-2": 33
+    },
+    "episodes": 100
+  },
+  {
+    "step": 300024,
+    "path": "ppo_cr_300024_steps.zip",
+    "wins": {
+      "logic": 76,
+      "shipped": 59,
+      "final-0": 27,
+      "final-1": 31,
+      "final-2": 20
+    },
+    "episodes": 100
+  },
+  {
+    "step": 350028,
+    "path": "ppo_cr_350028_steps.zip",
+    "wins": {
+      "logic": 73,
+      "shipped": 61,
+      "final-0": 32,
+      "final-1": 28,
+      "final-2": 29
+    },
+    "episodes": 100
+  },
+  {
+    "step": 400032,
+    "path": "ppo_cr_400032_steps.zip",
+    "wins": {
+      "logic": 75,
+      "shipped": 60,
+      "final-0": 34,
+      "final-1": 24,
+      "final-2": 25
+    },
+    "episodes": 100
+  },
+  {
+    "step": 450036,
+    "path": "ppo_cr_450036_steps.zip",
+    "wins": {
+      "logic": 77,
+      "shipped": 61,
+      "final-0": 31,
+      "final-1": 21,
+      "final-2": 24
+    },
+    "episodes": 100
+  },
+  {
+    "step": 500040,
+    "path": "ppo_cr_500040_steps.zip",
+    "wins": {
+      "logic": 84,
+      "shipped": 51,
+      "final-0": 30,
+      "final-1": 25,
+      "final-2": 36
+    },
+    "episodes": 100
+  },
+  {
+    "step": 550044,
+    "path": "ppo_cr_550044_steps.zip",
+    "wins": {
+      "logic": 95,
+      "shipped": 55,
+      "final-0": 24,
+      "final-1": 22,
+      "final-2": 25
+    },
+    "episodes": 100
+  },
+  {
+    "step": 600048,
+    "path": "ppo_cr_600048_steps.zip",
+    "wins": {
+      "logic": 92,
+      "shipped": 49,
+      "final-0": 27,
+      "final-1": 29,
+      "final-2": 25
+    },
+    "episodes": 100
+  },
+  {
+    "step": 601524,
+    "path": "ppo_cr_601524_steps.zip",
+    "wins": {
+      "logic": 98,
+      "shipped": 45,
+      "final-0": 26,
+      "final-1": 27,
+      "final-2": 24
+    },
+    "episodes": 100
+  },
+  {
+    "step": 651528,
+    "path": "ppo_cr_651528_steps.zip",
+    "wins": {
+      "logic": 86,
+      "shipped": 54,
+      "final-0": 37,
+      "final-1": 20,
+      "final-2": 25
+    },
+    "episodes": 100
+  },
+  {
+    "step": 701532,
+    "path": "ppo_cr_701532_steps.zip",
+    "wins": {
+      "logic": 85,
+      "shipped": 71,
+      "final-0": 22,
+      "final-1": 29,
+      "final-2": 34
+    },
+    "episodes": 100
+  },
+  {
+    "step": 751536,
+    "path": "ppo_cr_751536_steps.zip",
+    "wins": {
+      "logic": 81,
+      "shipped": 71,
+      "final-0": 30,
+      "final-1": 23,
+      "final-2": 24
+    },
+    "episodes": 100
+  },
+  {
+    "step": 801540,
+    "path": "ppo_cr_801540_steps.zip",
+    "wins": {
+      "logic": 83,
+      "shipped": 85,
+      "final-0": 35,
+      "final-1": 31,
+      "final-2": 44
+    },
+    "episodes": 100
+  },
+  {
+    "step": 851544,
+    "path": "ppo_cr_851544_steps.zip",
+    "wins": {
+      "logic": 78,
+      "shipped": 74,
+      "final-0": 34,
+      "final-1": 38,
+      "final-2": 46
+    },
+    "episodes": 100
+  },
+  {
+    "step": 901548,
+    "path": "ppo_cr_901548_steps.zip",
+    "wins": {
+      "logic": 79,
+      "shipped": 80,
+      "final-0": 46,
+      "final-1": 44,
+      "final-2": 45
+    },
+    "episodes": 100
+  },
+  {
+    "step": 951552,
+    "path": "ppo_cr_951552_steps.zip",
+    "wins": {
+      "logic": 76,
+      "shipped": 78,
+      "final-0": 51,
+      "final-1": 29,
+      "final-2": 41
+    },
+    "episodes": 100
+  },
+  {
+    "step": 1001556,
+    "path": "ppo_cr_1001556_steps.zip",
+    "wins": {
+      "logic": 80,
+      "shipped": 79,
+      "final-0": 55,
+      "final-1": 40,
+      "final-2": 51
+    },
+    "episodes": 100
+  },
+  {
+    "step": 1002540,
+    "path": "ppo_cr_1002540_steps.zip",
+    "wins": {
+      "logic": 80,
+      "shipped": 81,
+      "final-0": 63,
+      "final-1": 48,
+      "final-2": 51
+    },
+    "episodes": 100
+  }
+]

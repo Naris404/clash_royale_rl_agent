@@ -325,11 +325,17 @@ def format_plan(plan: PlanSummary) -> str:
     return "\n".join(lines)
 
 
+def is_plan_dir(path: Path) -> bool:
+    """Other experiments (the Arrows experiment) write a results file too; only a run plan's records timesteps."""
+    results = path / REPORT_FILENAME
+    return results.is_file() and "timesteps" in json.loads(results.read_text(encoding="utf-8"))
+
+
 def plan_dirs(path: Path) -> list[Path]:
     """`path` itself if it is a plan directory, otherwise its subdirectories that hold a plan's results."""
-    if (path / REPORT_FILENAME).is_file():
+    if is_plan_dir(path):
         return [path]
-    return sorted(child for child in path.iterdir() if (child / REPORT_FILENAME).is_file())
+    return sorted(child for child in path.iterdir() if is_plan_dir(child))
 
 
 def main(argv: Sequence[str] | None = None) -> None:

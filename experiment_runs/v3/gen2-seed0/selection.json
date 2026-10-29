@@ -1,0 +1,44 @@
+[
+  {
+    "step": 1514040,
+    "wins": 75,
+    "episodes": 100,
+    "path": "ppo_cr_1514040_steps.zip"
+  },
+  {
+    "step": 1614048,
+    "wins": 77,
+    "episodes": 100,
+    "path": "ppo_cr_1614048_steps.zip"
+  },
+  {
+    "step": 1714056,
+    "wins": 70,
+    "episodes": 100,
+    "path": "ppo_cr_1714056_steps.zip"
+  },
+  {
+    "step": 1814064,
+    "wins": 69,
+    "episodes": 100,
+    "path": "ppo_cr_1814064_steps.zip"
+  },
+  {
+    "step": 1914072,
+    "wins": 75,
+    "episodes": 100,
+    "path": "ppo_cr_1914072_steps.zip"
+  },
+  {
+    "step": 2014080,
+    "wins": 80,
+    "episodes": 100,
+    "path": "ppo_cr_2014080_steps.zip"
+  },
+  {
+    "step": 2025540,
+    "wins": 78,
+    "episodes": 100,
+    "path": "ppo_cr_2025540_steps.zip"
+  }
+]
