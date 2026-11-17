@@ -34,6 +34,7 @@ from cr_rl.coach.inference import PolicyInspector
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.agents.rl import RLAgent
 from cr_rl.server.model_catalogue import ModelCatalogue
+from cr_rl.server.review import pick_strongest_weakest
 from cr_rl.server.protocol import (
     ErrorMsg,
     EventMsg,
@@ -398,6 +399,7 @@ class GameSession:
         top_moments = sorted(
             self._key_moments.moments, key=lambda m: abs(m.delta_value), reverse=True
         )[:5]
+        strongest, weakest = pick_strongest_weakest(self.move_log)
         return EventMsg(
             kind="match_end",
             detail={
@@ -412,6 +414,8 @@ class GameSession:
                     for m in top_moments
                 ],
                 "move_log": self.move_log,
+                "strongest": strongest,
+                "weakest": weakest,
             },
         )
 

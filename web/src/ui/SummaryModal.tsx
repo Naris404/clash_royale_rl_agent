@@ -1,6 +1,8 @@
+import { useEffect, useRef, useState } from "react";
 import { formatTime, gradeLabel, Strings, zoneLabel } from "../i18n";
 import type { MatchEndDetail, MoveLogEntry } from "../net/types";
 import { cardEmoji } from "../scene/emoji";
+import { MoveHighlights, signed } from "./MoveHighlights";
 
 interface Props {
   detail: MatchEndDetail & { winner?: number | null };
@@ -10,14 +12,22 @@ interface Props {
   onMenu: () => void;
 }
 
-function signed(value: number): string {
-  return (value >= 0 ? "+" : "") + value.toFixed(2);
+interface MoveRowProps {
+  move: MoveLogEntry;
+  strings: Strings;
+  lang: "pl" | "en";
+  selected: boolean;
+  onSelect: () => void;
 }
 
-function MoveRow({ move, strings, lang }: { move: MoveLogEntry; strings: Strings; lang: "pl" | "en" }) {
+function MoveRow({ move, strings, lang, selected, onSelect }: MoveRowProps) {
   const { value_before: before, value_after: after, delta_value: delta } = move;
+  const row = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (selected) row.current?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
   return (
-    <li>
+    <li ref={row} className={selected ? "move-selected" : undefined} onClick={onSelect}>
       <div>
         <span className="move-time">{formatTime(move.time)}</span> {cardEmoji(move.card)} {move.card} →{" "}
         {zoneLabel(move.zone, lang)}{" "}
@@ -49,6 +59,7 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
     detail.winner === 0 ? strings.you_won : detail.winner === 1 ? strings.you_lost : strings.draw;
   const grades = detail.grade_counts ?? {};
   const moves = detail.move_log ?? [];
+  const [selected, setSelected] = useState<number | null>(null); // move_log index
 
   return (
     <div className="modal-backdrop">
@@ -94,6 +105,16 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
           </div>
         )}
 
+        <MoveHighlights
+          moves={moves}
+          strongest={detail.strongest ?? []}
+          weakest={detail.weakest ?? []}
+          selected={selected}
+          onSelect={setSelected}
+          strings={strings}
+          lang={lang}
+        />
+
         <div className="summary-section move-history">
           <h3>{strings.move_history}</h3>
           {moves.length === 0 ? (
@@ -101,7 +122,14 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
           ) : (
             <ul>
               {moves.map((move, i) => (
-                <MoveRow key={i} move={move} strings={strings} lang={lang} />
+                <MoveRow
+                  key={i}
+                  move={move}
+                  strings={strings}
+                  lang={lang}
+                  selected={selected === i}
+                  onSelect={() => setSelected(i)}
+                />
               ))}
             </ul>
           )}

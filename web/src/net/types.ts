@@ -173,6 +173,8 @@ export interface MatchEndDetail {
   grade_counts: Record<string, number>;
   key_moments: Array<{ time: number; delta_value: number; note: string }>;
   move_log: MoveLogEntry[];
+  strongest: number[]; // move_log indices
+  weakest: number[];
 }
 
 export interface EventMsg {

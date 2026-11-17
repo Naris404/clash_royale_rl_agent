@@ -1052,6 +1052,26 @@ img.next-card-art {
   margin-top: 10px;
 }
 
+.move-history li,
+.highlight-move {
+  cursor: pointer;
+}
+
+.highlight-move {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.move-selected {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .move-time {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
