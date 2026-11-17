@@ -118,6 +118,11 @@ _Avoid_: tip, recommendation
 A large evaluation swing surfaced to the player.
 _Avoid_: highlight, turning point
 
+**Match review**:
+The post-match screen and its data: the result, and every move the player made with its grade,
+the evaluation before and after, and the agent's move from the same position.
+_Avoid_: summary, game report
+
 **Opponent**:
 Who the human plays against: the rule-based bot, the RL policy (a model from the
 Model catalogue), or the bot with the coach enabled.

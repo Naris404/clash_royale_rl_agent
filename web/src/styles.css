@@ -977,9 +977,17 @@ img.next-card-art {
   margin-top: 0;
 }
 
+.review-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .summary-stats {
   display: flex;
-  gap: 24px;
+  flex-wrap: wrap;
+  gap: 8px 24px;
   color: var(--muted);
 }
 
@@ -1028,8 +1036,18 @@ img.next-card-art {
   gap: 4px;
 }
 
+.move-history ul {
+  gap: 10px;
+}
+
+.move-detail {
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .move-history {
-  max-height: 220px;
+  max-height: 320px;
   overflow-y: auto;
   margin-top: 10px;
 }

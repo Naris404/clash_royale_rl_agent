@@ -32,6 +32,14 @@ def client(inspector, tmp_path) -> TestClient:
         yield test_client
 
 
+def _end_match(session: GameSession):
+    """Ends the match by killing the enemy King Tower; returns the match_end event."""
+    king = next(t for t in session.board.towers if t.owner == 1 and t.name == "King_Tower")
+    king.hp = 0.0
+    king.alive = False
+    return next(m for m in session.tick() if m.type == "event" and m.kind == "match_end")
+
+
 class TestRest:
     def test_health(self, client):
         response = client.get("/api/health")
@@ -202,6 +210,33 @@ class TestGameSession:
         assert end.detail["winner"] == 0
         assert end.detail["crowns"] == [3, 0]
         assert "grade_counts" in end.detail
+
+
+    def test_match_end_move_log_keeps_the_full_grade_without_a_model(self, inspector):
+        session = GameSession("s-log-heuristic", MODE_COACH, inspector, seed=1)
+        session.board.elixir[0] = 10.0  # the heuristic plays a card instead of waiting
+        card = session.board.get_hand(0)[0]
+        session.handle_play(card, 9.0, 6.0)
+        move = _end_match(session).detail["move_log"][0]
+        assert (move["time"], move["card"]) == (0.0, card)
+        assert move["grade"] in {"best", "good", "inaccuracy", "blunder"}
+        assert move["value_before"] is None and move["value_after"] is None
+        assert move["delta_value"] is None and move["human_prob"] is None
+        assert move["best_card"] in DECK
+        assert isinstance(move["best_zone"], int)
+        assert move["reason"]
+
+    def test_match_end_move_log_keeps_the_full_grade_with_a_model(self, untrained_model_path):
+        session = GameSession("s-log-model", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        card = session.board.get_hand(0)[0]
+        session.handle_play(card, 9.0, 6.0)
+        move = _end_match(session).detail["move_log"][0]
+        assert move["value_before"] is not None and move["value_after"] is not None
+        assert move["delta_value"] == pytest.approx(move["value_after"] - move["value_before"])
+        assert 0.0 <= move["human_prob"] <= 1.0
+        assert 0.0 <= move["best_prob"] <= 1.0
+        assert move["best_card"] in DECK and isinstance(move["best_zone"], int)
+        assert move["reason"]
 
 
 class TestWebSocket:

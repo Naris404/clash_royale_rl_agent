@@ -154,7 +154,14 @@ export interface MoveLogEntry {
   zone: number;
   grade: Grade;
   score: number;
+  human_prob?: number | null;
+  value_before?: number | null; // evaluation before the move; null without a trained model
+  value_after?: number | null;
   delta_value?: number | null;
+  best_card?: string | null; // the agent's move from the same position; null when it would wait
+  best_zone?: number | null;
+  best_prob?: number | null;
+  reason: string;
 }
 
 export interface MatchEndDetail {

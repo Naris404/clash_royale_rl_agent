@@ -1,5 +1,5 @@
 import { formatTime, gradeLabel, Strings, zoneLabel } from "../i18n";
-import type { MatchEndDetail } from "../net/types";
+import type { MatchEndDetail, MoveLogEntry } from "../net/types";
 import { cardEmoji } from "../scene/emoji";
 
 interface Props {
@@ -8,6 +8,40 @@ interface Props {
   lang: "pl" | "en";
   onRematch: () => void;
   onMenu: () => void;
+}
+
+function signed(value: number): string {
+  return (value >= 0 ? "+" : "") + value.toFixed(2);
+}
+
+function MoveRow({ move, strings, lang }: { move: MoveLogEntry; strings: Strings; lang: "pl" | "en" }) {
+  const { value_before: before, value_after: after, delta_value: delta } = move;
+  return (
+    <li>
+      <div>
+        <span className="move-time">{formatTime(move.time)}</span> {cardEmoji(move.card)} {move.card} →{" "}
+        {zoneLabel(move.zone, lang)}{" "}
+        <span className={`grade-tag grade-${move.grade}`}>{gradeLabel(move.grade, lang)}</span>
+      </div>
+      {before != null && after != null && delta != null && (
+        <div className="move-detail">
+          {strings.evaluation}: {signed(before)} → {signed(after)} ({signed(delta)})
+        </div>
+      )}
+      <div className="move-detail">
+        {move.grade === "best" ? (
+          strings.same_as_yours
+        ) : (
+          <>
+            {move.best_card
+              ? `${strings.agent_move}: ${cardEmoji(move.best_card)} ${move.best_card} → ${zoneLabel(move.best_zone, lang)}`
+              : strings.agent_waits}
+            {move.reason && <div>{move.reason}</div>}
+          </>
+        )}
+      </div>
+    </li>
+  );
 }
 
 export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props) {
@@ -19,6 +53,7 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
   return (
     <div className="modal-backdrop">
       <div className="modal">
+        <div className="review-label">{strings.match_review}</div>
         <h2>{title}</h2>
         <div className="summary-stats">
           <div>
@@ -66,11 +101,7 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
           ) : (
             <ul>
               {moves.map((move, i) => (
-                <li key={i}>
-                  <span className="move-time">{formatTime(move.time)}</span>{" "}
-                  {cardEmoji(move.card)} {move.card} → {zoneLabel(move.zone, lang)}{" "}
-                  <span className={`grade-tag grade-${move.grade}`}>{gradeLabel(move.grade, lang)}</span>
-                </li>
+                <MoveRow key={i} move={move} strings={strings} lang={lang} />
               ))}
             </ul>
           )}

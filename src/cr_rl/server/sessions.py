@@ -11,6 +11,7 @@ import asyncio
 import logging
 import threading
 import uuid
+from dataclasses import asdict
 from typing import Any, Optional
 
 from cr_rl.game.board import (
@@ -174,16 +175,7 @@ class GameSession:
             messages: list[ServerMessage] = []
             if self.coach is not None:
                 grade = self.coach.grade_move(self.board, card, x, y, player=0)
-                self.move_log.append(
-                    {
-                        "time": self.board.time,
-                        "card": card,
-                        "zone": grade.zone,
-                        "grade": grade.grade,
-                        "score": grade.score,
-                        "delta_value": grade.delta_value,
-                    }
-                )
+                self.move_log.append({"time": self.board.time, **asdict(grade)})
                 messages.append(
                     FeedbackMsg(
                         grade=grade.grade,
