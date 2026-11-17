@@ -130,6 +130,7 @@ class GameSession:
         self._next_entity_id = 1
         self._key_moments = KeyMomentTracker(lang=lang)
         self.move_log: list[dict] = []
+        self.evaluation: list[dict] = []  # {time, value} from the player's side, one per Hint interval
         self._alive_towers = self._tower_ids_alive()
         self._tower_id_map = self._build_tower_id_map()
 
@@ -208,6 +209,7 @@ class GameSession:
             self.tick_count = 0
             self.paused = False
             self.move_log.clear()
+            self.evaluation.clear()
             self._key_moments.reset()
             self.opponent.reset()
             self._tower_id_map = self._build_tower_id_map()
@@ -241,6 +243,8 @@ class GameSession:
                         aim=suggestion.aim,
                     )
                 )
+                if suggestion.value is not None:
+                    self.evaluation.append({"time": self.board.time, "value": suggestion.value})
                 moment = self._key_moments.update(self.board.time, suggestion.value)
                 if moment is not None:
                     messages.append(
@@ -408,9 +412,10 @@ class GameSession:
                 "mean_score": (sum(scores) / len(scores)) if scores else None,
                 "grade_counts": grade_counts,
                 "key_moments": [
-                    {"time": m.time, "delta_value": m.delta_value, "note": m.note}
+                    {"time": m.time, "delta_value": m.delta_value, "value": m.value, "note": m.note}
                     for m in top_moments
                 ],
+                "evaluation": self.evaluation,
                 "move_log": self.move_log,
             },
         )

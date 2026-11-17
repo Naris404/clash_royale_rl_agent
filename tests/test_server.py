@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from cr_rl.coach.evaluator import Suggestion
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.game.board import REGULATION_TIME
 from cr_rl.game.cards import DECK, cards_dic
@@ -237,6 +238,40 @@ class TestGameSession:
         assert 0.0 <= move["best_prob"] <= 1.0
         assert move["best_card"] in DECK and isinstance(move["best_zone"], int)
         assert move["reason"]
+
+    def test_match_end_evaluation_is_sampled_at_the_hint_interval(self, untrained_model_path):
+        session = GameSession("s-eval", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        hint_values = []
+        for _ in range(3 * HINT_EVERY_TICKS):
+            hint_values.extend(m.value for m in session.tick() if m.type == "hint")
+        evaluation = _end_match(session).detail["evaluation"]
+        assert [sample["value"] for sample in evaluation] == hint_values
+        times = [sample["time"] for sample in evaluation]
+        assert len(times) == 3 and times == sorted(times)
+
+    def test_match_end_evaluation_is_empty_without_a_model(self, inspector):
+        session = GameSession("s-eval-none", MODE_COACH, inspector, seed=1)
+        for _ in range(2 * HINT_EVERY_TICKS):
+            session.tick()
+        assert _end_match(session).detail["evaluation"] == []
+
+    def test_match_end_key_moments_carry_their_value(self, inspector):
+        session = GameSession("s-moment", MODE_COACH, inspector, seed=1)
+        for value in (0.0, 0.5):  # a swing of 0.5 is a Key moment
+            session.coach.suggest = lambda board, player=0, v=value: Suggestion(
+                card=None, slot=None, zone=None, prob=None, value=v, reason="", hint=""
+            )
+            for _ in range(HINT_EVERY_TICKS):
+                session.tick()
+        (moment,) = _end_match(session).detail["key_moments"]
+        assert moment["value"] == 0.5
+
+    def test_rematch_clears_the_evaluation(self, untrained_model_path):
+        session = GameSession("s-eval-rematch", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        for _ in range(HINT_EVERY_TICKS):
+            session.tick()
+        session.rematch()
+        assert _end_match(session).detail["evaluation"] == []
 
 
 class TestWebSocket:

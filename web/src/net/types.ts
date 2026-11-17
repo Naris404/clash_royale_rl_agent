@@ -148,6 +148,11 @@ export interface KeyMoment {
   note: string;
 }
 
+export interface EvaluationSample {
+  time: number;
+  value: number; // the policy's value estimate from the player's side
+}
+
 export interface MoveLogEntry {
   time: number;
   card: string;
@@ -171,7 +176,8 @@ export interface MatchEndDetail {
   moves: number;
   mean_score?: number | null;
   grade_counts: Record<string, number>;
-  key_moments: Array<{ time: number; delta_value: number; note: string }>;
+  key_moments: Array<{ time: number; delta_value: number; value: number; note: string }>;
+  evaluation: EvaluationSample[]; // empty without a trained model
   move_log: MoveLogEntry[];
 }
 

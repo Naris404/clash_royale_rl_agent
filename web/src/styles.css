@@ -1061,6 +1061,63 @@ img.next-card-art {
   font-size: 0.75rem;
 }
 
+.graph-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.eval-graph {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.eval-zero {
+  stroke: #2c3a63;
+  stroke-dasharray: 3 3;
+}
+
+.eval-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.eval-hit {
+  fill: transparent;
+}
+
+.eval-mark {
+  fill: currentColor;
+  stroke: var(--bg);
+  stroke-width: 1;
+}
+
+.eval-dot {
+  cursor: pointer;
+}
+
+.eval-dot.selected .eval-mark {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.eval-graph .km-good,
+.eval-graph .km-bad {
+  fill: currentColor;
+  opacity: 0.6;
+}
+
+.move-history li {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.move-history li.selected {
+  background: var(--panel-2);
+}
+
 .modal-actions {
   display: flex;
   gap: 10px;

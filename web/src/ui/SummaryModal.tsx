@@ -1,6 +1,8 @@
+import { useEffect, useRef, useState } from "react";
 import { formatTime, gradeLabel, Strings, zoneLabel } from "../i18n";
 import type { MatchEndDetail, MoveLogEntry } from "../net/types";
 import { cardEmoji } from "../scene/emoji";
+import { EvaluationGraph } from "./EvaluationGraph";
 
 interface Props {
   detail: MatchEndDetail & { winner?: number | null };
@@ -14,10 +16,28 @@ function signed(value: number): string {
   return (value >= 0 ? "+" : "") + value.toFixed(2);
 }
 
-function MoveRow({ move, strings, lang }: { move: MoveLogEntry; strings: Strings; lang: "pl" | "en" }) {
+interface MoveRowProps {
+  move: MoveLogEntry;
+  strings: Strings;
+  lang: "pl" | "en";
+  selected: boolean;
+  onSelect: () => void;
+}
+
+function MoveRow({ move, strings, lang, selected, onSelect }: MoveRowProps) {
   const { value_before: before, value_after: after, delta_value: delta } = move;
+  const row = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (selected) row.current?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
   return (
-    <li>
+    <li
+      ref={row}
+      className={selected ? "selected" : undefined}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => e.key === "Enter" && onSelect()}
+    >
       <div>
         <span className="move-time">{formatTime(move.time)}</span> {cardEmoji(move.card)} {move.card} →{" "}
         {zoneLabel(move.zone, lang)}{" "}
@@ -49,6 +69,7 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
     detail.winner === 0 ? strings.you_won : detail.winner === 1 ? strings.you_lost : strings.draw;
   const grades = detail.grade_counts ?? {};
   const moves = detail.move_log ?? [];
+  const [selected, setSelected] = useState<number | null>(null);
 
   return (
     <div className="modal-backdrop">
@@ -81,6 +102,8 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
           </div>
         )}
 
+        <EvaluationGraph detail={detail} strings={strings} lang={lang} selected={selected} onSelect={setSelected} />
+
         {detail.key_moments && detail.key_moments.length > 0 && (
           <div className="summary-section">
             <h3>{strings.key_moments}</h3>
@@ -101,7 +124,14 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
           ) : (
             <ul>
               {moves.map((move, i) => (
-                <MoveRow key={i} move={move} strings={strings} lang={lang} />
+                <MoveRow
+                  key={i}
+                  move={move}
+                  strings={strings}
+                  lang={lang}
+                  selected={i === selected}
+                  onSelect={() => setSelected(i)}
+                />
               ))}
             </ul>
           )}
