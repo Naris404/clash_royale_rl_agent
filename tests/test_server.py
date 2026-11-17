@@ -328,6 +328,51 @@ class TestGameSession:
         assert _end_match(session).detail["evaluation"] == []
 
 
+    @staticmethod
+    def _logged(score: float, delta: float | None = None) -> dict:
+        return {"time": 0.0, "card": "Knight", "zone": 0, "grade": "good", "score": score, "delta_value": delta}
+
+    def _review_of(self, inspector, moves: list[dict]) -> dict:
+        session = GameSession("s-review", MODE_COACH, inspector, seed=1)
+        session.move_log.extend(moves)
+        return _end_match(session).detail
+
+    def test_match_end_picks_strongest_and_weakest_by_evaluation_change(self, inspector):
+        deltas = [0.05, -0.30, 0.20, 0.00, -0.10, 0.40, 0.10]
+        detail = self._review_of(inspector, [self._logged(0.5, d) for d in deltas])
+        assert detail["strongest"] == [5, 2, 6]
+        assert detail["weakest"] == [1, 4, 3]
+
+    def test_match_end_ranks_by_grade_score_without_evaluations(self, inspector):
+        scores = [0.75, 0.0, 1.0, 0.4, 0.75, 1.0]
+        detail = self._review_of(inspector, [self._logged(s) for s in scores])
+        assert sorted(detail["strongest"]) == [2, 4, 5]
+        assert sorted(detail["weakest"]) == [0, 1, 3]
+        assert detail["weakest"][0] == 1 and detail["strongest"][0] in (2, 5)
+
+    def test_match_end_strongest_and_weakest_never_share_a_move(self, inspector):
+        for count in range(0, 9):
+            detail = self._review_of(inspector, [self._logged(0.5, 0.0) for _ in range(count)])
+            assert not set(detail["strongest"]) & set(detail["weakest"])
+            assert len(detail["strongest"]) == len(detail["weakest"]) == min(3, count // 2)
+
+    @pytest.mark.parametrize("count", [0, 1])
+    def test_match_end_has_no_strongest_or_weakest_with_under_two_moves(self, inspector, count):
+        detail = self._review_of(inspector, [self._logged(1.0, 0.1) for _ in range(count)])
+        assert detail["strongest"] == [] and detail["weakest"] == []
+        assert detail["moves"] == count
+
+    def test_match_end_picks_from_real_moves_with_a_model(self, untrained_model_path):
+        session = GameSession("s-pick-model", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        for i in range(4):
+            session.board.elixir[0] = 10.0
+            session.handle_play(session.board.get_hand(0)[0], 9.0, 6.0 + i)
+        detail = _end_match(session).detail
+        deltas = [m["delta_value"] for m in detail["move_log"]]
+        assert [deltas[i] for i in detail["strongest"]] == sorted(deltas, reverse=True)[:2]
+        assert [deltas[i] for i in detail["weakest"]] == sorted(deltas)[:2]
+
+
 class TestWebSocket:
     def test_full_flow(self, client):
         sid = client.post("/api/sessions", json={"mode": "coach", "seed": 1}).json()["session_id"]

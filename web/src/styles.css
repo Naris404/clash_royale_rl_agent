@@ -1052,6 +1052,14 @@ img.next-card-art {
   margin-top: 10px;
 }
 
+.highlight-move {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
 .move-time {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -1108,13 +1116,15 @@ img.next-card-art {
   opacity: 0.6;
 }
 
-.move-history li {
+.move-history li,
+.highlight-move {
   cursor: pointer;
   border-radius: 6px;
   padding: 4px 6px;
 }
 
-.move-history li.selected {
+.move-history li.selected,
+.highlight-move.selected {
   background: var(--panel-2);
 }
 
