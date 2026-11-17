@@ -3,6 +3,7 @@ import { formatTime, gradeLabel, Strings, zoneLabel } from "../i18n";
 import type { MatchEndDetail, MoveLogEntry } from "../net/types";
 import { cardEmoji } from "../scene/emoji";
 import { EvaluationGraph } from "./EvaluationGraph";
+import { MoveHighlights, signed } from "./MoveHighlights";
 
 interface Props {
   detail: MatchEndDetail & { winner?: number | null };
@@ -10,10 +11,6 @@ interface Props {
   lang: "pl" | "en";
   onRematch: () => void;
   onMenu: () => void;
-}
-
-function signed(value: number): string {
-  return (value >= 0 ? "+" : "") + value.toFixed(2);
 }
 
 interface MoveRowProps {
@@ -69,7 +66,7 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
     detail.winner === 0 ? strings.you_won : detail.winner === 1 ? strings.you_lost : strings.draw;
   const grades = detail.grade_counts ?? {};
   const moves = detail.move_log ?? [];
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null); // move_log index
 
   return (
     <div className="modal-backdrop">
@@ -116,6 +113,16 @@ export function SummaryModal({ detail, strings, lang, onRematch, onMenu }: Props
             </ul>
           </div>
         )}
+
+        <MoveHighlights
+          moves={moves}
+          strongest={detail.strongest ?? []}
+          weakest={detail.weakest ?? []}
+          selected={selected}
+          onSelect={setSelected}
+          strings={strings}
+          lang={lang}
+        />
 
         <div className="summary-section move-history">
           <h3>{strings.move_history}</h3>

@@ -179,6 +179,8 @@ export interface MatchEndDetail {
   key_moments: Array<{ time: number; delta_value: number; value: number; note: string }>;
   evaluation: EvaluationSample[]; // empty without a trained model
   move_log: MoveLogEntry[];
+  strongest: number[]; // move_log indices
+  weakest: number[];
 }
 
 export interface EventMsg {
