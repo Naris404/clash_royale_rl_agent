@@ -15,6 +15,7 @@ from cr_rl.server.sessions import (
     HINT_EVERY_TICKS,
     MODE_COACH,
     MODE_VS_BOT,
+    MODE_VS_RL,
     GameSession,
     SessionManager,
 )
@@ -31,6 +32,15 @@ def inspector() -> PolicyInspector:
 def client(inspector, tmp_path) -> TestClient:
     with TestClient(create_app(inspector, models_dir=tmp_path)) as test_client:
         yield test_client
+
+
+LIVE_COACH_MESSAGES = {"hint", "feedback", "key_moment"}
+
+
+def _session(mode: str, model_path) -> GameSession:
+    """A session of `mode` whose Coach (and RL Opponent) run the model at `model_path`."""
+    inspector = PolicyInspector(model_path)
+    return GameSession(f"s-{mode}", mode, inspector, seed=1, rl_model=inspector.model)
 
 
 def _end_match(session: GameSession):
@@ -133,8 +143,10 @@ class TestGameSession:
 
     def test_vs_bot_mode_has_no_hints(self, inspector):
         session = GameSession("s3", MODE_VS_BOT, inspector, seed=1)
+        card = session.board.get_hand(0)[0]
+        assert session.handle_play(card, 9.0, 6.0) == []
         for _ in range(HINT_EVERY_TICKS * 2):
-            assert all(m.type != "hint" for m in session.tick())
+            assert all(m.type not in LIVE_COACH_MESSAGES for m in session.tick())
 
     def test_handle_play_grades_and_logs_move(self, inspector):
         session = GameSession("s4", MODE_COACH, inspector, seed=1)
@@ -265,6 +277,48 @@ class TestGameSession:
                 session.tick()
         (moment,) = _end_match(session).detail["key_moments"]
         assert moment["value"] == 0.5
+
+    @pytest.mark.parametrize("mode", [MODE_VS_BOT, MODE_VS_RL])
+    def test_review_is_built_quietly_in_modes_without_the_coach(self, mode, untrained_model_path):
+        session = _session(mode, untrained_model_path)
+        card = session.board.get_hand(0)[0]
+        messages = session.handle_play(card, 9.0, 6.0)
+        for _ in range(3 * HINT_EVERY_TICKS):
+            messages.extend(session.tick())
+        end = _end_match(session)
+
+        assert all(m.type not in LIVE_COACH_MESSAGES for m in messages)
+        (move,) = end.detail["move_log"]
+        assert move["card"] == card
+        assert move["value_before"] is not None and move["delta_value"] is not None
+        assert move["best_card"] in DECK and move["reason"]
+        times = [sample["time"] for sample in end.detail["evaluation"]]
+        assert len(times) == 3 and times == sorted(times)
+
+    def test_vs_bot_samples_the_same_evaluation_as_coach_mode(self, untrained_model_path):
+        evaluations = []
+        for mode in (MODE_COACH, MODE_VS_BOT):
+            session = _session(mode, untrained_model_path)
+            for _ in range(3 * HINT_EVERY_TICKS):
+                session.tick()
+            evaluations.append(_end_match(session).detail["evaluation"])
+        assert evaluations[0] == evaluations[1] != []
+
+    def test_vs_bot_tracks_key_moments_without_announcing_them(self, inspector):
+        session = GameSession("s-quiet-moment", MODE_VS_BOT, inspector, seed=1)
+        messages = []
+        for value in (0.0, 0.5):  # a swing of 0.5 is a Key moment
+            session.coach.value = lambda board, player=0, v=value: v
+            for _ in range(HINT_EVERY_TICKS):
+                messages.extend(session.tick())
+        assert all(m.type != "key_moment" for m in messages)
+        (moment,) = _end_match(session).detail["key_moments"]
+        assert moment["value"] == 0.5
+
+    def test_only_coach_mode_is_enabled_for_the_client(self, inspector):
+        assert GameSession("s-c", MODE_COACH, inspector).hello().coach_enabled
+        assert not GameSession("s-b", MODE_VS_BOT, inspector).hello().coach_enabled
+        assert not GameSession("s-r", MODE_VS_RL, inspector).hello().coach_enabled
 
     def test_rematch_clears_the_evaluation(self, untrained_model_path):
         session = GameSession("s-eval-rematch", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)

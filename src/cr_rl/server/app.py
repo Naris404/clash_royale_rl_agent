@@ -118,7 +118,7 @@ def create_app(
         return CreateSessionResponse(
             session_id=session.id,
             mode=session.mode,
-            coach_enabled=session.coach is not None,
+            coach_enabled=session.coach_enabled,
             model=session.model_id,
         )
 

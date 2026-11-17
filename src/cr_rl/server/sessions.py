@@ -110,9 +110,9 @@ class GameSession:
 
         self.board = Board(seed=seed)
         self.board.reset(seed=seed)
-        self.coach: Optional[CoachEngine] = (
-            CoachEngine(inspector, lang=lang) if mode == MODE_COACH else None
-        )
+        # the Coach runs in every mode to build the Match review; only Coach mode shows it live
+        self.coach = CoachEngine(inspector, lang=lang)
+        self.coach_enabled = mode == MODE_COACH
         # the RL Opponent plays an already loaded model; without one it is the rule-based bot
         plays_rl = mode == MODE_VS_RL and rl_model is not None
         self.model_id = rl_model_id if plays_rl else None
@@ -174,9 +174,9 @@ class GameSession:
                 ]
 
             messages: list[ServerMessage] = []
-            if self.coach is not None:
-                grade = self.coach.grade_move(self.board, card, x, y, player=0)
-                self.move_log.append({"time": self.board.time, **asdict(grade)})
+            grade = self.coach.grade_move(self.board, card, x, y, player=0)
+            self.move_log.append({"time": self.board.time, **asdict(grade)})
+            if self.coach_enabled:
                 messages.append(
                     FeedbackMsg(
                         grade=grade.grade,
@@ -227,29 +227,8 @@ class GameSession:
 
             messages: list[ServerMessage] = [self.build_snapshot()]
 
-            if self.coach is not None and self.tick_count % HINT_EVERY_TICKS == 0:
-                suggestion = self.coach.suggest(self.board, player=0)
-                messages.append(
-                    HintMsg(
-                        card=suggestion.card,
-                        slot=suggestion.slot,
-                        zone=suggestion.zone,
-                        prob=suggestion.prob,
-                        value=suggestion.value,
-                        reason=suggestion.reason,
-                        hint=suggestion.hint,
-                        top=suggestion.top,
-                        source=suggestion.source,
-                        aim=suggestion.aim,
-                    )
-                )
-                if suggestion.value is not None:
-                    self.evaluation.append({"time": self.board.time, "value": suggestion.value})
-                moment = self._key_moments.update(self.board.time, suggestion.value)
-                if moment is not None:
-                    messages.append(
-                        KeyMomentMsg(time=moment.time, delta_value=moment.delta_value, note=moment.note)
-                    )
+            if self.tick_count % HINT_EVERY_TICKS == 0:
+                messages.extend(self._sample_evaluation())
 
             messages.extend(self._detect_tower_events())
 
@@ -257,6 +236,35 @@ class GameSession:
                 messages.append(self._match_end_event())
 
             return messages
+
+    def _sample_evaluation(self) -> list[ServerMessage]:
+        """Records the player's evaluation and Key moments; returns the live Coach messages (Coach mode only)."""
+        messages: list[ServerMessage] = []
+        if self.coach_enabled:
+            suggestion = self.coach.suggest(self.board, player=0)
+            value = suggestion.value
+            messages.append(
+                HintMsg(
+                    card=suggestion.card,
+                    slot=suggestion.slot,
+                    zone=suggestion.zone,
+                    prob=suggestion.prob,
+                    value=value,
+                    reason=suggestion.reason,
+                    hint=suggestion.hint,
+                    top=suggestion.top,
+                    source=suggestion.source,
+                    aim=suggestion.aim,
+                )
+            )
+        else:
+            value = self.coach.value(self.board, player=0)
+        if value is not None:
+            self.evaluation.append({"time": self.board.time, "value": value})
+        moment = self._key_moments.update(self.board.time, value)
+        if moment is not None and self.coach_enabled:
+            messages.append(KeyMomentMsg(time=moment.time, delta_value=moment.delta_value, note=moment.note))
+        return messages
 
     async def run(self, outbox: asyncio.Queue) -> None:
         """Real-time loop; tick runs in an executor so it does not block the loop."""
@@ -284,7 +292,7 @@ class GameSession:
         return HelloMsg(
             session_id=self.id,
             mode=self.mode,
-            coach_enabled=self.coach is not None,
+            coach_enabled=self.coach_enabled,
             lang=self.lang,
             config=arena_config(),
         )

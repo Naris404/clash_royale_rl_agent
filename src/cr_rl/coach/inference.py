@@ -107,6 +107,13 @@ class PolicyInspector:
         )
 
     def value(self, board: Board, player: int = 0) -> Optional[float]:
-        """V(s) only — faster path for the eval bar and key moments."""
-        estimate = self.estimate(board, player)
-        return estimate.value if estimate else None
+        """V(s) only — skips the action distribution, a faster path for the evaluation and Key moments."""
+        if self._model is None:
+            return None
+
+        import torch
+
+        obs = board.get_observation(player)
+        with self._lock, torch.no_grad():
+            obs_t = torch.as_tensor(obs, dtype=torch.float32, device=self._model.policy.device).unsqueeze(0)
+            return float(self._model.policy.predict_values(obs_t).item())

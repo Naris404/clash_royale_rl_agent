@@ -229,6 +229,10 @@ class CoachEngine:
             aim=_aim(board, player, card, zone_idx),
         )
 
+    def value(self, board: Board, player: int = 0) -> Optional[float]:
+        """V(s) alone, cheaper than suggest(); None without a model (the heuristic has no value)."""
+        return self.inspector.value(board, player)
+
     # --- play grading ---
 
     def grade_move(self, board: Board, card: str, x: float, y: float, player: int = 0) -> MoveGrade:
