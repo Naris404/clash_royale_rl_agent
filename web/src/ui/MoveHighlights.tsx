@@ -1,10 +1,6 @@
-import { formatTime, gradeLabel, Strings, zoneLabel } from "../i18n";
+import { signed, Strings } from "../i18n";
 import type { MoveLogEntry } from "../net/types";
-import { cardEmoji } from "../scene/emoji";
-
-export function signed(value: number): string {
-  return (value >= 0 ? "+" : "") + value.toFixed(2);
-}
+import { MoveLabel } from "./MoveLabel";
 
 interface Props {
   moves: MoveLogEntry[];
@@ -37,9 +33,7 @@ export function MoveHighlights({ moves, strongest, weakest, selected, onSelect, 
                       className={`highlight-move${selected === i ? " selected" : ""}`}
                       onClick={() => onSelect(i)}
                     >
-                      <span className="move-time">{formatTime(move.time)}</span> {cardEmoji(move.card)}{" "}
-                      {move.card} → {zoneLabel(move.zone, lang)}{" "}
-                      <span className={`grade-tag grade-${move.grade}`}>{gradeLabel(move.grade, lang)}</span>
+                      <MoveLabel move={move} lang={lang} />
                       {move.delta_value != null && ` (${signed(move.delta_value)})`}
                     </button>
                   </li>

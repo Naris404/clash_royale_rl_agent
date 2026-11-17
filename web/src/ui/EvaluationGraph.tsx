@@ -35,15 +35,19 @@ export function EvaluationGraph({ detail, strings, lang, selected, onSelect }: P
       <svg className="eval-graph" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={strings.evaluation_graph}>
         <line className="eval-zero" x1={PAD} x2={WIDTH - PAD} y1={y(0)} y2={y(0)} />
         <polyline className="eval-line" points={line} />
-        {detail.key_moments.map((km, i) => (
-          <polygon
-            key={`km-${i}`}
-            className={km.delta_value >= 0 ? "km-good" : "km-bad"}
-            points={`${x(km.time)},${y(km.value) - 5} ${x(km.time) + 4},${y(km.value)} ${x(km.time)},${y(km.value) + 5} ${x(km.time) - 4},${y(km.value)}`}
-          >
-            <title>{km.note}</title>
-          </polygon>
-        ))}
+        {detail.key_moments.map((km, i) => {
+          const cx = x(km.time);
+          const cy = y(km.value);
+          return (
+            <polygon
+              key={`km-${i}`}
+              className={km.delta_value >= 0 ? "km-good" : "km-bad"}
+              points={`${cx},${cy - 5} ${cx + 4},${cy} ${cx},${cy + 5} ${cx - 4},${cy}`}
+            >
+              <title>{km.note}</title>
+            </polygon>
+          );
+        })}
         {detail.move_log.map((move, i) =>
           move.value_before == null ? null : (
             <g

@@ -238,6 +238,10 @@ export function zoneLabel(zone: number | null | undefined, lang: Lang): string {
   return lang === "pl" ? pl[zone] : en[zone];
 }
 
+export function signed(value: number): string {
+  return (value >= 0 ? "+" : "") + value.toFixed(2);
+}
+
 export function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);

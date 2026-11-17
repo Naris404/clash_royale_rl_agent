@@ -224,7 +224,6 @@ class TestGameSession:
         assert end.detail["crowns"] == [3, 0]
         assert "grade_counts" in end.detail
 
-
     def test_match_end_move_log_keeps_the_full_grade_without_a_model(self, inspector):
         session = GameSession("s-log-heuristic", MODE_COACH, inspector, seed=1)
         session.board.elixir[0] = 10.0  # the heuristic plays a card instead of waiting
@@ -326,7 +325,6 @@ class TestGameSession:
             session.tick()
         session.rematch()
         assert _end_match(session).detail["evaluation"] == []
-
 
     @staticmethod
     def _logged(score: float, delta: float | None = None) -> dict:

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { formatTime, gradeLabel, Strings, zoneLabel } from "../i18n";
+import { formatTime, gradeLabel, signed, Strings, zoneLabel } from "../i18n";
 import type { MatchEndDetail, MoveLogEntry } from "../net/types";
 import { cardEmoji } from "../scene/emoji";
 import { EvaluationGraph } from "./EvaluationGraph";
-import { MoveHighlights, signed } from "./MoveHighlights";
+import { MoveHighlights } from "./MoveHighlights";
+import { MoveLabel } from "./MoveLabel";
 
 interface Props {
   detail: MatchEndDetail & { winner?: number | null };
@@ -36,9 +37,7 @@ function MoveRow({ move, strings, lang, selected, onSelect }: MoveRowProps) {
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
     >
       <div>
-        <span className="move-time">{formatTime(move.time)}</span> {cardEmoji(move.card)} {move.card} →{" "}
-        {zoneLabel(move.zone, lang)}{" "}
-        <span className={`grade-tag grade-${move.grade}`}>{gradeLabel(move.grade, lang)}</span>
+        <MoveLabel move={move} lang={lang} />
       </div>
       {before != null && after != null && delta != null && (
         <div className="move-detail">
