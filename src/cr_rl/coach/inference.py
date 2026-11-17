@@ -78,13 +78,12 @@ class PolicyInspector:
 
         import torch
 
-        obs = board.get_observation(player)
         mask = board.valid_action_mask(player)
         mask[list(blocked)] = False
 
         with self._lock, torch.no_grad():
+            obs_t = self._observation_tensor(board, player)
             device = self._model.policy.device
-            obs_t = torch.as_tensor(obs, dtype=torch.float32, device=device).unsqueeze(0)
             mask_t = torch.as_tensor(mask, dtype=torch.bool, device=device).unsqueeze(0)
 
             distribution = self._model.policy.get_distribution(obs_t, mask_t)
@@ -107,6 +106,18 @@ class PolicyInspector:
         )
 
     def value(self, board: Board, player: int = 0) -> Optional[float]:
-        """V(s) only — faster path for the eval bar and key moments."""
-        estimate = self.estimate(board, player)
-        return estimate.value if estimate else None
+        """V(s) only — skips the action distribution, a faster path for the evaluation and Key moments."""
+        if self._model is None:
+            return None
+
+        import torch
+
+        with self._lock, torch.no_grad():
+            return float(self._model.policy.predict_values(self._observation_tensor(board, player)).item())
+
+    def _observation_tensor(self, board: Board, player: int):
+        """The player's observation as a batch-of-one float tensor on the model's device."""
+        import torch
+
+        obs = board.get_observation(player)
+        return torch.as_tensor(obs, dtype=torch.float32, device=self._model.policy.device).unsqueeze(0)

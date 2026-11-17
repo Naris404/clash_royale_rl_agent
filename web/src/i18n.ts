@@ -44,9 +44,19 @@ export const STRINGS = {
     back_to_menu: "Menu",
     move_history: "Historia Twoich ruchów",
     no_moves: "Nie zagrałeś żadnej karty.",
+    match_review: "Przegląd meczu",
+    evaluation: "Ocena",
+    evaluation_graph: "Ocena w czasie meczu",
+    evaluation_graph_hint: "Wyżej = lepiej dla Ciebie. Kliknij punkt, aby zobaczyć ruch.",
+    evaluation_needs_model: "Wykres oceny wymaga wytrenowanego modelu. Bez niego ruchy są oceniane heurystyką.",
+    agent_move: "Agent zagrałby",
+    agent_waits: "Agent by poczekał",
+    same_as_yours: "Tak samo jak Ty",
     how_to_play: "Kliknij kartę, potem pole na swojej połowie areny. Fireball możesz rzucić wszędzie.",
     footer_thesis: "Projekt dyplomowy — uczenie ze wzmacnianiem (PPO) i sieci neuronowe",
     connection_lost: "Połączenie przerwane — odśwież stronę.",
+    strongest_moves: "Najmocniejsze ruchy",
+    weakest_moves: "Najsłabsze ruchy",
     elixir: "Eliksir",
     portfolio_eyebrow: "Interaktywny projekt dyplomowy",
     portfolio_intro: "Agent PPO nie tylko gra — analizuje pozycję, proponuje ruch i wyjaśnia błędy decyzyjne w czasie rzeczywistym.",
@@ -120,9 +130,19 @@ export const STRINGS = {
     back_to_menu: "Menu",
     move_history: "Your move history",
     no_moves: "You played no cards.",
+    match_review: "Match review",
+    evaluation: "Evaluation",
+    evaluation_graph: "Evaluation over the match",
+    evaluation_graph_hint: "Higher is better for you. Click a dot to see the move.",
+    evaluation_needs_model: "The evaluation graph needs a trained model. Without one, moves are graded by a heuristic.",
+    agent_move: "The agent would play",
+    agent_waits: "The agent would wait",
+    same_as_yours: "Same as yours",
     how_to_play: "Click a card, then a tile on your half of the arena. Fireball can be cast anywhere.",
     footer_thesis: "Thesis project — reinforcement learning (PPO) and neural networks",
     connection_lost: "Connection lost — refresh the page.",
+    strongest_moves: "Strongest moves",
+    weakest_moves: "Weakest moves",
     elixir: "Elixir",
     portfolio_eyebrow: "Interactive engineering thesis",
     portfolio_intro: "The PPO agent does more than play: it evaluates positions, recommends moves, and explains decision errors in real time.",
@@ -216,6 +236,10 @@ export function zoneLabel(zone: number | null | undefined, lang: Lang): string {
   ];
   if (zone == null || zone < 0 || zone >= en.length) return "";
   return lang === "pl" ? pl[zone] : en[zone];
+}
+
+export function signed(value: number): string {
+  return (value >= 0 ? "+" : "") + value.toFixed(2);
 }
 
 export function formatTime(seconds: number): string {

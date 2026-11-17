@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from cr_rl.coach.evaluator import Suggestion
 from cr_rl.coach.inference import PolicyInspector
 from cr_rl.game.board import REGULATION_TIME
 from cr_rl.game.cards import DECK, cards_dic
@@ -14,6 +15,7 @@ from cr_rl.server.sessions import (
     HINT_EVERY_TICKS,
     MODE_COACH,
     MODE_VS_BOT,
+    MODE_VS_RL,
     GameSession,
     SessionManager,
 )
@@ -30,6 +32,23 @@ def inspector() -> PolicyInspector:
 def client(inspector, tmp_path) -> TestClient:
     with TestClient(create_app(inspector, models_dir=tmp_path)) as test_client:
         yield test_client
+
+
+LIVE_COACH_MESSAGES = {"hint", "feedback", "key_moment"}
+
+
+def _session(mode: str, model_path) -> GameSession:
+    """A session of `mode` whose Coach (and RL Opponent) run the model at `model_path`."""
+    inspector = PolicyInspector(model_path)
+    return GameSession(f"s-{mode}", mode, inspector, seed=1, rl_model=inspector.model)
+
+
+def _end_match(session: GameSession):
+    """Ends the match by killing the enemy King Tower; returns the match_end event."""
+    king = next(t for t in session.board.towers if t.owner == 1 and t.name == "King_Tower")
+    king.hp = 0.0
+    king.alive = False
+    return next(m for m in session.tick() if m.type == "event" and m.kind == "match_end")
 
 
 class TestRest:
@@ -124,8 +143,10 @@ class TestGameSession:
 
     def test_vs_bot_mode_has_no_hints(self, inspector):
         session = GameSession("s3", MODE_VS_BOT, inspector, seed=1)
+        card = session.board.get_hand(0)[0]
+        assert session.handle_play(card, 9.0, 6.0) == []
         for _ in range(HINT_EVERY_TICKS * 2):
-            assert all(m.type != "hint" for m in session.tick())
+            assert all(m.type not in LIVE_COACH_MESSAGES for m in session.tick())
 
     def test_handle_play_grades_and_logs_move(self, inspector):
         session = GameSession("s4", MODE_COACH, inspector, seed=1)
@@ -202,6 +223,152 @@ class TestGameSession:
         assert end.detail["winner"] == 0
         assert end.detail["crowns"] == [3, 0]
         assert "grade_counts" in end.detail
+
+    def test_match_end_move_log_keeps_the_full_grade_without_a_model(self, inspector):
+        session = GameSession("s-log-heuristic", MODE_COACH, inspector, seed=1)
+        session.board.elixir[0] = 10.0  # the heuristic plays a card instead of waiting
+        card = session.board.get_hand(0)[0]
+        session.handle_play(card, 9.0, 6.0)
+        move = _end_match(session).detail["move_log"][0]
+        assert (move["time"], move["card"]) == (0.0, card)
+        assert move["grade"] in {"best", "good", "inaccuracy", "blunder"}
+        assert move["value_before"] is None and move["value_after"] is None
+        assert move["delta_value"] is None and move["human_prob"] is None
+        assert move["best_card"] in DECK
+        assert isinstance(move["best_zone"], int)
+        assert move["reason"]
+
+    def test_match_end_move_log_keeps_the_full_grade_with_a_model(self, untrained_model_path):
+        session = GameSession("s-log-model", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        card = session.board.get_hand(0)[0]
+        session.handle_play(card, 9.0, 6.0)
+        move = _end_match(session).detail["move_log"][0]
+        assert move["value_before"] is not None and move["value_after"] is not None
+        assert move["delta_value"] == pytest.approx(move["value_after"] - move["value_before"])
+        assert 0.0 <= move["human_prob"] <= 1.0
+        assert 0.0 <= move["best_prob"] <= 1.0
+        assert move["best_card"] in DECK and isinstance(move["best_zone"], int)
+        assert move["reason"]
+
+    def test_match_end_evaluation_is_sampled_at_the_hint_interval(self, untrained_model_path):
+        session = GameSession("s-eval", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        hint_values = []
+        for _ in range(3 * HINT_EVERY_TICKS):
+            hint_values.extend(m.value for m in session.tick() if m.type == "hint")
+        evaluation = _end_match(session).detail["evaluation"]
+        assert [sample["value"] for sample in evaluation] == hint_values
+        times = [sample["time"] for sample in evaluation]
+        assert len(times) == 3 and times == sorted(times)
+
+    def test_match_end_evaluation_is_empty_without_a_model(self, inspector):
+        session = GameSession("s-eval-none", MODE_COACH, inspector, seed=1)
+        for _ in range(2 * HINT_EVERY_TICKS):
+            session.tick()
+        assert _end_match(session).detail["evaluation"] == []
+
+    def test_match_end_key_moments_carry_their_value(self, inspector):
+        session = GameSession("s-moment", MODE_COACH, inspector, seed=1)
+        for value in (0.0, 0.5):  # a swing of 0.5 is a Key moment
+            session.coach.suggest = lambda board, player=0, v=value: Suggestion(
+                card=None, slot=None, zone=None, prob=None, value=v, reason="", hint=""
+            )
+            for _ in range(HINT_EVERY_TICKS):
+                session.tick()
+        (moment,) = _end_match(session).detail["key_moments"]
+        assert moment["value"] == 0.5
+
+    @pytest.mark.parametrize("mode", [MODE_VS_BOT, MODE_VS_RL])
+    def test_review_is_built_quietly_in_modes_without_the_coach(self, mode, untrained_model_path):
+        session = _session(mode, untrained_model_path)
+        card = session.board.get_hand(0)[0]
+        messages = session.handle_play(card, 9.0, 6.0)
+        for _ in range(3 * HINT_EVERY_TICKS):
+            messages.extend(session.tick())
+        end = _end_match(session)
+
+        assert all(m.type not in LIVE_COACH_MESSAGES for m in messages)
+        (move,) = end.detail["move_log"]
+        assert move["card"] == card
+        assert move["value_before"] is not None and move["delta_value"] is not None
+        assert move["best_card"] in DECK and move["reason"]
+        times = [sample["time"] for sample in end.detail["evaluation"]]
+        assert len(times) == 3 and times == sorted(times)
+
+    def test_vs_bot_samples_the_same_evaluation_as_coach_mode(self, untrained_model_path):
+        evaluations = []
+        for mode in (MODE_COACH, MODE_VS_BOT):
+            session = _session(mode, untrained_model_path)
+            for _ in range(3 * HINT_EVERY_TICKS):
+                session.tick()
+            evaluations.append(_end_match(session).detail["evaluation"])
+        assert evaluations[0] == evaluations[1] != []
+
+    def test_vs_bot_tracks_key_moments_without_announcing_them(self, inspector):
+        session = GameSession("s-quiet-moment", MODE_VS_BOT, inspector, seed=1)
+        messages = []
+        for value in (0.0, 0.5):  # a swing of 0.5 is a Key moment
+            session.coach.value = lambda board, player=0, v=value: v
+            for _ in range(HINT_EVERY_TICKS):
+                messages.extend(session.tick())
+        assert all(m.type != "key_moment" for m in messages)
+        (moment,) = _end_match(session).detail["key_moments"]
+        assert moment["value"] == 0.5
+
+    def test_only_coach_mode_is_enabled_for_the_client(self, inspector):
+        assert GameSession("s-c", MODE_COACH, inspector).hello().coach_enabled
+        assert not GameSession("s-b", MODE_VS_BOT, inspector).hello().coach_enabled
+        assert not GameSession("s-r", MODE_VS_RL, inspector).hello().coach_enabled
+
+    def test_rematch_clears_the_evaluation(self, untrained_model_path):
+        session = GameSession("s-eval-rematch", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        for _ in range(HINT_EVERY_TICKS):
+            session.tick()
+        session.rematch()
+        assert _end_match(session).detail["evaluation"] == []
+
+    @staticmethod
+    def _logged(score: float, delta: float | None = None) -> dict:
+        return {"time": 0.0, "card": "Knight", "zone": 0, "grade": "good", "score": score, "delta_value": delta}
+
+    def _review_of(self, inspector, moves: list[dict]) -> dict:
+        session = GameSession("s-review", MODE_COACH, inspector, seed=1)
+        session.move_log.extend(moves)
+        return _end_match(session).detail
+
+    def test_match_end_picks_strongest_and_weakest_by_evaluation_change(self, inspector):
+        deltas = [0.05, -0.30, 0.20, 0.00, -0.10, 0.40, 0.10]
+        detail = self._review_of(inspector, [self._logged(0.5, d) for d in deltas])
+        assert detail["strongest"] == [5, 2, 6]
+        assert detail["weakest"] == [1, 4, 3]
+
+    def test_match_end_ranks_by_grade_score_without_evaluations(self, inspector):
+        scores = [0.75, 0.0, 1.0, 0.4, 0.75, 1.0]
+        detail = self._review_of(inspector, [self._logged(s) for s in scores])
+        assert sorted(detail["strongest"]) == [2, 4, 5]
+        assert sorted(detail["weakest"]) == [0, 1, 3]
+        assert detail["weakest"][0] == 1 and detail["strongest"][0] in (2, 5)
+
+    def test_match_end_strongest_and_weakest_never_share_a_move(self, inspector):
+        for count in range(0, 9):
+            detail = self._review_of(inspector, [self._logged(0.5, 0.0) for _ in range(count)])
+            assert not set(detail["strongest"]) & set(detail["weakest"])
+            assert len(detail["strongest"]) == len(detail["weakest"]) == min(3, count // 2)
+
+    @pytest.mark.parametrize("count", [0, 1])
+    def test_match_end_has_no_strongest_or_weakest_with_under_two_moves(self, inspector, count):
+        detail = self._review_of(inspector, [self._logged(1.0, 0.1) for _ in range(count)])
+        assert detail["strongest"] == [] and detail["weakest"] == []
+        assert detail["moves"] == count
+
+    def test_match_end_picks_from_real_moves_with_a_model(self, untrained_model_path):
+        session = GameSession("s-pick-model", MODE_COACH, PolicyInspector(untrained_model_path), seed=1)
+        for i in range(4):
+            session.board.elixir[0] = 10.0
+            session.handle_play(session.board.get_hand(0)[0], 9.0, 6.0 + i)
+        detail = _end_match(session).detail
+        deltas = [m["delta_value"] for m in detail["move_log"]]
+        assert [deltas[i] for i in detail["strongest"]] == sorted(deltas, reverse=True)[:2]
+        assert [deltas[i] for i in detail["weakest"]] == sorted(deltas)[:2]
 
 
 class TestWebSocket:

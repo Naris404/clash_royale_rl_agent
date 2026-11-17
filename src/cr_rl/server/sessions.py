@@ -11,6 +11,7 @@ import asyncio
 import logging
 import threading
 import uuid
+from dataclasses import asdict
 from typing import Any, Optional
 
 from cr_rl.game.board import (
@@ -33,6 +34,7 @@ from cr_rl.coach.inference import PolicyInspector
 from cr_rl.agents.logic import LogicAgent
 from cr_rl.agents.rl import RLAgent
 from cr_rl.server.model_catalogue import ModelCatalogue
+from cr_rl.server.review import pick_strongest_weakest
 from cr_rl.server.protocol import (
     ErrorMsg,
     EventMsg,
@@ -109,9 +111,9 @@ class GameSession:
 
         self.board = Board(seed=seed)
         self.board.reset(seed=seed)
-        self.coach: Optional[CoachEngine] = (
-            CoachEngine(inspector, lang=lang) if mode == MODE_COACH else None
-        )
+        # the Coach runs in every mode to build the Match review; only Coach mode shows it live
+        self.coach = CoachEngine(inspector, lang=lang)
+        self.coach_enabled = mode == MODE_COACH
         # the RL Opponent plays an already loaded model; without one it is the rule-based bot
         plays_rl = mode == MODE_VS_RL and rl_model is not None
         self.model_id = rl_model_id if plays_rl else None
@@ -129,6 +131,7 @@ class GameSession:
         self._next_entity_id = 1
         self._key_moments = KeyMomentTracker(lang=lang)
         self.move_log: list[dict] = []
+        self.evaluation: list[dict] = []  # {time, value} from the player's side, one per Hint interval
         self._alive_towers = self._tower_ids_alive()
         self._tower_id_map = self._build_tower_id_map()
 
@@ -172,18 +175,9 @@ class GameSession:
                 ]
 
             messages: list[ServerMessage] = []
-            if self.coach is not None:
-                grade = self.coach.grade_move(self.board, card, x, y, player=0)
-                self.move_log.append(
-                    {
-                        "time": self.board.time,
-                        "card": card,
-                        "zone": grade.zone,
-                        "grade": grade.grade,
-                        "score": grade.score,
-                        "delta_value": grade.delta_value,
-                    }
-                )
+            grade = self.coach.grade_move(self.board, card, x, y, player=0)
+            self.move_log.append({"time": self.board.time, **asdict(grade)})
+            if self.coach_enabled:
                 messages.append(
                     FeedbackMsg(
                         grade=grade.grade,
@@ -216,6 +210,7 @@ class GameSession:
             self.tick_count = 0
             self.paused = False
             self.move_log.clear()
+            self.evaluation.clear()
             self._key_moments.reset()
             self.opponent.reset()
             self._tower_id_map = self._build_tower_id_map()
@@ -233,27 +228,8 @@ class GameSession:
 
             messages: list[ServerMessage] = [self.build_snapshot()]
 
-            if self.coach is not None and self.tick_count % HINT_EVERY_TICKS == 0:
-                suggestion = self.coach.suggest(self.board, player=0)
-                messages.append(
-                    HintMsg(
-                        card=suggestion.card,
-                        slot=suggestion.slot,
-                        zone=suggestion.zone,
-                        prob=suggestion.prob,
-                        value=suggestion.value,
-                        reason=suggestion.reason,
-                        hint=suggestion.hint,
-                        top=suggestion.top,
-                        source=suggestion.source,
-                        aim=suggestion.aim,
-                    )
-                )
-                moment = self._key_moments.update(self.board.time, suggestion.value)
-                if moment is not None:
-                    messages.append(
-                        KeyMomentMsg(time=moment.time, delta_value=moment.delta_value, note=moment.note)
-                    )
+            if self.tick_count % HINT_EVERY_TICKS == 0:
+                messages.extend(self._sample_evaluation())
 
             messages.extend(self._detect_tower_events())
 
@@ -261,6 +237,35 @@ class GameSession:
                 messages.append(self._match_end_event())
 
             return messages
+
+    def _sample_evaluation(self) -> list[ServerMessage]:
+        """Records the player's evaluation and Key moments; returns the live Coach messages (Coach mode only)."""
+        messages: list[ServerMessage] = []
+        if self.coach_enabled:
+            suggestion = self.coach.suggest(self.board, player=0)
+            value = suggestion.value
+            messages.append(
+                HintMsg(
+                    card=suggestion.card,
+                    slot=suggestion.slot,
+                    zone=suggestion.zone,
+                    prob=suggestion.prob,
+                    value=value,
+                    reason=suggestion.reason,
+                    hint=suggestion.hint,
+                    top=suggestion.top,
+                    source=suggestion.source,
+                    aim=suggestion.aim,
+                )
+            )
+        else:
+            value = self.coach.value(self.board, player=0)
+        if value is not None:
+            self.evaluation.append({"time": self.board.time, "value": value})
+        moment = self._key_moments.update(self.board.time, value)
+        if moment is not None and self.coach_enabled:
+            messages.append(KeyMomentMsg(time=moment.time, delta_value=moment.delta_value, note=moment.note))
+        return messages
 
     async def run(self, outbox: asyncio.Queue) -> None:
         """Real-time loop; tick runs in an executor so it does not block the loop."""
@@ -288,7 +293,7 @@ class GameSession:
         return HelloMsg(
             session_id=self.id,
             mode=self.mode,
-            coach_enabled=self.coach is not None,
+            coach_enabled=self.coach_enabled,
             lang=self.lang,
             config=arena_config(),
         )
@@ -406,6 +411,7 @@ class GameSession:
         top_moments = sorted(
             self._key_moments.moments, key=lambda m: abs(m.delta_value), reverse=True
         )[:5]
+        strongest, weakest = pick_strongest_weakest(self.move_log)
         return EventMsg(
             kind="match_end",
             detail={
@@ -416,10 +422,13 @@ class GameSession:
                 "mean_score": (sum(scores) / len(scores)) if scores else None,
                 "grade_counts": grade_counts,
                 "key_moments": [
-                    {"time": m.time, "delta_value": m.delta_value, "note": m.note}
+                    {"time": m.time, "delta_value": m.delta_value, "value": m.value, "note": m.note}
                     for m in top_moments
                 ],
+                "evaluation": self.evaluation,
                 "move_log": self.move_log,
+                "strongest": strongest,
+                "weakest": weakest,
             },
         )
 

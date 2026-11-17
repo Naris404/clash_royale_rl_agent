@@ -148,13 +148,25 @@ export interface KeyMoment {
   note: string;
 }
 
+export interface EvaluationSample {
+  time: number;
+  value: number; // the policy's value estimate from the player's side
+}
+
 export interface MoveLogEntry {
   time: number;
   card: string;
   zone: number;
   grade: Grade;
   score: number;
+  human_prob?: number | null;
+  value_before?: number | null; // evaluation before the move; null without a trained model
+  value_after?: number | null;
   delta_value?: number | null;
+  best_card?: string | null; // the agent's move from the same position; null when it would wait
+  best_zone?: number | null;
+  best_prob?: number | null;
+  reason: string;
 }
 
 export interface MatchEndDetail {
@@ -164,8 +176,11 @@ export interface MatchEndDetail {
   moves: number;
   mean_score?: number | null;
   grade_counts: Record<string, number>;
-  key_moments: Array<{ time: number; delta_value: number; note: string }>;
+  key_moments: Array<{ time: number; delta_value: number; value: number; note: string }>;
+  evaluation: EvaluationSample[]; // empty without a trained model
   move_log: MoveLogEntry[];
+  strongest: number[]; // move_log indices
+  weakest: number[];
 }
 
 export interface EventMsg {
